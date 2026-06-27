@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Replay storage/retrieval service. Stores LZMA frame blobs; rebuilds .osr header from DB. -->
+  <ItemGroup>
+    <ProjectReference Include="../../src/TomYum.Domain/TomYum.Domain.csproj" />
+    <ProjectReference Include="../../src/TomYum.Persistence/TomYum.Persistence.csproj" />
+    <ProjectReference Include="../../src/TomYum.Storage/TomYum.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

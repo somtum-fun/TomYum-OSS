@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Stable binary protocol: packet definitions, reader/writer, (de)serialization. Pure library. -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

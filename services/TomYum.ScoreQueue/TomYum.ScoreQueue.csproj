@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <!-- Async score-statistics processor. Consumes the Redis score queue; never blocks submission. -->
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/TomYum.Domain/TomYum.Domain.csproj" />
+    <ProjectReference Include="../../src/TomYum.Caching/TomYum.Caching.csproj" />
+    <ProjectReference Include="../../src/TomYum.Persistence/TomYum.Persistence.csproj" />
+    <ProjectReference Include="../../src/TomYum.Performance/TomYum.Performance.csproj" />
+  </ItemGroup>
+
+</Project>

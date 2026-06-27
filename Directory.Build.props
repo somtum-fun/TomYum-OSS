@@ -1,0 +1,35 @@
+<Project>
+
+  <!-- Shared build settings applied to every project in the solution. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Quality gates: analyzers on, warnings are errors. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Deterministic, documented builds. -->
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!--
+      Suppressed during the scaffolding phase:
+      CS1591  missing XML doc comment on a public member (stubs not fully documented yet).
+      CA1848  prefer LoggerMessage delegates (premature for scaffold log lines).
+      CA1716  identifier matches a reserved keyword (Get/Error/event read fine in C#).
+      CA1707  underscores in member names (placeholder test names use them by convention).
+      Revisit these as real implementation lands.
+    -->
+    <NoWarn>$(NoWarn);CS1591;CA1848;CA1716;CA1707</NoWarn>
+
+    <Authors>TomYum contributors</Authors>
+    <Product>TomYum</Product>
+  </PropertyGroup>
+
+</Project>

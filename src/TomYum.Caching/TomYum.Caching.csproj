@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Redis (StackExchange.Redis): online state, pub/sub, leaderboard caches.
+    TODO: add StackExchange.Redis package when caching implementation begins. Stubs only for now.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,27 @@
+# TomYum edge configuration (Caddy, NOT nginx). Caddy fronts the server and proxies
+# large asset downloads to object storage (R2 / OVH S3). Scaffold stub — adjust hostnames
+# and storage origins for your deployment. See memories/references/s3-nginx-proxy.md for
+# the caching ideas mined from the nginx reference.
+
+# Bancho + lazer API + web endpoints.
+osu.example.com {
+	encode zstd gzip
+
+	# Health/liveness passthrough.
+	handle /health {
+		reverse_proxy tomyum-server:8080
+	}
+
+	# Everything else to the main server.
+	reverse_proxy tomyum-server:8080
+}
+
+# Asset CDN front: serve beatmap sets / replays / avatars from object storage, with
+# Caddy caching at the edge. Buckets are S3-compatible (R2, OVH). TODO: wire signed URLs.
+assets.example.com {
+	encode zstd gzip
+	# reverse_proxy https://<bucket>.<r2-account>.r2.cloudflarestorage.com {
+	#   header_up Host {http.reverse_proxy.upstream.hostport}
+	# }
+	respond "TomYum asset edge (configure storage origin)" 200
+}

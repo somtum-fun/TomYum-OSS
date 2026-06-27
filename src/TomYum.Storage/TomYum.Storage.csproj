@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    IStorageProvider + R2/S3(AWS/OVH)/Azure/Local implementations + config routing.
+    TODO: add AWSSDK.S3 + Azure.Storage.Blobs packages when providers are implemented. Stubs only for now.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

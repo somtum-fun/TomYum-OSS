@@ -1,0 +1,94 @@
+# TomYum on Kubernetes — starter manifests (scaffold/placeholder).
+#
+# This is a minimal, readable starting point — NOT production-ready. It models the
+# scaling story from ADR-0003: the web host is a stateless, horizontally-scaled
+# Deployment; coordination (presence/chat/multiplayer fan-out) happens through Redis,
+# not pod-to-pod. MySQL and Redis are shown as in-cluster placeholders; in production
+# use a managed MySQL and a Redis you actually operate (or a managed equivalent).
+#
+# Apply order: namespace → config/secret → redis → mysql → server → services.
+# A Helm chart should replace these literals with values; left as raw YAML for clarity.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tomyum
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tomyum-config
+  namespace: tomyum
+data:
+  ASPNETCORE_ENVIRONMENT: "Production"
+  TOMYUM_storage__Enabled: "true"
+  TOMYUM_storage__DefaultProvider: "r2"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: tomyum-secrets
+  namespace: tomyum
+type: Opaque
+stringData:
+  # Placeholders — inject real values via your secret manager / sealed-secrets. Never commit.
+  TOMYUM_ConnectionStrings__MySql: "Server=mysql;Database=tomyum;Uid=tomyum;Pwd=CHANGE_ME;"
+  TOMYUM_ConnectionStrings__Redis: "redis:6379"
+  TOMYUM_storage__Providers__r2__AccessKey: "CHANGE_ME"
+  TOMYUM_storage__Providers__r2__SecretKey: "CHANGE_ME"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tomyum-server
+  namespace: tomyum
+spec:
+  # Stateless: scale horizontally to meet the 100–1000+ concurrent-player target.
+  # All cross-node state lives in Redis, so replicas need no affinity.
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tomyum-server
+  template:
+    metadata:
+      labels:
+        app: tomyum-server
+    spec:
+      containers:
+        - name: server
+          image: tomyum/server:dev # built from deploy/docker/Dockerfile, PROJECT=src/TomYum.Server
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: tomyum-config
+            - secretRef:
+                name: tomyum-secrets
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 20
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tomyum-server
+  namespace: tomyum
+spec:
+  selector:
+    app: tomyum-server
+  ports:
+    - port: 80
+      targetPort: 8080
+# TODO: add Deployments for services/ (Spectator, ScoreQueue, BeatmapSubmission,
+# ReplayStore), a StatefulSet/managed instance for MySQL, a Redis Deployment/managed
+# instance, and an Ingress (or Caddy) in front. The Spectator hub needs a Redis
+# SignalR backplane + session affinity once implemented (see ADR-0003).

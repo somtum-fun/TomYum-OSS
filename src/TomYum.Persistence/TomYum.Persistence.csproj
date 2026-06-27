@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    EF Core + MySQL repositories and migrations.
+    TODO: add Pomelo.EntityFrameworkCore.MySql + Microsoft.EntityFrameworkCore.* packages
+    when persistence implementation begins. Stubs only for now.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

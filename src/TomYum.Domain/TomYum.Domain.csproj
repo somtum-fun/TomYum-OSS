@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    TomYum.Domain — the heart of the system.
+    Entities, value objects, domain services, and repository/port interfaces.
+    MUST NOT reference any other TomYum project or any infrastructure package.
+    See memories/architecture/decisions/0001-solution-layering.md.
+  -->
+
+</Project>

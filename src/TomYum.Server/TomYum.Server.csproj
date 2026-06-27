@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- ASP.NET Core host: composes DI, stable endpoints, lazer endpoints/hubs, IRC, config. -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+    <ProjectReference Include="../TomYum.Bancho/TomYum.Bancho.csproj" />
+    <ProjectReference Include="../TomYum.Lazer/TomYum.Lazer.csproj" />
+    <ProjectReference Include="../TomYum.Persistence/TomYum.Persistence.csproj" />
+    <ProjectReference Include="../TomYum.Caching/TomYum.Caching.csproj" />
+    <ProjectReference Include="../TomYum.Storage/TomYum.Storage.csproj" />
+    <ProjectReference Include="../TomYum.Irc/TomYum.Irc.csproj" />
+    <ProjectReference Include="../TomYum.Performance/TomYum.Performance.csproj" />
+    <ProjectReference Include="../TomYum.Plugins.Abstractions/TomYum.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="../TomYum.Plugins.Loader/TomYum.Plugins.Loader.csproj" />
+  </ItemGroup>
+
+</Project>

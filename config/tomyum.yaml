@@ -1,0 +1,122 @@
+# TomYum optional configuration overlay (tomyum.yaml).
+#
+# This file is an OPTIONAL overlay on top of appsettings.json + appsettings.{Env}.json
+# + environment variables. See memories/architecture/decisions/0008-config-strategy.md.
+#
+# Precedence (lowest to highest):
+#   appsettings.json  <  appsettings.{Environment}.json  <  tomyum.yaml  <  TOMYUM_* env vars
+#
+# Secrets (DB passwords, S3 keys, OAuth signing keys) MUST NOT live here.
+# Inject them via environment variables / k8s secrets. Keys below are placeholders.
+
+server:
+  # Public domain the osu! client connects to (cho.<domain>, osu.<domain>, etc.).
+  domain: "tomyum.example"
+  # Bind address for the ASP.NET host inside the pod.
+  bind: "http://0.0.0.0:8080"
+
+database:
+  # MySQL primary persistence. Password comes from TOMYUM_DATABASE__PASSWORD.
+  host: "mysql"
+  port: 3306
+  name: "tomyum"
+  user: "tomyum"
+
+redis:
+  # Online state, pub/sub fan-out, leaderboard caches. See ADR-0003.
+  configuration: "redis:6379"
+
+irc:
+  # IRC bridge for external bots. See memories/protocols/irc.md.
+  enabled: true
+  port: 6667
+
+performance:
+  # PP/difficulty engine. native = in-process ppy.osu.Game.Rulesets (ADR-0005 default).
+  # sidecar = call out to a rosu-pp service if throughput demands it later.
+  engine: "native"
+  sidecarUrl: ""
+
+# --------------------------------------------------------------------------
+# Storage: object storage for avatars, screenshots, replays, beatmaps, sets.
+# Model (ADR-0006 / memories/features/storage.md):
+#   - storage.enabled: master switch. false => ALL asset storage disabled.
+#   - storage.providers: named provider instances; each has its own enabled flag.
+#   - storage.defaultProvider: used for any assetType without an explicit route.
+#   - storage.routes: per-asset-type provider selection (selective enable).
+#
+# This demonstrates the planned production shape: R2 for hot/CDN-fronted public
+# assets, OVH S3 for bulk/cold, local for dev. Flip enabled flags or routes to
+# enable-all / disable-all / selective without touching code.
+# --------------------------------------------------------------------------
+storage:
+  enabled: true
+  defaultProvider: "local"
+
+  providers:
+    local:
+      enabled: true
+      kind: "Local"
+      bucket: "/var/lib/tomyum/storage"      # root folder for local static files
+
+    r2:
+      enabled: false
+      kind: "CloudflareR2"
+      bucket: "tomyum-public"
+      endpoint: "https://<accountid>.r2.cloudflarestorage.com"
+      region: "auto"
+      publicBaseUrl: "https://cdn.tomyum.example"
+      # accessKey / secretKey: inject via TOMYUM_STORAGE__PROVIDERS__R2__ACCESSKEY etc.
+
+    ovh-s3:
+      enabled: false
+      kind: "OvhS3"
+      bucket: "tomyum-bulk"
+      endpoint: "https://s3.<region>.io.cloud.ovh.net"
+      region: "gra"
+
+    aws-s3:
+      enabled: false
+      kind: "AwsS3"
+      bucket: "tomyum-aws"
+      region: "us-east-1"
+
+    azure-blob:
+      enabled: false
+      kind: "AzureBlob"
+      bucket: "tomyum"                        # container name
+      endpoint: "https://<account>.blob.core.windows.net"
+
+  # Per-asset-type routing. Asset types omitted here fall back to defaultProvider.
+  # Valid asset types mirror TomYum.Storage.AssetType.
+  routes:
+    Avatar: "local"
+    Screenshot: "local"
+    Replay: "local"
+    Beatmap: "local"
+    BeatmapSet: "local"
+    BeatmapMedia: "local"
+
+# --------------------------------------------------------------------------
+# Plugins: runtime drop-ins from the plugins/ directory. DAN Mode and Session
+# ship as plugins (ADR-0007). Each plugin's own config lives under plugins.<id>.
+# --------------------------------------------------------------------------
+plugins:
+  directory: "plugins"
+  # Whether to compile loose folder/code.cs plugins at runtime (Roslyn) in addition
+  # to loading compiled .dll plugins.
+  allowLooseSource: true
+
+  # Example per-plugin config blocks (consumed by the plugins themselves):
+  "tomyum.dan-mode":
+    enabled: true
+    danSetIds: [100000001, 100000002]
+    minAccuracy: 0.96
+    introMinAccuracy: 0.95
+    # webhook URLs injected via env, not committed here.
+
+  "tomyum.session":
+    enabled: true
+    ttlHours: 168
+    bindClient: true
+    allowBodyToken: false

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    PP/difficulty engine. Behind IPerformanceCalculator so the impl (native ppy.osu.Game.Rulesets.*
+    vs rosu-pp sidecar) can be swapped. See memories/architecture/decisions/0005-pp-engine.md.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

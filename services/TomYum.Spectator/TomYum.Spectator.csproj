@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- Spectator SignalR server (lazer + stable spectate). Independently deployable. -->
+  <ItemGroup>
+    <ProjectReference Include="../../src/TomYum.Domain/TomYum.Domain.csproj" />
+    <ProjectReference Include="../../src/TomYum.Caching/TomYum.Caching.csproj" />
+    <ProjectReference Include="../../src/TomYum.Lazer/TomYum.Lazer.csproj" />
+  </ItemGroup>
+
+</Project>

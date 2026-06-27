@@ -1,0 +1,45 @@
+## .NET / build output
+bin/
+obj/
+out/
+*.user
+*.suo
+.vs/
+artifacts/
+
+## Rider / VS / VS Code
+.idea/
+*.DotSettings.user
+.vscode/
+
+## Test / coverage
+[Tt]est[Rr]esults/
+coverage/
+*.coverage
+*.trx
+
+## Secrets & local config
+.env
+*.env
+!*.env.example
+appsettings.*.local.json
+secrets.json
+
+## Storage / runtime data (local provider, replays, beatmaps)
+.data/
+data/local-storage/
+
+## Loaded plugin binaries (loose source + examples are tracked; built dlls are not)
+plugins/**/bin/
+plugins/**/obj/
+plugins/*.dll
+
+## OS noise
+.DS_Store
+Thumbs.db
+*.log
+
+## Agent knowledge system — local-only for now (per maintainer request).
+## These hold working notes/onboarding and are not yet published with the repo.
+AGENTS.md
+memories/

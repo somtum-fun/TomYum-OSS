@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    CompiledPlugin — the ".dll" plugin shape.
+
+    Built independently of TomYum.sln (NOT added to the solution): plugins are
+    deployed by dropping their compiled .dll into plugins/, not by building them
+    with the server. The loader (TomYum.Plugins.Loader) discovers the IPlugin via
+    an isolated AssemblyLoadContext so it can be hot-unloaded.
+
+    Build:  dotnet build plugins/examples/CompiledPlugin
+    Deploy: copy bin/Debug/net8.0/CompiledPlugin.dll into plugins/
+
+    A plugin references ONLY TomYum.Plugins.Abstractions. The reference below uses a
+    relative path for the example; a real out-of-tree plugin would reference the
+    published TomYum.Plugins.Abstractions NuGet package instead.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Don't drag the abstractions dll into plugins/ output; the host already has it. -->
+    <Private>false</Private>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/TomYum.Plugins.Abstractions/TomYum.Plugins.Abstractions.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>
