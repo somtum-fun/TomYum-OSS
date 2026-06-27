@@ -34,6 +34,14 @@ plugins/**/bin/
 plugins/**/obj/
 plugins/*.dll
 
+## Reference implementations — read-only external repos (often with their own .git).
+## Studied in memories/references/*.md; not part of this repo's history.
+reference/
+
+## Agent knowledge system — local working memory, not version-controlled (per project decision).
+AGENTS.md
+memories/
+
 ## OS noise
 .DS_Store
 Thumbs.db

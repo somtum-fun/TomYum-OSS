@@ -28,10 +28,31 @@ public interface IPluginContext
     /// <summary>Register authenticated HTTP routes (used by Session's frontend API surface).</summary>
     IHttpRouteRegistry Http { get; }
 
+    /// <summary>
+    /// Direct data access for privileged plugins. The Session plugin uses this to own its
+    /// <c>sessions</c> table and read/write user/clan/donation rows the core does not model.
+    /// Granted only to plugins the operator marks <c>trusted</c> in config (see ADR-0007);
+    /// untrusted plugins get <c>null</c> and must stay within events/commands/HTTP.
+    /// </summary>
+    IPluginDataAccess? Data { get; }
+
     /// <summary>Resolve a host service the plugin host has explicitly exposed to plugins.</summary>
     /// <typeparam name="TService">A service type published by the host (e.g. a bot-spectate controller).</typeparam>
     /// <returns>The service instance, or <c>null</c> when the host does not expose it.</returns>
     TService? GetHostService<TService>() where TService : class;
+}
+
+/// <summary>
+/// Raw database access handed to trusted plugins. Keeps plugins free of a direct
+/// persistence-package dependency while letting them own their own tables (the Session
+/// plugin's <c>sessions</c>/web tables) and run ad-hoc queries against the shared MySQL
+/// database. Implemented by the host over its existing connection pool.
+/// </summary>
+public interface IPluginDataAccess
+{
+    /// <summary>Opens a new open ADO.NET connection to the primary database. The caller disposes it.</summary>
+    /// <remarks>Typed as <see cref="System.Data.Common.DbConnection"/> so plugins need no MySQL package reference.</remarks>
+    Task<System.Data.Common.DbConnection> OpenConnectionAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>Read access to a plugin's own configuration subtree.</summary>

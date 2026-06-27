@@ -14,12 +14,18 @@ public interface IHttpRouteRegistry
     /// <param name="pattern">Route template, e.g. <c>/api/v1/clans/{id}</c>.</param>
     /// <param name="handler">Handles a <see cref="PluginHttpRequest"/> and returns a <see cref="PluginHttpResponse"/>.</param>
     /// <param name="requireAuth">When <c>true</c>, the host enforces a valid session before invoking the handler.</param>
+    /// <param name="subdomain">
+    /// Host subdomain this route is served from, e.g. <c>session</c> binds the route to
+    /// <c>session.&lt;domain&gt;</c> (the Session plugin's own vhost, mirroring prod's
+    /// <c>session.{domain}</c> mount). <c>null</c> serves it on the primary host.
+    /// </param>
     /// <returns>A disposable that removes the route when disposed.</returns>
     IDisposable Map(
         string method,
         string pattern,
         Func<PluginHttpRequest, CancellationToken, Task<PluginHttpResponse>> handler,
-        bool requireAuth = false);
+        bool requireAuth = false,
+        string? subdomain = null);
 }
 
 /// <summary>A framework-agnostic view of an incoming HTTP request passed to a plugin route handler.</summary>

@@ -42,16 +42,22 @@ performance:
 # Model (ADR-0006 / memories/features/storage.md):
 #   - storage.enabled: master switch. false => ALL asset storage disabled.
 #   - storage.providers: named provider instances; each has its own enabled flag.
-#   - storage.defaultProvider: used for any assetType without an explicit route.
-#   - storage.routes: per-asset-type provider selection (selective enable).
+#   - storage.defaultProviders: write-fan-out + read source for asset types with
+#     no explicit route. First entry serves reads; all entries receive writes.
+#   - storage.routes: per-asset-type routing. Each route has:
+#       enabled  - per-asset-type on/off switch
+#       writeTo  - list of providers an upload is replicated to (one, some, or ALL)
+#       readFrom - the single provider used to serve reads (defaults to writeTo[0])
 #
-# This demonstrates the planned production shape: R2 for hot/CDN-fronted public
-# assets, OVH S3 for bulk/cold, local for dev. Flip enabled flags or routes to
-# enable-all / disable-all / selective without touching code.
+# This is the "choose where each asset lives" model: host an asset on R2 only,
+# on OVH only, on local only, on several at once, or on all of them — per asset
+# type — by editing writeTo/readFrom. No code change required.
 # --------------------------------------------------------------------------
 storage:
   enabled: true
-  defaultProvider: "local"
+  # Asset types without an explicit route below are written to all of these and
+  # read from the first. Set to a single provider for a simple single-target setup.
+  defaultProviders: ["local"]
 
   providers:
     local:
@@ -87,15 +93,29 @@ storage:
       bucket: "tomyum"                        # container name
       endpoint: "https://<account>.blob.core.windows.net"
 
-  # Per-asset-type routing. Asset types omitted here fall back to defaultProvider.
-  # Valid asset types mirror TomYum.Storage.AssetType.
+  # Per-asset-type routing. Asset type names mirror TomYum.Storage.AssetType:
+  # Avatar, Screenshot, Replay, Beatmap, BeatmapSet, BeatmapMedia.
+  # Examples below show single-target, multi-target, and replicate-to-all.
   routes:
-    Avatar: "local"
-    Screenshot: "local"
-    Replay: "local"
-    Beatmap: "local"
-    BeatmapSet: "local"
-    BeatmapMedia: "local"
+    # Served from R2 (CDN), but also replicated to OVH for durability.
+    Avatar:
+      enabled: true
+      writeTo: ["r2", "ovh-s3"]
+      readFrom: "r2"
+    # Single provider only.
+    Screenshot:
+      enabled: true
+      writeTo: ["r2"]
+    # Cold/bulk on OVH only.
+    Replay:
+      enabled: true
+      writeTo: ["ovh-s3"]
+    # Hosted on ALL configured providers; reads come from R2.
+    BeatmapSet:
+      enabled: true
+      writeTo: ["r2", "ovh-s3", "aws-s3", "azure-blob", "local"]
+      readFrom: "r2"
+    # Beatmap (.osu) and BeatmapMedia fall back to defaultProviders (local) here.
 
 # --------------------------------------------------------------------------
 # Plugins: runtime drop-ins from the plugins/ directory. DAN Mode and Session
