@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using TomYum.Bancho;
+using TomYum.Domain.Entities;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
+using TomYum.Server.Beatmaps;
 using Xunit;
 
 namespace TomYum.Server.Tests;
@@ -13,7 +15,19 @@ namespace TomYum.Server.Tests;
 /// </summary>
 public class ChatHandlerTests
 {
-    private static BanchoBot NewBot() => new(new TomYumVersion());
+    private static BanchoBot NewBot() => new(
+        new BanchoBotCommands(
+            new TomYumVersion(),
+            new PlayerRegistry(),
+            new ChannelRegistry(),
+            new BeatmapService(new StubApiClient())));
+
+    /// <summary>An <see cref="IOsuApiClient"/> that knows no maps — enough to construct BeatmapService.</summary>
+    private sealed class StubApiClient : IOsuApiClient
+    {
+        public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Beatmap?>(null);
+    }
 
     private static OnlinePlayer AddPlayer(PlayerRegistry registry, int userId, string name) =>
         registry.Add(new BanchoPresence { UserId = userId, Username = name });
@@ -208,5 +222,30 @@ public class ChatHandlerTests
     public void Bot_NonCommand_ReturnsNull()
     {
         Assert.Null(NewBot().TryHandleCommand("Someone", "just chatting"));
+    }
+
+    [Fact]
+    public void Bot_Stats_IsStaffOnly_RefusedForPlayers()
+    {
+        var reply = NewBot().TryHandleCommand("Player", "!stats", BanchoPrivileges.Player);
+        Assert.Equal("That command is staff-only.", reply);
+    }
+
+    [Fact]
+    public void Bot_Stats_AllowedForAdministrators()
+    {
+        var reply = NewBot().TryHandleCommand("Admin", "!stats", BanchoPrivileges.Administrator);
+        Assert.NotNull(reply);
+        Assert.NotEqual("That command is staff-only.", reply);
+        // The stats line reports the player count — sanity-check the shape.
+        Assert.Contains("Players:", reply);
+    }
+
+    [Fact]
+    public void Bot_Help_HidesStatsFromNonStaff()
+    {
+        var bot = NewBot();
+        Assert.DoesNotContain("!stats", bot.TryHandleCommand("Player", "!help", BanchoPrivileges.Player));
+        Assert.Contains("!stats", bot.TryHandleCommand("Admin", "!help", BanchoPrivileges.Administrator));
     }
 }

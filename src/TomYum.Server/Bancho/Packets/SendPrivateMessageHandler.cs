@@ -43,7 +43,7 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         // A DM to BanchoBot: answer back to the sender rather than routing to a real session.
         if (string.Equals(target, BanchoBot.Name, StringComparison.OrdinalIgnoreCase))
         {
-            var reply = _bot.TryHandleCommand(sender, text)
+            var reply = _bot.TryHandleCommand(sender, text, context.Player.Presence.Privileges)
                 ?? "Hi! I only respond to commands — try !help.";
             ChatEncoder.WriteMessage(
                 context.Response,

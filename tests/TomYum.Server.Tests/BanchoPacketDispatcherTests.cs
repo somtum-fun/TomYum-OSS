@@ -1,7 +1,9 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using TomYum.Bancho;
+using TomYum.Domain.Entities;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
+using TomYum.Server.Beatmaps;
 using Xunit;
 
 namespace TomYum.Server.Tests;
@@ -13,7 +15,15 @@ namespace TomYum.Server.Tests;
 /// </summary>
 public class BanchoPacketDispatcherTests
 {
-    private static readonly BanchoBot Bot = new(new TomYumVersion());
+    private static readonly BanchoBot Bot = new(new BanchoBotCommands(
+        new TomYumVersion(), new PlayerRegistry(), new ChannelRegistry(), new BeatmapService(new StubApiClient())));
+
+    /// <summary>An <see cref="IOsuApiClient"/> that knows no maps — enough to construct BeatmapService.</summary>
+    private sealed class StubApiClient : IOsuApiClient
+    {
+        public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Beatmap?>(null);
+    }
 
     private static BanchoPacketDispatcher NewDispatcher() => new(
         [

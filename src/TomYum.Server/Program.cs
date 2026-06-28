@@ -17,6 +17,7 @@ builder.Configuration.AddEnvironmentVariables(prefix: "TOMYUM_");
 builder.Services.AddSingleton<PlayerRegistry>();
 builder.Services.AddSingleton<ChannelRegistry>();
 builder.Services.AddSingleton<TomYumVersion>();
+builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
 builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();

@@ -22,6 +22,9 @@ public sealed class BeatmapService
     /// <summary>Creates the service over the osu! API client.</summary>
     public BeatmapService(IOsuApiClient api) => _api = api;
 
+    /// <summary>Number of MD5 hashes currently cached (including negative not-found entries).</summary>
+    public int CachedCount => _byMd5.Count;
+
     /// <summary>
     /// Resolves a beatmap by its <c>.osu</c> MD5 hash. Returns <c>null</c> when the map is unknown
     /// to the API (treat as <see cref="Domain.Enums.RankedStatus.NotSubmitted"/>). Results — including

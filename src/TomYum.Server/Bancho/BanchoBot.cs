@@ -1,4 +1,3 @@
-using System.Globalization;
 using TomYum.Bancho;
 
 namespace TomYum.Server.Bancho;
@@ -6,14 +5,14 @@ namespace TomYum.Server.Bancho;
 /// <summary>
 /// The server's resident chat bot. <c>BanchoBot</c> is a virtual player (user id
 /// <see cref="UserId"/>) that is always online, never logs in, is never reaped, and is a
-/// permanent member of the default channels. It answers <c>!</c>-prefixed commands sent to it
-/// (publicly in a channel or as a private message) and is the voice the server speaks with.
+/// permanent member of the default channels. It is the voice the server speaks with; the actual
+/// <c>!</c>-command parsing lives in <see cref="BanchoBotCommands"/>.
 /// </summary>
 /// <remarks>
-/// Seeded into the <see cref="PlayerRegistry"/> at startup so it shows up in every client's
-/// user list and its messages carry a real presence. Command handling is deliberately tiny for
-/// this slice (<c>!help</c>, <c>!roll</c>, <c>!ping</c>); a richer command framework with
-/// privilege gating is a later slice.
+/// Seeded into the <see cref="PlayerRegistry"/> at startup so it shows up in every client's user
+/// list and its messages carry a real presence. This type stays small on purpose — its identity
+/// (id, name, presence) plus a thin delegate to the command set. New commands go in
+/// <see cref="BanchoBotCommands"/>, not here.
 /// </remarks>
 public sealed class BanchoBot
 {
@@ -23,13 +22,10 @@ public sealed class BanchoBot
     /// <summary>BanchoBot's display name.</summary>
     public const string Name = "BanchoBot";
 
-    private readonly TomYumVersion _version;
+    private readonly BanchoBotCommands _commands;
 
-    /// <summary>Creates the bot over the running server version (used by <c>!version</c>/<c>!help</c>).</summary>
-    public BanchoBot(TomYumVersion version)
-    {
-        _version = version;
-    }
+    /// <summary>Creates the bot over its command set.</summary>
+    public BanchoBot(BanchoBotCommands commands) => _commands = commands;
 
     /// <summary>
     /// Builds the bot's <see cref="BanchoPresence"/>: a bot-flagged, always-idle presence so it
@@ -47,43 +43,12 @@ public sealed class BanchoBot
 
     /// <summary>
     /// Produces the bot's reply to a command, or <c>null</c> when the input is not a command the
-    /// bot recognises (so callers can stay silent rather than echo an error for ordinary chat).
+    /// bot recognises (so callers stay silent rather than echo an error for ordinary chat).
+    /// Delegates to <see cref="BanchoBotCommands"/>.
     /// </summary>
     /// <param name="sender">The display name of the player who invoked the command.</param>
     /// <param name="message">The raw message text (may or may not start with <c>!</c>).</param>
-    public string? TryHandleCommand(string sender, string message)
-    {
-        if (string.IsNullOrWhiteSpace(message) || message[0] != '!')
-        {
-            return null;
-        }
-
-        var parts = message[1..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0)
-        {
-            return null;
-        }
-
-        var command = parts[0].ToLowerInvariant();
-        return command switch
-        {
-            "help" => "Commands: !help, !ping, !roll [max], !version. More to come.",
-            "ping" => "pong!",
-            "version" => string.Create(CultureInfo.InvariantCulture, $"TomYum {_version.Display}"),
-            "roll" => Roll(sender, parts),
-            _ => string.Create(CultureInfo.InvariantCulture, $"Unknown command \"{command}\". Try !help."),
-        };
-    }
-
-    private static string Roll(string sender, string[] parts)
-    {
-        var max = 100;
-        if (parts.Length > 1 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var requested) && requested > 0)
-        {
-            max = requested;
-        }
-
-        var value = Random.Shared.Next(1, max + 1);
-        return string.Create(CultureInfo.InvariantCulture, $"{sender} rolls {value} point(s)! (1-{max})");
-    }
+    /// <param name="privileges">The caller's client privileges, used to gate staff-only commands.</param>
+    public string? TryHandleCommand(string sender, string message, BanchoPrivileges privileges = BanchoPrivileges.Player) =>
+        _commands.TryHandle(sender, message, privileges);
 }

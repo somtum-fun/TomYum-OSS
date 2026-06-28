@@ -49,6 +49,22 @@ public sealed class OnlinePlayer
     }
 
     /// <summary>
+    /// Bytes currently buffered in this player's outbound queue. A steadily growing value for a
+    /// player means the client has stopped polling but the session has not yet been reaped — the
+    /// main per-session memory-bloat signal (surfaced by the <c>!stats</c> command).
+    /// </summary>
+    public int QueuedBytes
+    {
+        get
+        {
+            lock (_queueLock)
+            {
+                return _outbound.Count;
+            }
+        }
+    }
+
+    /// <summary>
     /// Atomically takes everything queued so far, clearing the queue. Returns an empty
     /// array when nothing is pending. Called when flushing a poll response.
     /// </summary>

@@ -61,7 +61,7 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
         }
 
         // Let BanchoBot answer a command, posting its reply to the same channel.
-        var reply = _bot.TryHandleCommand(sender, text);
+        var reply = _bot.TryHandleCommand(sender, text, context.Player.Presence.Privileges);
         if (reply is not null)
         {
             var botWriter = new BanchoPacketWriter(128);
