@@ -13,11 +13,9 @@ C# / .NET 8, supporting **both** the osu!stable and osu!lazer clients.
 
 ## Progress
 
-See [`memories/progress.md`](memories/progress.md) for the living status of the project.
-
 > Status: **early development.** The solution structure, contracts, and documentation are
 > in place, and the osu!stable login handshake works end to end. Most features are still
-> to come.
+> to come — see the TODO list below.
 
 ## Features
 
@@ -91,9 +89,10 @@ Docker, k8s, k3s, and Caddy scaffolding lives under `deploy/`.
 
 ## Documentation
 
-- **`AGENTS.md`** — canonical onboarding for any contributor (human or AI).
-- **`memories/`** — start at `memories/README.md`: protocols, architecture/ADRs, and
-  per-library usage guides.
+Configuration samples live under `config/`, and deployment scaffolding (Docker, k8s, k3s,
+Caddy) under `deploy/`. The project also keeps an internal knowledge base — protocols,
+architecture decisions, and contributor onboarding notes — that is maintained privately and
+not published with the source.
 
 ## Contributing
 
