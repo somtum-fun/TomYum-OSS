@@ -17,7 +17,7 @@ public sealed class LogoutHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.Logout;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -27,5 +27,6 @@ public sealed class LogoutHandler : IClientPacketHandler
         var writer = new BanchoPacketWriter(16);
         writer.WriteInt32Packet(ServerPacketId.UserLogout, context.Player.UserId);
         context.Registry.EnqueueToAll(writer.ToArray(), exceptUserId: context.Player.UserId);
+        return Task.CompletedTask;
     }
 }

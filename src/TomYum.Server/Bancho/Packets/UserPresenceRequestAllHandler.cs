@@ -18,7 +18,7 @@ public sealed class UserPresenceRequestAllHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.UserPresenceRequestAll;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -26,5 +26,7 @@ public sealed class UserPresenceRequestAllHandler : IClientPacketHandler
         {
             LoginResponseBuilder.WritePresence(context.Response, player.Presence);
         }
+
+        return Task.CompletedTask;
     }
 }

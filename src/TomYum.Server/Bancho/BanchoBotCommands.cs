@@ -1,5 +1,9 @@
 using System.Globalization;
+using Microsoft.Extensions.DependencyInjection;
 using TomYum.Bancho;
+using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
+using TomYum.Domain.Repositories;
 using TomYum.Server.Beatmaps;
 
 namespace TomYum.Server.Bancho;
@@ -12,9 +16,10 @@ namespace TomYum.Server.Bancho;
 /// </summary>
 /// <remarks>
 /// Commands read off the in-memory singleton stores (players, channels, beatmap cache) for
-/// reporting. Staff-only commands (e.g. <c>!stats</c>, which exposes internal resource counts) are
-/// gated on the caller's <see cref="BanchoPrivileges"/>. A richer framework (per-command metadata,
-/// argument parsing, cooldowns) is a later slice; for now a switch is enough.
+/// reporting, and the user repository for privilege changes. Staff-only commands (e.g.
+/// <c>!stats</c>, <c>!setpriv</c>) are gated on the caller's <see cref="BanchoPrivileges"/>. A
+/// richer framework (per-command metadata, argument parsing, cooldowns) is a later slice; for now
+/// a switch is enough.
 /// </remarks>
 public sealed class BanchoBotCommands
 {
@@ -22,24 +27,40 @@ public sealed class BanchoBotCommands
     private readonly PlayerRegistry _players;
     private readonly ChannelRegistry _channels;
     private readonly BeatmapService _beatmaps;
+    private readonly IServiceScopeFactory _scopeFactory;
 
-    /// <summary>Creates the command set over the running version and the stores it reports on (all singletons).</summary>
-    public BanchoBotCommands(TomYumVersion version, PlayerRegistry players, ChannelRegistry channels, BeatmapService beatmaps)
+    /// <summary>
+    /// Creates the command set over the running version, the stores it reports on, and a scope
+    /// factory used to resolve the (scoped) user repository per command. The factory is needed
+    /// because this type is a singleton while the EF repository is scoped to a request/DbContext.
+    /// </summary>
+    public BanchoBotCommands(
+        TomYumVersion version,
+        PlayerRegistry players,
+        ChannelRegistry channels,
+        BeatmapService beatmaps,
+        IServiceScopeFactory scopeFactory)
     {
         _version = version;
         _players = players;
         _channels = channels;
         _beatmaps = beatmaps;
+        _scopeFactory = scopeFactory;
     }
 
     /// <summary>
     /// Produces the bot's reply to a command, or <c>null</c> when the input is not a command the
     /// bot recognises (so callers stay silent rather than echo an error for ordinary chat).
     /// </summary>
-    /// <param name="sender">The display name of the player who invoked the command.</param>
+    /// <param name="caller">The player who invoked the command (the acting user for staff commands).</param>
     /// <param name="message">The raw message text (may or may not start with <c>!</c>).</param>
     /// <param name="privileges">The caller's client privileges, used to gate staff-only commands.</param>
-    public string? TryHandle(string sender, string message, BanchoPrivileges privileges)
+    /// <param name="cancellationToken">Cancels any repository work a command performs.</param>
+    public async Task<string?> TryHandleAsync(
+        OnlinePlayer caller,
+        string message,
+        BanchoPrivileges privileges,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(message) || message[0] != '!')
         {
@@ -58,20 +79,25 @@ public sealed class BanchoBotCommands
             "help" => Help(privileges),
             "ping" => "pong!",
             "version" => string.Create(CultureInfo.InvariantCulture, $"TomYum {_version.Display}"),
-            "roll" => Roll(sender, parts),
-            "stats" => IsStaff(privileges) ? Stats() : "That command is staff-only.",
+            "roll" => Roll(caller.Presence.Username, parts),
+            "stats" => IsStaff(privileges) ? Stats() : StaffOnly,
+            "setpriv" => IsStaff(privileges)
+                ? await SetPrivAsync(parts, cancellationToken).ConfigureAwait(false)
+                : StaffOnly,
             _ => string.Create(CultureInfo.InvariantCulture, $"Unknown command \"{command}\". Try !help."),
         };
     }
+
+    private const string StaffOnly = "That command is staff-only.";
 
     /// <summary>Whether the caller holds administrator (or developer) privileges.</summary>
     private static bool IsStaff(BanchoPrivileges privileges) =>
         privileges.HasFlag(BanchoPrivileges.Administrator) || privileges.HasFlag(BanchoPrivileges.Developer);
 
-    /// <summary>The help line, listing the staff-only <c>!stats</c> command only for staff.</summary>
+    /// <summary>The help line, listing staff-only commands only for staff.</summary>
     private static string Help(BanchoPrivileges privileges) => IsStaff(privileges)
-        ? "Commands: !help, !ping, !roll [max], !version, !stats (staff). More to come."
-        : "Commands: !help, !ping, !roll [max], !version. More to come.";
+        ? "Commands: !help, !ping, !roll [max], !version, !stats (staff), !setpriv <user> <role> (staff)."
+        : "Commands: !help, !ping, !roll [max], !version.";
 
     private static string Roll(string sender, string[] parts)
     {
@@ -106,4 +132,74 @@ public sealed class BanchoBotCommands
             CultureInfo.InvariantCulture,
             $"Players: {players.Count} | Queued: {queuedBytes / 1024.0:F1} KB | Channels: {_channels.All.Count} | Beatmaps cached: {_beatmaps.CachedCount} | Heap: {heapMb:F1} MB");
     }
+
+    /// <summary>
+    /// <c>!setpriv &lt;username&gt; &lt;role&gt;</c> — promotes/demotes another account. Roles map to
+    /// <see cref="UserPrivileges"/>: <c>owner</c>, <c>admin</c>, <c>dev</c>, <c>mod</c>,
+    /// <c>supporter</c>, <c>normal</c>. Persists through the repository so it survives the player
+    /// reconnecting; an online target's change takes effect on their next login (presence is built
+    /// from the stored privileges then). Staff-only — gated by the caller before this runs.
+    /// </summary>
+    private async Task<string> SetPrivAsync(string[] parts, CancellationToken cancellationToken)
+    {
+        if (parts.Length < 3)
+        {
+            return "Usage: !setpriv <username> <owner|admin|dev|mod|supporter|normal>";
+        }
+
+        if (!TryParseRole(parts[2], out var privileges))
+        {
+            return string.Create(CultureInfo.InvariantCulture,
+                $"Unknown role \"{parts[2]}\". Valid: owner, admin, dev, mod, supporter, normal.");
+        }
+
+        var targetName = parts[1];
+
+        // Resolve the scoped user repository for this command (this type is a singleton; the EF
+        // repository + its DbContext are scoped, so we open a short-lived scope per write).
+        using var scope = _scopeFactory.CreateScope();
+        var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+
+        var user = await users.GetBySafeNameAsync(User.MakeSafeName(targetName), cancellationToken).ConfigureAwait(false);
+        if (user is null)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"No such user \"{targetName}\".");
+        }
+
+        await users.UpdateAsync(WithPrivileges(user, privileges), cancellationToken).ConfigureAwait(false);
+        return string.Create(CultureInfo.InvariantCulture,
+            $"{user.Username} is now {privileges}. (Takes effect on their next login.)");
+    }
+
+    /// <summary>Maps a role keyword to the <see cref="UserPrivileges"/> flag set it grants.</summary>
+    private static bool TryParseRole(string role, out UserPrivileges privileges)
+    {
+        privileges = role.ToLowerInvariant() switch
+        {
+            "owner" => UserPrivileges.Owner,
+            "admin" or "administrator" => UserPrivileges.Normal | UserPrivileges.Administrator,
+            "dev" or "developer" => UserPrivileges.Normal | UserPrivileges.Administrator | UserPrivileges.Developer,
+            "mod" or "moderator" => UserPrivileges.Normal | UserPrivileges.Moderator,
+            "supporter" => UserPrivileges.Normal | UserPrivileges.Supporter,
+            "normal" or "player" => UserPrivileges.Normal,
+            _ => UserPrivileges.None,
+        };
+
+        return privileges != UserPrivileges.None;
+    }
+
+    /// <summary>Returns a copy of <paramref name="user"/> with its <see cref="User.Privileges"/> replaced.</summary>
+    private static User WithPrivileges(User user, UserPrivileges privileges) => new()
+    {
+        Id = user.Id,
+        Username = user.Username,
+        SafeName = user.SafeName,
+        Email = user.Email,
+        PasswordBcrypt = user.PasswordBcrypt,
+        Country = user.Country,
+        CreationTime = user.CreationTime,
+        LatestActivity = user.LatestActivity,
+        ApiKey = user.ApiKey,
+        Privileges = privileges,
+    };
 }

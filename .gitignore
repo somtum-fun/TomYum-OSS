@@ -29,6 +29,9 @@ secrets.json
 .data/
 data/local-storage/
 
+## Local datastore (Podman MySQL bind-mount) — dev-only, never commit DB files
+.localdb/
+
 ## Loaded plugin binaries (loose source + examples are tracked; built dlls are not)
 plugins/**/bin/
 plugins/**/obj/

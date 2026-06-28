@@ -14,7 +14,7 @@ public sealed class ChannelPartHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.ChannelPart;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -22,10 +22,11 @@ public sealed class ChannelPartHandler : IClientPacketHandler
         var name = reader.ReadString();
         if (string.IsNullOrEmpty(name))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         context.Channels.Get(name)?.Leave(context.Player.UserId);
         context.Player.LeaveChannel(name);
+        return Task.CompletedTask;
     }
 }

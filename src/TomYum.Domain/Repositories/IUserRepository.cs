@@ -29,4 +29,11 @@ public interface IUserRepository
 
     /// <summary>Inserts a new user and returns it with its assigned id.</summary>
     Task<User> AddAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Persists changes to an existing user (matched by <see cref="User.Id"/>), returning the
+    /// stored copy. Used for mutations such as privilege grants. Throws when no user with that id
+    /// exists.
+    /// </summary>
+    Task<User> UpdateAsync(User user, CancellationToken cancellationToken = default);
 }

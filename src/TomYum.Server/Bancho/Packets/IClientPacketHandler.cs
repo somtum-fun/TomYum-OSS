@@ -16,7 +16,8 @@ public interface IClientPacketHandler
     /// <summary>
     /// Handles one packet. Reads fields from <see cref="ClientPacketContext.Payload"/>,
     /// mutates online state, and queues any resulting packets (to the originator via
-    /// <see cref="ClientPacketContext.Response"/>, to others via the registry).
+    /// <see cref="ClientPacketContext.Response"/>, to others via the registry). Async so a
+    /// handler may await a repository or other I/O (e.g. an admin command persisting a change).
     /// </summary>
-    void Handle(ClientPacketContext context);
+    Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default);
 }

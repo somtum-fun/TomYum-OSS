@@ -35,7 +35,7 @@ public sealed class BanchoPacketDispatcher
     /// <paramref name="player"/>, returning the framed bytes any handler queued for the
     /// originator. Packets for other players are queued on them via the registry.
     /// </summary>
-    public byte[] Dispatch(OnlinePlayer player, PlayerRegistry registry, ChannelRegistry channels, ReadOnlyMemory<byte> body)
+    public async Task<byte[]> DispatchAsync(OnlinePlayer player, PlayerRegistry registry, ChannelRegistry channels, ReadOnlyMemory<byte> body)
     {
         ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(registry);
@@ -43,47 +43,59 @@ public sealed class BanchoPacketDispatcher
 
         var response = new BanchoPacketWriter(256);
 
-        // Read header + payload per packet. A ref struct reader cannot cross the handler call
-        // (handlers take ReadOnlyMemory), so slice the payload here and advance manually.
+        // Decode one packet's header + payload, then dispatch. The ref struct reader is fully
+        // consumed before any await (it never crosses the handler call), so async handlers are safe.
         var offset = 0;
-        var span = body.Span;
-        while (span.Length - offset >= PacketHeader.Size)
+        while (body.Length - offset >= PacketHeader.Size)
         {
-            var reader = new BanchoPacketReader(span[offset..]);
-            var header = reader.ReadHeader();
+            // The ref struct reader cannot live in an async method, so parse the header in a
+            // synchronous helper that returns plain values before any await.
+            var header = ReadHeader(body.Span.Slice(offset, PacketHeader.Size));
+            var id = header.Id;
             var payloadLength = checked((int)header.Length);
-            var payloadStart = offset + PacketHeader.Size;
 
-            if (payloadStart + payloadLength > span.Length)
+            var payloadStart = offset + PacketHeader.Size;
+            if (payloadStart + payloadLength > body.Length)
             {
                 _logger.LogWarning(
                     "Truncated packet {PacketId} from user {UserId}: declared {Length} bytes, {Remaining} remaining.",
-                    header.Id, player.UserId, payloadLength, span.Length - payloadStart);
+                    id, player.UserId, payloadLength, body.Length - payloadStart);
                 break;
             }
 
             var payload = body.Slice(payloadStart, payloadLength);
             offset = payloadStart + payloadLength;
 
-            if (_handlers.TryGetValue(header.Id, out var handler))
+            if (_handlers.TryGetValue(id, out var handler))
             {
                 var context = new ClientPacketContext(player, registry, channels, payload, response);
                 try
                 {
-                    handler.Handle(context);
+                    await handler.HandleAsync(context).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
                 {
-                    _logger.LogWarning(ex, "Handler for {PacketId} (user {UserId}) failed.", header.Id, player.UserId);
+                    _logger.LogWarning(ex, "Handler for {PacketId} (user {UserId}) failed.", id, player.UserId);
                 }
             }
             else
             {
-                _logger.LogDebug("No handler for client packet {PacketId} (user {UserId}); skipping.", header.Id, player.UserId);
+                _logger.LogDebug("No handler for client packet {PacketId} (user {UserId}); skipping.", id, player.UserId);
             }
         }
 
         player.LastActivityUtc = DateTimeOffset.UtcNow;
         return response.Length == 0 ? [] : response.ToArray();
+    }
+
+    /// <summary>
+    /// Reads a packet header from a 7-byte span. Kept synchronous and separate from
+    /// <see cref="DispatchAsync"/> because the <see cref="BanchoPacketReader"/> ref struct cannot
+    /// appear in an async method.
+    /// </summary>
+    private static PacketHeader ReadHeader(ReadOnlySpan<byte> headerBytes)
+    {
+        var reader = new BanchoPacketReader(headerBytes);
+        return reader.ReadHeader();
     }
 }

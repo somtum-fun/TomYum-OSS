@@ -44,11 +44,17 @@ public sealed class BanchoBot
     /// <summary>
     /// Produces the bot's reply to a command, or <c>null</c> when the input is not a command the
     /// bot recognises (so callers stay silent rather than echo an error for ordinary chat).
-    /// Delegates to <see cref="BanchoBotCommands"/>.
+    /// Delegates to <see cref="BanchoBotCommands"/>. Async because some commands (e.g.
+    /// <c>!setpriv</c>) persist a change through the repository.
     /// </summary>
-    /// <param name="sender">The display name of the player who invoked the command.</param>
+    /// <param name="caller">The player who invoked the command (acting user for staff commands).</param>
     /// <param name="message">The raw message text (may or may not start with <c>!</c>).</param>
     /// <param name="privileges">The caller's client privileges, used to gate staff-only commands.</param>
-    public string? TryHandleCommand(string sender, string message, BanchoPrivileges privileges = BanchoPrivileges.Player) =>
-        _commands.TryHandle(sender, message, privileges);
+    /// <param name="cancellationToken">Cancels any repository work a command performs.</param>
+    public Task<string?> TryHandleCommandAsync(
+        OnlinePlayer caller,
+        string message,
+        BanchoPrivileges privileges,
+        CancellationToken cancellationToken = default) =>
+        _commands.TryHandleAsync(caller, message, privileges, cancellationToken);
 }

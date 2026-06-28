@@ -13,7 +13,7 @@ public sealed class UserStatsRequestHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.UserStatsRequest;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -28,5 +28,7 @@ public sealed class UserStatsRequestHandler : IClientPacketHandler
                 LoginResponseBuilder.WriteStats(context.Response, target.Presence);
             }
         }
+
+        return Task.CompletedTask;
     }
 }

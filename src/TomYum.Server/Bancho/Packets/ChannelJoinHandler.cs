@@ -14,7 +14,7 @@ public sealed class ChannelJoinHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.ChannelJoin;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -22,18 +22,19 @@ public sealed class ChannelJoinHandler : IClientPacketHandler
         var name = reader.ReadString();
         if (string.IsNullOrEmpty(name))
         {
-            return;
+            return Task.CompletedTask;
         }
 
         var channel = context.Channels.Get(name);
         if (channel is null)
         {
             ChatEncoder.WriteChannelKick(context.Response, name);
-            return;
+            return Task.CompletedTask;
         }
 
         channel.Join(context.Player);
         context.Player.JoinChannel(name);
         ChatEncoder.WriteChannelJoinSuccess(context.Response, name);
+        return Task.CompletedTask;
     }
 }

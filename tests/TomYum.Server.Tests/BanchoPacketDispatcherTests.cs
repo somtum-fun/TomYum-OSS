@@ -16,7 +16,8 @@ namespace TomYum.Server.Tests;
 public class BanchoPacketDispatcherTests
 {
     private static readonly BanchoBot Bot = new(new BanchoBotCommands(
-        new TomYumVersion(), new PlayerRegistry(), new ChannelRegistry(), new BeatmapService(new StubApiClient())));
+        new TomYumVersion(), new PlayerRegistry(), new ChannelRegistry(), new BeatmapService(new StubApiClient()),
+        TestScopeFactory.Create(new InMemoryUserRepository())));
 
     /// <summary>An <see cref="IOsuApiClient"/> that knows no maps — enough to construct BeatmapService.</summary>
     private sealed class StubApiClient : IOsuApiClient
@@ -77,7 +78,7 @@ public class BanchoPacketDispatcherTests
     }
 
     [Fact]
-    public void ChangeAction_UpdatesPresence_AndBroadcastsStatsToOthers()
+    public async Task ChangeAction_UpdatesPresence_AndBroadcastsStatsToOthers()
     {
         var registry = new PlayerRegistry();
         var dispatcher = NewDispatcher();
@@ -94,7 +95,7 @@ public class BanchoPacketDispatcherTests
         payload.WriteInt32(42);
         var body = FrameClientPacket(ClientPacketId.ChangeAction, payload.ToArray());
 
-        var produced = dispatcher.Dispatch(sender, registry, new ChannelRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(sender, registry, new ChannelRegistry(), body);
 
         // Presence was folded in.
         Assert.Equal(2, sender.Presence.Action);
@@ -109,7 +110,7 @@ public class BanchoPacketDispatcherTests
     }
 
     [Fact]
-    public void UserStatsRequest_RepliesWithStatsForOnlineIds()
+    public async Task UserStatsRequest_RepliesWithStatsForOnlineIds()
     {
         var registry = new PlayerRegistry();
         var dispatcher = NewDispatcher();
@@ -121,27 +122,27 @@ public class BanchoPacketDispatcherTests
         payload.WriteInt32List([3, 99]);
         var body = FrameClientPacket(ClientPacketId.UserStatsRequest, payload.ToArray());
 
-        var produced = dispatcher.Dispatch(requester, registry, new ChannelRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(requester, registry, new ChannelRegistry(), body);
 
         // Exactly one UserStats (for id 3); the offline id 99 is skipped.
         Assert.Equal(1, PacketIds(produced).Count(id => id == (ushort)ServerPacketId.UserStats));
     }
 
     [Fact]
-    public void RequestStatusUpdate_RepliesWithOwnStats()
+    public async Task RequestStatusUpdate_RepliesWithOwnStats()
     {
         var registry = new PlayerRegistry();
         var dispatcher = NewDispatcher();
         var player = AddPlayer(registry, 2, "TomYum");
 
         var body = FrameClientPacket(ClientPacketId.RequestStatusUpdate, []);
-        var produced = dispatcher.Dispatch(player, registry, new ChannelRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), body);
 
         Assert.Contains((ushort)ServerPacketId.UserStats, PacketIds(produced));
     }
 
     [Fact]
-    public void UserPresenceRequestAll_RepliesWithPresenceForEveryOnlinePlayer()
+    public async Task UserPresenceRequestAll_RepliesWithPresenceForEveryOnlinePlayer()
     {
         var registry = new PlayerRegistry();
         var dispatcher = NewDispatcher();
@@ -149,13 +150,13 @@ public class BanchoPacketDispatcherTests
         AddPlayer(registry, 3, "Other");
 
         var body = FrameClientPacket(ClientPacketId.UserPresenceRequestAll, []);
-        var produced = dispatcher.Dispatch(requester, registry, new ChannelRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(requester, registry, new ChannelRegistry(), body);
 
         Assert.Equal(2, PacketIds(produced).Count(id => id == (ushort)ServerPacketId.UserPresence));
     }
 
     [Fact]
-    public void Logout_RemovesPlayer_AndBroadcastsUserLogout()
+    public async Task Logout_RemovesPlayer_AndBroadcastsUserLogout()
     {
         var registry = new PlayerRegistry();
         var dispatcher = NewDispatcher();
@@ -167,7 +168,7 @@ public class BanchoPacketDispatcherTests
         payload.WriteInt32(0);
         var body = FrameClientPacket(ClientPacketId.Logout, payload.ToArray());
 
-        dispatcher.Dispatch(leaver, registry, new ChannelRegistry(), body);
+        await dispatcher.DispatchAsync(leaver, registry, new ChannelRegistry(), body);
 
         Assert.Null(registry.GetByUserId(2));
         Assert.Equal(1, registry.Count);
@@ -175,7 +176,7 @@ public class BanchoPacketDispatcherTests
     }
 
     [Fact]
-    public void MultiplePacketsInOneBody_AreAllDispatched()
+    public async Task MultiplePacketsInOneBody_AreAllDispatched()
     {
         var registry = new PlayerRegistry();
         var dispatcher = NewDispatcher();
@@ -188,13 +189,13 @@ public class BanchoPacketDispatcherTests
         ping.CopyTo(body, 0);
         status.CopyTo(body, ping.Length);
 
-        var produced = dispatcher.Dispatch(player, registry, new ChannelRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), body);
 
         Assert.Contains((ushort)ServerPacketId.UserStats, PacketIds(produced));
     }
 
     [Fact]
-    public void UnknownPacketId_IsSkipped_WithoutThrowing()
+    public async Task UnknownPacketId_IsSkipped_WithoutThrowing()
     {
         var registry = new PlayerRegistry();
         var dispatcher = NewDispatcher();
@@ -207,7 +208,7 @@ public class BanchoPacketDispatcherTests
         unknown.CopyTo(body, 0);
         ping.CopyTo(body, unknown.Length);
 
-        var produced = dispatcher.Dispatch(player, registry, new ChannelRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), body);
 
         // No reply expected, but the call must not throw and must consume the whole stream.
         Assert.Empty(produced);

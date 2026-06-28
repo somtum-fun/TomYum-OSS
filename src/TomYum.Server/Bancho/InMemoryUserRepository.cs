@@ -65,4 +65,21 @@ public sealed class InMemoryUserRepository : IUserRepository
         _bySafeName[assigned.SafeName] = assigned;
         return Task.FromResult(assigned);
     }
+
+    /// <inheritdoc />
+    public Task<User> UpdateAsync(User user, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        if (!_byId.ContainsKey(user.Id))
+        {
+            throw new InvalidOperationException($"Cannot update user {user.Id}: no such user.");
+        }
+
+        // Overwrite both indexes with the supplied copy (safe name is immutable here).
+        var safeName = string.IsNullOrEmpty(user.SafeName) ? User.MakeSafeName(user.Username) : user.SafeName;
+        _byId[user.Id] = user;
+        _bySafeName[safeName] = user;
+        return Task.FromResult(user);
+    }
 }

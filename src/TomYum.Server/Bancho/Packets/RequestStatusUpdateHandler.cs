@@ -13,10 +13,11 @@ public sealed class RequestStatusUpdateHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.RequestStatusUpdate;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
         LoginResponseBuilder.WriteStats(context.Response, context.Player.Presence);
+        return Task.CompletedTask;
     }
 }

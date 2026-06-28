@@ -24,15 +24,11 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.SendPublicMessage;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public async Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var reader = new BanchoPacketReader(context.Payload.Span);
-        _ = reader.ReadString();          // sender (client-supplied, ignored)
-        var text = reader.ReadString();
-        var target = reader.ReadString(); // channel name, e.g. #osu
-        _ = reader.ReadInt32();           // sender_id (client-supplied, ignored)
+        var (text, target) = ParseMessage(context.Payload.Span);
 
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(target))
         {
@@ -61,7 +57,8 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
         }
 
         // Let BanchoBot answer a command, posting its reply to the same channel.
-        var reply = _bot.TryHandleCommand(sender, text, context.Player.Presence.Privileges);
+        var reply = await _bot.TryHandleCommandAsync(
+            context.Player, text, context.Player.Presence.Privileges, cancellationToken).ConfigureAwait(false);
         if (reply is not null)
         {
             var botWriter = new BanchoPacketWriter(128);
@@ -72,5 +69,20 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
                 member.Enqueue(botFramed);
             }
         }
+    }
+
+    /// <summary>
+    /// Parses the message composite (sender + text + target + sender_id), returning only the text
+    /// and target — the client-supplied sender fields are ignored. Synchronous because
+    /// <see cref="BanchoPacketReader"/> is a ref struct and cannot live in an async method.
+    /// </summary>
+    private static (string Text, string Target) ParseMessage(ReadOnlySpan<byte> payload)
+    {
+        var reader = new BanchoPacketReader(payload);
+        _ = reader.ReadString();          // sender (client-supplied, ignored)
+        var text = reader.ReadString();
+        var target = reader.ReadString(); // channel name, e.g. #osu
+        _ = reader.ReadInt32();           // sender_id (client-supplied, ignored)
+        return (text, target);
     }
 }

@@ -15,7 +15,7 @@ public sealed class ChangeActionHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.ChangeAction;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
@@ -37,5 +37,6 @@ public sealed class ChangeActionHandler : IClientPacketHandler
 
         context.Registry.EnqueueToAll(stats, exceptUserId: context.Player.UserId);
         context.Response.WriteRaw(stats);
+        return Task.CompletedTask;
     }
 }

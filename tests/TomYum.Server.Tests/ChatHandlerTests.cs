@@ -20,7 +20,8 @@ public class ChatHandlerTests
             new TomYumVersion(),
             new PlayerRegistry(),
             new ChannelRegistry(),
-            new BeatmapService(new StubApiClient())));
+            new BeatmapService(new StubApiClient()),
+            TestScopeFactory.Create(new InMemoryUserRepository())));
 
     /// <summary>An <see cref="IOsuApiClient"/> that knows no maps — enough to construct BeatmapService.</summary>
     private sealed class StubApiClient : IOsuApiClient
@@ -77,7 +78,7 @@ public class ChatHandlerTests
         new(player, registry, channels, payload, response);
 
     [Fact]
-    public void PublicMessage_FansOutToOtherChannelMembers()
+    public async Task PublicMessage_FansOutToOtherChannelMembers()
     {
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
@@ -89,7 +90,7 @@ public class ChatHandlerTests
         osu.Join(listener);
 
         var response = new BanchoPacketWriter(64);
-        new SendPublicMessageHandler(NewBot()).Handle(
+        await new SendPublicMessageHandler(NewBot()).HandleAsync(
             Context(sender, registry, channels, MessagePayload("hello world", "#osu"), response));
 
         // The listener received a SEND_MESSAGE; the sender did not get it echoed back.
@@ -98,7 +99,7 @@ public class ChatHandlerTests
     }
 
     [Fact]
-    public void PublicMessage_NonMember_IsDropped()
+    public async Task PublicMessage_NonMember_IsDropped()
     {
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
@@ -107,14 +108,14 @@ public class ChatHandlerTests
         channels.Get("#osu")!.Join(listener); // sender is NOT a member
 
         var response = new BanchoPacketWriter(64);
-        new SendPublicMessageHandler(NewBot()).Handle(
+        await new SendPublicMessageHandler(NewBot()).HandleAsync(
             Context(sender, registry, channels, MessagePayload("hi", "#osu"), response));
 
         Assert.Empty(listener.DequeueAll());
     }
 
     [Fact]
-    public void PublicMessage_BotCommand_PostsReplyToChannel()
+    public async Task PublicMessage_BotCommand_PostsReplyToChannel()
     {
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
@@ -122,7 +123,7 @@ public class ChatHandlerTests
         channels.Get("#osu")!.Join(sender);
 
         var response = new BanchoPacketWriter(64);
-        new SendPublicMessageHandler(NewBot()).Handle(
+        await new SendPublicMessageHandler(NewBot()).HandleAsync(
             Context(sender, registry, channels, MessagePayload("!ping", "#osu"), response));
 
         // The bot's reply is queued back to the sender (a channel member).
@@ -130,21 +131,21 @@ public class ChatHandlerTests
     }
 
     [Fact]
-    public void PrivateMessage_ToBanchoBot_RepliesToSender()
+    public async Task PrivateMessage_ToBanchoBot_RepliesToSender()
     {
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
         var sender = AddPlayer(registry, 2, "Sender");
 
         var response = new BanchoPacketWriter(64);
-        new SendPrivateMessageHandler(NewBot()).Handle(
+        await new SendPrivateMessageHandler(NewBot()).HandleAsync(
             Context(sender, registry, channels, MessagePayload("!help", "BanchoBot"), response));
 
         Assert.Contains((ushort)ServerPacketId.SendMessage, PacketIds(response.ToArray()));
     }
 
     [Fact]
-    public void PrivateMessage_ToOnlineUser_IsRelayed()
+    public async Task PrivateMessage_ToOnlineUser_IsRelayed()
     {
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
@@ -152,14 +153,14 @@ public class ChatHandlerTests
         var target = AddPlayer(registry, 3, "Target");
 
         var response = new BanchoPacketWriter(64);
-        new SendPrivateMessageHandler(NewBot()).Handle(
+        await new SendPrivateMessageHandler(NewBot()).HandleAsync(
             Context(sender, registry, channels, MessagePayload("hey", "Target"), response));
 
         Assert.Contains((ushort)ServerPacketId.SendMessage, PacketIds(target.DequeueAll()));
     }
 
     [Fact]
-    public void ChannelJoin_Known_AddsMember_AndConfirms()
+    public async Task ChannelJoin_Known_AddsMember_AndConfirms()
     {
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
@@ -169,7 +170,7 @@ public class ChatHandlerTests
         nameW.WriteString("#osu");
 
         var response = new BanchoPacketWriter(32);
-        new ChannelJoinHandler().Handle(Context(player, registry, channels, nameW.ToArray(), response));
+        await new ChannelJoinHandler().HandleAsync(Context(player, registry, channels, nameW.ToArray(), response));
 
         Assert.True(channels.Get("#osu")!.Contains(2));
         Assert.True(player.IsInChannel("#osu"));
@@ -177,7 +178,7 @@ public class ChatHandlerTests
     }
 
     [Fact]
-    public void ChannelJoin_Unknown_IsKicked()
+    public async Task ChannelJoin_Unknown_IsKicked()
     {
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
@@ -187,13 +188,13 @@ public class ChatHandlerTests
         nameW.WriteString("#nope");
 
         var response = new BanchoPacketWriter(32);
-        new ChannelJoinHandler().Handle(Context(player, registry, channels, nameW.ToArray(), response));
+        await new ChannelJoinHandler().HandleAsync(Context(player, registry, channels, nameW.ToArray(), response));
 
         Assert.Contains((ushort)ServerPacketId.ChannelKick, PacketIds(response.ToArray()));
     }
 
     [Fact]
-    public void ChannelPart_RemovesMember()
+    public async Task ChannelPart_RemovesMember()
     {
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
@@ -205,36 +206,40 @@ public class ChatHandlerTests
         nameW.WriteString("#osu");
 
         var response = new BanchoPacketWriter(16);
-        new ChannelPartHandler().Handle(Context(player, registry, channels, nameW.ToArray(), response));
+        await new ChannelPartHandler().HandleAsync(Context(player, registry, channels, nameW.ToArray(), response));
 
         Assert.False(channels.Get("#osu")!.Contains(2));
         Assert.False(player.IsInChannel("#osu"));
     }
 
+    /// <summary>Builds an offline <see cref="OnlinePlayer"/> with the given client privileges (for bot-command tests).</summary>
+    private static OnlinePlayer Caller(string name, BanchoPrivileges privileges = BanchoPrivileges.Player) =>
+        new("token-" + name, new BanchoPresence { UserId = 50, Username = name, Privileges = privileges });
+
     [Fact]
-    public void Bot_UnknownCommand_StillReplies()
+    public async Task Bot_UnknownCommand_StillReplies()
     {
-        var reply = NewBot().TryHandleCommand("Someone", "!frobnicate");
+        var reply = await NewBot().TryHandleCommandAsync(Caller("Someone"), "!frobnicate", BanchoPrivileges.Player);
         Assert.NotNull(reply);
     }
 
     [Fact]
-    public void Bot_NonCommand_ReturnsNull()
+    public async Task Bot_NonCommand_ReturnsNull()
     {
-        Assert.Null(NewBot().TryHandleCommand("Someone", "just chatting"));
+        Assert.Null(await NewBot().TryHandleCommandAsync(Caller("Someone"), "just chatting", BanchoPrivileges.Player));
     }
 
     [Fact]
-    public void Bot_Stats_IsStaffOnly_RefusedForPlayers()
+    public async Task Bot_Stats_IsStaffOnly_RefusedForPlayers()
     {
-        var reply = NewBot().TryHandleCommand("Player", "!stats", BanchoPrivileges.Player);
+        var reply = await NewBot().TryHandleCommandAsync(Caller("Player"), "!stats", BanchoPrivileges.Player);
         Assert.Equal("That command is staff-only.", reply);
     }
 
     [Fact]
-    public void Bot_Stats_AllowedForAdministrators()
+    public async Task Bot_Stats_AllowedForAdministrators()
     {
-        var reply = NewBot().TryHandleCommand("Admin", "!stats", BanchoPrivileges.Administrator);
+        var reply = await NewBot().TryHandleCommandAsync(Caller("Admin"), "!stats", BanchoPrivileges.Administrator);
         Assert.NotNull(reply);
         Assert.NotEqual("That command is staff-only.", reply);
         // The stats line reports the player count — sanity-check the shape.
@@ -242,10 +247,10 @@ public class ChatHandlerTests
     }
 
     [Fact]
-    public void Bot_Help_HidesStatsFromNonStaff()
+    public async Task Bot_Help_HidesStatsFromNonStaff()
     {
         var bot = NewBot();
-        Assert.DoesNotContain("!stats", bot.TryHandleCommand("Player", "!help", BanchoPrivileges.Player));
-        Assert.Contains("!stats", bot.TryHandleCommand("Admin", "!help", BanchoPrivileges.Administrator));
+        Assert.DoesNotContain("!stats", await bot.TryHandleCommandAsync(Caller("Player"), "!help", BanchoPrivileges.Player));
+        Assert.Contains("!stats", await bot.TryHandleCommandAsync(Caller("Admin"), "!help", BanchoPrivileges.Administrator));
     }
 }

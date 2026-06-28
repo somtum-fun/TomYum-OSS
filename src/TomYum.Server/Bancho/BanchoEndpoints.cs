@@ -72,7 +72,7 @@ public static class BanchoEndpoints
         // this player or others), then flush this player's queue followed by anything the
         // handlers produced for the originator in-line.
         var body = await ReadBodyAsync(context.Request, cancellationToken).ConfigureAwait(false);
-        var produced = dispatcher.Dispatch(player, registry, channels, body);
+        var produced = await dispatcher.DispatchAsync(player, registry, channels, body).ConfigureAwait(false);
 
         var queued = player.DequeueAll();
         if (produced.Length == 0)

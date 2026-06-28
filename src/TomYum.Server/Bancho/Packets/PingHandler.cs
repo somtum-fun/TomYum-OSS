@@ -13,8 +13,9 @@ public sealed class PingHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.Ping;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         // No-op: the dispatcher already refreshed the player's activity timestamp.
+        return Task.CompletedTask;
     }
 }

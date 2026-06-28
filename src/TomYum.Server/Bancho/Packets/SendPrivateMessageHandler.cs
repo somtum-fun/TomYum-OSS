@@ -23,15 +23,11 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.SendPrivateMessage;
 
     /// <inheritdoc />
-    public void Handle(ClientPacketContext context)
+    public async Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
 
-        var reader = new BanchoPacketReader(context.Payload.Span);
-        _ = reader.ReadString();          // sender (client-supplied, ignored)
-        var text = reader.ReadString();
-        var target = reader.ReadString(); // recipient username
-        _ = reader.ReadInt32();           // sender_id (client-supplied, ignored)
+        var (text, target) = ParseMessage(context.Payload.Span);
 
         if (string.IsNullOrEmpty(text) || string.IsNullOrEmpty(target))
         {
@@ -43,7 +39,8 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         // A DM to BanchoBot: answer back to the sender rather than routing to a real session.
         if (string.Equals(target, BanchoBot.Name, StringComparison.OrdinalIgnoreCase))
         {
-            var reply = _bot.TryHandleCommand(sender, text, context.Player.Presence.Privileges)
+            var reply = await _bot.TryHandleCommandAsync(
+                    context.Player, text, context.Player.Presence.Privileges, cancellationToken).ConfigureAwait(false)
                 ?? "Hi! I only respond to commands — try !help.";
             ChatEncoder.WriteMessage(
                 context.Response,
@@ -61,6 +58,22 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         var writer = new BanchoPacketWriter(128);
         ChatEncoder.WriteMessage(writer, new BanchoMessage(sender, text, target, context.Player.UserId));
         recipient.Enqueue(writer.ToArray());
+    }
+
+    /// <summary>
+    /// Reads the message composite (sender + text + recipient + sender_id) from <paramref name="payload"/>,
+    /// returning only the text and recipient (the client-supplied sender fields are ignored — the server
+    /// fills them from the session). Synchronous because <see cref="BanchoPacketReader"/> is a ref struct
+    /// and cannot live in the async handler.
+    /// </summary>
+    private static (string Text, string Target) ParseMessage(ReadOnlySpan<byte> payload)
+    {
+        var reader = new BanchoPacketReader(payload);
+        _ = reader.ReadString();          // sender (client-supplied, ignored)
+        var text = reader.ReadString();
+        var target = reader.ReadString(); // recipient username
+        _ = reader.ReadInt32();           // sender_id (client-supplied, ignored)
+        return (text, target);
     }
 
     /// <summary>Resolves an online player by display name (case-insensitive), or <c>null</c>.</summary>
