@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using TomYum.Domain.Enums;
 using TomYum.Server.Bancho;
 using Xunit;
 
@@ -125,5 +126,55 @@ public class RegistrationServiceTests
 
         Assert.False(result.IsValid);
         Assert.Contains("password", result.Errors.Keys);
+    }
+
+    [Fact]
+    public async Task FirstRegistration_IsGrantedOwnerPrivileges()
+    {
+        var service = NewService(out _);
+
+        // A fresh in-memory repo assigns id 3 to the first registration (1 = BanchoBot,
+        // 2 = dev seed), so the first real player becomes the server Owner automatically.
+        var result = await service.RegisterAsync(
+            "Owner", "owner@tomyum.dev", "s3cure-pass", create: true, country: "xx", CancellationToken.None);
+
+        Assert.True(result.IsValid);
+        Assert.Equal(RegistrationService.OwnerUserId, result.Created!.Id);
+        Assert.Equal(UserPrivileges.Owner, result.Created.Privileges);
+        Assert.True(result.Created.Privileges.HasFlag(UserPrivileges.Administrator));
+    }
+
+    [Fact]
+    public async Task SecondRegistration_IsOnlyNormal()
+    {
+        var service = NewService(out _);
+        await service.RegisterAsync("Owner", "owner@tomyum.dev", "s3cure-pass", create: true, country: "xx", CancellationToken.None);
+
+        var result = await service.RegisterAsync(
+            "Player", "player@tomyum.dev", "s3cure-pass", create: true, country: "xx", CancellationToken.None);
+
+        Assert.True(result.IsValid);
+        Assert.NotEqual(RegistrationService.OwnerUserId, result.Created!.Id);
+        Assert.Equal(UserPrivileges.Normal, result.Created.Privileges);
+        Assert.False(result.Created.Privileges.HasFlag(UserPrivileges.Administrator));
+    }
+
+    [Fact]
+    public void PrivilegeMapper_Owner_MapsToAdminClientBitmask()
+    {
+        var bancho = PrivilegeMapper.ToBancho(UserPrivileges.Owner);
+
+        // Owner is Normal + Administrator + Developer; on the wire that is Player + Administrator + Developer.
+        Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Player));
+        Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Administrator));
+        Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Developer));
+    }
+
+    [Fact]
+    public void PrivilegeMapper_Normal_IsPlayerOnly()
+    {
+        var bancho = PrivilegeMapper.ToBancho(UserPrivileges.Normal);
+
+        Assert.Equal(TomYum.Bancho.BanchoPrivileges.Player, bancho);
     }
 }

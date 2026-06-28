@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 
@@ -95,9 +96,41 @@ public sealed partial class RegistrationService
         };
 
         var created = await _users.AddAsync(user, cancellationToken).ConfigureAwait(false);
+
+        // The first real registration (id 3; 1 = BanchoBot, 2 = the dev-seed user) is the server
+        // owner and is granted Owner privileges automatically, mirroring bancho.py granting the
+        // first account staff. The id is only known after AddAsync, so re-add with the elevated
+        // privileges (the repository overwrites by id/safe-name).
+        if (created.Id == OwnerUserId && created.Privileges != UserPrivileges.Owner)
+        {
+            created = await _users.AddAsync(CloneWith(created, UserPrivileges.Owner), cancellationToken).ConfigureAwait(false);
+            _logger.LogInformation("Granted Owner privileges to first registration {Username} (id {UserId}).", created.Username, created.Id);
+        }
+
         _logger.LogInformation("Registered new player {Username} (id {UserId}).", created.Username, created.Id);
         return new RegistrationResult(EmptyErrors, created);
     }
+
+    /// <summary>
+    /// The user id of the server owner: the first real registration. Ids 1 and 2 are reserved for
+    /// BanchoBot and the development seed user respectively, so the first player to register is id 3.
+    /// </summary>
+    public const int OwnerUserId = 3;
+
+    /// <summary>Returns a copy of <paramref name="user"/> with its <see cref="User.Privileges"/> replaced.</summary>
+    private static User CloneWith(User user, UserPrivileges privileges) => new()
+    {
+        Id = user.Id,
+        Username = user.Username,
+        SafeName = user.SafeName,
+        Email = user.Email,
+        PasswordBcrypt = user.PasswordBcrypt,
+        Country = user.Country,
+        CreationTime = user.CreationTime,
+        LatestActivity = user.LatestActivity,
+        ApiKey = user.ApiKey,
+        Privileges = privileges,
+    };
 
     private static readonly IReadOnlyDictionary<string, string> EmptyErrors =
         new Dictionary<string, string>();

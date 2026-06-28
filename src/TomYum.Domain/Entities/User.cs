@@ -1,3 +1,5 @@
+using TomYum.Domain.Enums;
+
 namespace TomYum.Domain.Entities;
 
 /// <summary>
@@ -54,7 +56,15 @@ public sealed class User
     /// </summary>
     public string? ApiKey { get; init; }
 
-    // TODO: privileges, silence/donor end, clan, preferred mode, play style.
+    /// <summary>
+    /// The server's authorization flags for this account (what it may do), independent of any
+    /// protocol. A fresh registration is <see cref="UserPrivileges.Normal"/>; the server owner
+    /// (first real registration, id 3) is granted <see cref="UserPrivileges.Owner"/>. The stable
+    /// edge maps this onto the client-facing privilege bitmask at login.
+    /// </summary>
+    public UserPrivileges Privileges { get; init; } = UserPrivileges.Normal;
+
+    // TODO: silence/donor end, clan, preferred mode, play style.
 
     /// <summary>
     /// Produces the canonical <see cref="SafeName"/> for a username: lowercase, spaces

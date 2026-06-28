@@ -58,6 +58,7 @@ public sealed class InMemoryUserRepository : IUserRepository
             CreationTime = user.CreationTime,
             LatestActivity = user.LatestActivity,
             ApiKey = user.ApiKey,
+            Privileges = user.Privileges,
         };
 
         _byId[assigned.Id] = assigned;

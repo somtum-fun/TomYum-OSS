@@ -77,7 +77,7 @@ public sealed class BanchoLoginHandler
             UserId = user.Id,
             Username = user.Username,
             UtcOffset = request.UtcOffset,
-            Privileges = BanchoPrivileges.Player,
+            Privileges = PrivilegeMapper.ToBancho(user.Privileges),
         };
 
         var player = _registry.Add(presence);
