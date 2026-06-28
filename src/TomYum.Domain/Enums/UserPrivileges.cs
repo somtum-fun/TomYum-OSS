@@ -32,6 +32,9 @@ public enum UserPrivileges
     /// <summary>Developer / peppy-tier privileges.</summary>
     Developer = 1 << 4,
 
-    /// <summary>The server owner: a normal player who is also administrator and developer.</summary>
-    Owner = Normal | Administrator | Developer,
+    /// <summary>
+    /// The server owner: a normal player who is also supporter, administrator, and developer.
+    /// Staff tiers carry <see cref="Supporter"/> so they get supporter perks/badge too.
+    /// </summary>
+    Owner = Normal | Supporter | Administrator | Developer,
 }

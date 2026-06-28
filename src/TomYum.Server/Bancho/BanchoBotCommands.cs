@@ -177,8 +177,9 @@ public sealed class BanchoBotCommands
         privileges = role.ToLowerInvariant() switch
         {
             "owner" => UserPrivileges.Owner,
-            "admin" or "administrator" => UserPrivileges.Normal | UserPrivileges.Administrator,
-            "dev" or "developer" => UserPrivileges.Normal | UserPrivileges.Administrator | UserPrivileges.Developer,
+            // Staff tiers carry Supporter too, so they get the supporter perks/badge.
+            "admin" or "administrator" => UserPrivileges.Normal | UserPrivileges.Supporter | UserPrivileges.Administrator,
+            "dev" or "developer" => UserPrivileges.Normal | UserPrivileges.Supporter | UserPrivileges.Administrator | UserPrivileges.Developer,
             "mod" or "moderator" => UserPrivileges.Normal | UserPrivileges.Moderator,
             "supporter" => UserPrivileges.Normal | UserPrivileges.Supporter,
             "normal" or "player" => UserPrivileges.Normal,
