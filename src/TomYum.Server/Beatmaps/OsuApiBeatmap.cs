@@ -3,13 +3,16 @@ using System.Text.Json.Serialization;
 namespace TomYum.Server.Beatmaps;
 
 /// <summary>
-/// One element of the osu! v1 <c>get_beatmaps</c> JSON response. The API returns every field as a
-/// string; only the fields TomYum needs to populate a <c>Beatmap</c> are mapped here. Field names
-/// match the API exactly (see bancho.py <c>_parse_from_osuapi_resp</c>).
+/// One element of the osu! v1 <c>get_beatmaps</c> JSON response. Only the fields TomYum needs to
+/// populate a <c>Beatmap</c> are mapped here; field names match the API exactly (see bancho.py
+/// <c>_parse_from_osuapi_resp</c>).
 /// </summary>
 /// <remarks>
-/// Unmapped fields (tags, favourite_count, etc.) are ignored. Nullable numeric strings
-/// (<c>max_combo</c>, <c>bpm</c>) are parsed defensively by <see cref="OsuApiClient"/>.
+/// The two API flavours disagree on numeric encoding: <c>old.ppy.sh</c> returns every field as a
+/// quoted string, while the keyless <c>osu.direct</c> mirror returns ids/lengths/ratings as bare
+/// JSON numbers. <see cref="OsuApiClient"/> deserialises with a <see cref="FlexibleStringConverter"/>
+/// so both shapes bind to these <c>string?</c> properties; values are then parsed defensively when
+/// projecting onto the domain <c>Beatmap</c>. Unmapped fields (tags, favourite_count, etc.) are ignored.
 /// </remarks>
 public sealed class OsuApiBeatmap
 {

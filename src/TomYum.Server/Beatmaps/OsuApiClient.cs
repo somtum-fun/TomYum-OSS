@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 
@@ -31,6 +32,16 @@ public sealed class OsuApiClient : IOsuApiClient
     private readonly OsuApiOptions _options;
     private readonly ILogger<OsuApiClient> _logger;
 
+    /// <summary>
+    /// JSON options accepting both osu!-API flavours: <c>old.ppy.sh</c> returns every field as a
+    /// quoted string, while the <c>osu.direct</c> mirror returns numeric fields as bare numbers.
+    /// <see cref="FlexibleStringConverter"/> normalises both to string so deserialisation never throws.
+    /// </summary>
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        Converters = { new FlexibleStringConverter() },
+    };
+
     /// <summary>Creates the client over a configured <see cref="HttpClient"/> and options.</summary>
     public OsuApiClient(HttpClient http, OsuApiOptions options, ILogger<OsuApiClient> logger)
     {
@@ -54,7 +65,7 @@ public sealed class OsuApiClient : IOsuApiClient
 
         try
         {
-            var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(query, cancellationToken).ConfigureAwait(false);
+            var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(query, JsonOptions, cancellationToken).ConfigureAwait(false);
             var match = beatmaps?.FirstOrDefault();
             return match is null ? null : Map(match);
         }
