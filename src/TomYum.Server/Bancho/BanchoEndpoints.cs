@@ -35,7 +35,8 @@ public static class BanchoEndpoints
 
         // Browsers hitting the bancho host get a human-readable status line; the osu! client
         // only ever POSTs, so this never interferes with the protocol.
-        app.MapGet("/", () => Results.Text("TomYum bancho is running.", "text/plain"))
+        app.MapGet("/", (TomYumVersion version) =>
+                Results.Text($"TomYum bancho {version.Display} is running.", "text/plain"))
             .RequireHost(hosts);
 
         app.MapPost("/", HandlePostAsync)

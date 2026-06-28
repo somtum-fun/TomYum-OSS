@@ -32,6 +32,13 @@
     <Product>TomYum</Product>
     <Copyright>Copyright (c) 2026 blueskychan-dev &amp; production</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+    <!--
+      Product version. VersionSuffix marks pre-release builds (e.g. 0.0.1-dev); the SDK folds
+      prefix+suffix into AssemblyInformationalVersion, which TomYumVersion reads at startup.
+    -->
+    <VersionPrefix>0.0.1</VersionPrefix>
+    <VersionSuffix>dev</VersionSuffix>
   </PropertyGroup>
 
 </Project>

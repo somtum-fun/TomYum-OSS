@@ -72,7 +72,7 @@ if (app.Environment.IsDevelopment())
 }
 
 // Liveness probe for k8s/k3s.
-app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "TomYum.Server" }));
+app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "TomYum.Server", version = version.Display }));
 
 // Host-aware routing: the osu!stable client splits its surface across subdomains —
 // c/c4/ce/cho carry the bancho binary protocol, osu serves /web/* + registration.
