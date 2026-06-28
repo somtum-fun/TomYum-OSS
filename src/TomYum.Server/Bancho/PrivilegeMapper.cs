@@ -31,14 +31,18 @@ public static class PrivilegeMapper
             result |= BanchoPrivileges.Moderator;
         }
 
+        // The stable client's badge bits do NOT line up with server roles — bancho.py maps them
+        // with a deliberate crossover (app/objects/player.py `bancho_priv`): a server ADMINISTRATOR
+        // lights the client DEVELOPER bit, and a server DEVELOPER lights the client OWNER bit. We
+        // mirror that exactly so badges render the same as on a bancho.py server.
         if (privileges.HasFlag(UserPrivileges.Administrator))
         {
-            result |= BanchoPrivileges.Administrator;
+            result |= BanchoPrivileges.Developer;
         }
 
         if (privileges.HasFlag(UserPrivileges.Developer))
         {
-            result |= BanchoPrivileges.Developer;
+            result |= BanchoPrivileges.Owner;
         }
 
         return result;

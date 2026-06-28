@@ -90,9 +90,13 @@ public sealed class BanchoBotCommands
 
     private const string StaffOnly = "That command is staff-only.";
 
-    /// <summary>Whether the caller holds administrator (or developer) privileges.</summary>
+    /// <summary>
+    /// Whether the caller is staff. The wire bitmask uses bancho.py's crossover (see
+    /// <see cref="PrivilegeMapper"/>): server administrators carry the client DEVELOPER bit and
+    /// server developers/owner carry the client OWNER bit, so staff = OWNER or DEVELOPER set.
+    /// </summary>
     private static bool IsStaff(BanchoPrivileges privileges) =>
-        privileges.HasFlag(BanchoPrivileges.Administrator) || privileges.HasFlag(BanchoPrivileges.Developer);
+        privileges.HasFlag(BanchoPrivileges.Owner) || privileges.HasFlag(BanchoPrivileges.Developer);
 
     /// <summary>The help line, listing staff-only commands only for staff.</summary>
     private static string Help(BanchoPrivileges privileges) => IsStaff(privileges)

@@ -239,7 +239,7 @@ public class ChatHandlerTests
     [Fact]
     public async Task Bot_Stats_AllowedForAdministrators()
     {
-        var reply = await NewBot().TryHandleCommandAsync(Caller("Admin"), "!stats", BanchoPrivileges.Administrator);
+        var reply = await NewBot().TryHandleCommandAsync(Caller("Admin"), "!stats", BanchoPrivileges.Owner);
         Assert.NotNull(reply);
         Assert.NotEqual("That command is staff-only.", reply);
         // The stats line reports the player count — sanity-check the shape.
@@ -251,6 +251,6 @@ public class ChatHandlerTests
     {
         var bot = NewBot();
         Assert.DoesNotContain("!stats", await bot.TryHandleCommandAsync(Caller("Player"), "!help", BanchoPrivileges.Player));
-        Assert.Contains("!stats", await bot.TryHandleCommandAsync(Caller("Admin"), "!help", BanchoPrivileges.Administrator));
+        Assert.Contains("!stats", await bot.TryHandleCommandAsync(Caller("Admin"), "!help", BanchoPrivileges.Owner));
     }
 }

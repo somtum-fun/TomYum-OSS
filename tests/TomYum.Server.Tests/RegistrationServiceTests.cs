@@ -160,14 +160,18 @@ public class RegistrationServiceTests
     }
 
     [Fact]
-    public void PrivilegeMapper_Owner_MapsToAdminClientBitmask()
+    public void PrivilegeMapper_Owner_MapsToStaffClientBitmask()
     {
         var bancho = PrivilegeMapper.ToBancho(UserPrivileges.Owner);
 
-        // Owner is Normal + Administrator + Developer; on the wire that is Player + Administrator + Developer.
+        // Owner = Normal + Supporter + Moderator + Administrator + Developer. The client bitmask
+        // mirrors bancho.py's crossover: server Administrator -> client Developer, server Developer
+        // -> client Owner (bit 3). Moderator is what lights the in-client staff badge.
         Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Player));
-        Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Administrator));
+        Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Supporter));
+        Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Moderator));
         Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Developer));
+        Assert.True(bancho.HasFlag(TomYum.Bancho.BanchoPrivileges.Owner));
     }
 
     [Fact]

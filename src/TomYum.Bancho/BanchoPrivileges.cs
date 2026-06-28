@@ -25,10 +25,15 @@ public enum BanchoPrivileges
     /// <summary>osu!supporter: cosmetic and feature perks.</summary>
     Supporter = 1 << 2,
 
-    /// <summary>Administrator.</summary>
-    Administrator = 1 << 3,
+    /// <summary>
+    /// The "owner" badge bit (bancho.py <c>ClientPrivileges.OWNER</c>). Note the stable client's
+    /// bit names do not line up with server roles: this bit is lit for a server <em>developer</em>,
+    /// and the <see cref="Developer"/> bit below is lit for a server <em>administrator</em> — the
+    /// server-layer privilege mapper performs that crossover.
+    /// </summary>
+    Owner = 1 << 3,
 
-    /// <summary>Developer / peppy-tier privileges.</summary>
+    /// <summary>Developer badge bit (bancho.py <c>ClientPrivileges.DEVELOPER</c>).</summary>
     Developer = 1 << 4,
 
     /// <summary>Tournament staff client (referee).</summary>
