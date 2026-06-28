@@ -1,9 +1,17 @@
 # TomYum edge configuration (Caddy, NOT nginx). Caddy fronts the server and proxies
-# large asset downloads to object storage (R2 / OVH S3). Scaffold stub — adjust hostnames
-# and storage origins for your deployment. See memories/references/s3-nginx-proxy.md for
-# the caching ideas mined from the nginx reference.
+# large asset downloads to object storage (R2 / OVH S3). Scaffold stub — replace
+# example.com with your domain and adjust storage origins. The host routing here must
+# match the in-code RequireHost constraints (see TomYum.Server/Bancho/BanchoHosts.cs and
+# memories/protocols/bancho-stable.md §1).
 
-# Bancho + lazer API + web endpoints.
+# Bancho binary protocol. The osu!stable client connects to c.<domain> (older clients
+# also use c4./ce.), and bancho-likes use cho.<domain>. All carry POST / login + polls.
+c.example.com, c4.example.com, ce.example.com, cho.example.com {
+	encode zstd gzip
+	reverse_proxy tomyum-server:8080
+}
+
+# Web surface: /web/*.php, in-game registration (POST /users), osu!Direct, screenshots.
 osu.example.com {
 	encode zstd gzip
 

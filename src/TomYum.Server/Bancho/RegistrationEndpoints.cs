@@ -9,11 +9,16 @@ namespace TomYum.Server.Bancho;
 /// </summary>
 public static class RegistrationEndpoints
 {
-    /// <summary>Registers the <c>POST /users</c> in-game registration handler.</summary>
-    public static void MapRegistration(this IEndpointRouteBuilder app)
+    /// <summary>
+    /// Registers the <c>POST /users</c> in-game registration handler, constrained to the
+    /// <c>osu.</c> host (plus localhost for development). The host patterns come from
+    /// <see cref="BanchoHosts.Web"/>.
+    /// </summary>
+    public static void MapRegistration(this IEndpointRouteBuilder app, params string[] hosts)
     {
         ArgumentNullException.ThrowIfNull(app);
-        app.MapPost("/users", HandleRegisterAsync);
+        app.MapPost("/users", HandleRegisterAsync)
+            .RequireHost(hosts);
     }
 
     private static async Task<IResult> HandleRegisterAsync(
