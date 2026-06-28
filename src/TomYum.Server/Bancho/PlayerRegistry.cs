@@ -59,6 +59,26 @@ public sealed class PlayerRegistry
         }
     }
 
+    /// <summary>
+    /// Queues already-framed packet bytes onto every online player's outbound queue,
+    /// optionally skipping the player with <paramref name="exceptUserId"/> (typically the
+    /// originator of a broadcast — e.g. a chat sender or a player whose own action changed).
+    /// </summary>
+    public void EnqueueToAll(ReadOnlySpan<byte> framedPackets, int exceptUserId = 0)
+    {
+        // Snapshot the values; ConcurrentDictionary enumeration is safe but we also avoid
+        // holding any lock across the per-player enqueue (each player locks its own queue).
+        foreach (var player in _byToken.Values)
+        {
+            if (player.UserId == exceptUserId)
+            {
+                continue;
+            }
+
+            player.Enqueue(framedPackets);
+        }
+    }
+
     private static string NewToken() => Guid.NewGuid().ToString("N") +
         Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
 }

@@ -2,6 +2,7 @@ using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 using TomYum.Server.Bancho;
+using TomYum.Server.Bancho.Packets;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,6 +18,17 @@ builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<BanchoLoginHandler>();
 builder.Services.AddScoped<RegistrationService>();
+
+// Packet dispatch: one stateless handler per client packet id, discovered by the singleton
+// dispatcher into a frozen lookup. Register each handler so DI enumerates them.
+builder.Services.AddSingleton<IClientPacketHandler, PingHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, ChangeActionHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, RequestStatusUpdateHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, UserStatsRequestHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, UserPresenceRequestHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, UserPresenceRequestAllHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, LogoutHandler>();
+builder.Services.AddSingleton<BanchoPacketDispatcher>();
 
 var app = builder.Build();
 
@@ -43,11 +55,18 @@ if (app.Environment.IsDevelopment())
 // Liveness probe for k8s/k3s.
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "TomYum.Server" }));
 
-// osu!stable bancho surface: POST / login + poll, GET / status page.
-app.MapBancho();
+// Host-aware routing: the osu!stable client splits its surface across subdomains —
+// c/c4/ce/cho carry the bancho binary protocol, osu serves /web/* + registration.
+// Patterns derive from Server:Domain; localhost is always included for dev. See
+// memories/protocols/bancho-stable.md §1.
+var domain = BanchoHosts.ResolveDomain(app.Configuration);
+app.Logger.LogInformation("Bancho hosts bound to domain: {Domain}", domain);
 
-// osu!stable in-game registration: POST /users (served on the osu. host in production).
-app.MapRegistration();
+// osu!stable bancho surface: POST / login + poll, GET / status page (c./c4./ce./cho.).
+app.MapBancho(BanchoHosts.Bancho(domain));
+
+// osu!stable in-game registration: POST /users (osu. host).
+app.MapRegistration(BanchoHosts.Web(domain));
 
 app.Run();
 

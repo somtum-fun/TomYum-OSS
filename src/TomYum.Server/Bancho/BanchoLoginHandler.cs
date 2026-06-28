@@ -79,7 +79,30 @@ public sealed class BanchoLoginHandler
 
         var player = _registry.Add(presence);
         var welcome = string.Create(CultureInfo.InvariantCulture, $"Welcome to TomYum, {user.Username}!");
-        var responseBody = LoginResponseBuilder.BuildSuccess(presence, welcome);
+
+        // Build the success burst, then append the presence + stats of every other online
+        // player so the newcomer's user list is populated immediately. Their own presence/stats
+        // are already in the burst (BuildSuccess), so skip self here to avoid a duplicate.
+        var writer = new BanchoPacketWriter(1024);
+        writer.WriteRaw(LoginResponseBuilder.BuildSuccess(presence, welcome));
+        foreach (var other in _registry.All)
+        {
+            if (other.UserId == player.UserId)
+            {
+                continue;
+            }
+
+            LoginResponseBuilder.WritePresence(writer, other.Presence);
+            LoginResponseBuilder.WriteStats(writer, other.Presence);
+        }
+
+        var responseBody = writer.ToArray();
+
+        // Announce the newcomer to everyone already online so they appear in others' user lists.
+        var announce = new BanchoPacketWriter(128);
+        LoginResponseBuilder.WritePresence(announce, presence);
+        LoginResponseBuilder.WriteStats(announce, presence);
+        _registry.EnqueueToAll(announce.ToArray(), exceptUserId: player.UserId);
 
         _logger.LogInformation(
             "Login ok: {Username} (id {UserId}) on {Version}; {Online} online.",

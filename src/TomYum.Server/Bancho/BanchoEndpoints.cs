@@ -1,4 +1,5 @@
 using TomYum.Bancho;
+using TomYum.Server.Bancho.Packets;
 
 namespace TomYum.Server.Bancho;
 
@@ -9,9 +10,9 @@ namespace TomYum.Server.Bancho;
 /// packet stream. See <c>memories/protocols/bancho-stable.md</c> §1–§3.
 /// </summary>
 /// <remarks>
-/// This slice implements login + the per-player outbound queue flush. Packet dispatch for
-/// post-login client packets (chat, presence, spectate, multiplayer) is a later slice; for
-/// now an authenticated poll simply drains whatever the server queued for that player.
+/// Login mints a session and returns the success burst; authenticated polls decode the inbound
+/// client packet stream via <see cref="BanchoPacketDispatcher"/>, then flush the player's
+/// outbound queue plus anything a handler produced inline for the originator.
 /// </remarks>
 public static class BanchoEndpoints
 {
@@ -23,21 +24,28 @@ public static class BanchoEndpoints
 
     private const string OctetStream = "application/octet-stream";
 
-    /// <summary>Registers the bancho <c>POST /</c> handler and a browser-facing <c>GET /</c> page.</summary>
-    public static void MapBancho(this IEndpointRouteBuilder app)
+    /// <summary>
+    /// Registers the bancho <c>POST /</c> handler and a browser-facing <c>GET /</c> page,
+    /// constrained to the bancho subdomains (<c>c</c>/<c>c4</c>/<c>ce</c>/<c>cho</c>) plus
+    /// localhost for development. The host patterns come from <see cref="BanchoHosts.Bancho"/>.
+    /// </summary>
+    public static void MapBancho(this IEndpointRouteBuilder app, params string[] hosts)
     {
         ArgumentNullException.ThrowIfNull(app);
 
         // Browsers hitting the bancho host get a human-readable status line; the osu! client
         // only ever POSTs, so this never interferes with the protocol.
-        app.MapGet("/", () => Results.Text("TomYum bancho is running.", "text/plain"));
+        app.MapGet("/", () => Results.Text("TomYum bancho is running.", "text/plain"))
+            .RequireHost(hosts);
 
-        app.MapPost("/", HandlePostAsync);
+        app.MapPost("/", HandlePostAsync)
+            .RequireHost(hosts);
     }
 
     private static async Task<IResult> HandlePostAsync(
         HttpContext context,
         BanchoLoginHandler loginHandler,
+        BanchoPacketDispatcher dispatcher,
         PlayerRegistry registry,
         CancellationToken cancellationToken)
     {
@@ -58,10 +66,35 @@ public static class BanchoEndpoints
             return Results.Bytes(writer.ToArray(), OctetStream);
         }
 
-        // TODO (next slice): decode and dispatch the inbound client packet stream here.
-        // For now, drain and flush whatever the server has queued for this player.
-        player.LastActivityUtc = DateTimeOffset.UtcNow;
-        return Results.Bytes(player.DequeueAll(), OctetStream);
+        // Read the inbound packet stream, dispatch each packet (handlers may queue packets onto
+        // this player or others), then flush this player's queue followed by anything the
+        // handlers produced for the originator in-line.
+        var body = await ReadBodyAsync(context.Request, cancellationToken).ConfigureAwait(false);
+        var produced = dispatcher.Dispatch(player, registry, body);
+
+        var queued = player.DequeueAll();
+        if (produced.Length == 0)
+        {
+            return Results.Bytes(queued, OctetStream);
+        }
+
+        if (queued.Length == 0)
+        {
+            return Results.Bytes(produced, OctetStream);
+        }
+
+        var combined = new byte[queued.Length + produced.Length];
+        queued.CopyTo(combined, 0);
+        produced.CopyTo(combined, queued.Length);
+        return Results.Bytes(combined, OctetStream);
+    }
+
+    /// <summary>Reads the full request body into a byte array for packet decoding.</summary>
+    private static async Task<byte[]> ReadBodyAsync(HttpRequest request, CancellationToken cancellationToken)
+    {
+        using var buffer = new MemoryStream();
+        await request.Body.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        return buffer.ToArray();
     }
 
     private static async Task<IResult> HandleLoginAsync(
