@@ -99,11 +99,11 @@ public sealed partial class RegistrationService
 
         // The first real registration (id 3; 1 = BanchoBot, 2 = the dev-seed user) is the server
         // owner and is granted Owner privileges automatically, mirroring bancho.py granting the
-        // first account staff. The id is only known after AddAsync, so re-add with the elevated
-        // privileges (the repository overwrites by id/safe-name).
+        // first account staff. The id is only known after AddAsync, so update the just-created row
+        // with the elevated privileges (UpdateAsync, not a second insert — that would duplicate PK).
         if (created.Id == OwnerUserId && created.Privileges != UserPrivileges.Owner)
         {
-            created = await _users.AddAsync(CloneWith(created, UserPrivileges.Owner), cancellationToken).ConfigureAwait(false);
+            created = await _users.UpdateAsync(CloneWith(created, UserPrivileges.Owner), cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("Granted Owner privileges to first registration {Username} (id {UserId}).", created.Username, created.Id);
         }
 

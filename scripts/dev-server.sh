@@ -27,7 +27,7 @@ set -euo pipefail
 # Run from the repo root so the server finds config/ regardless of where you invoke this.
 cd "$(dirname "$0")/.."
 
-PORT="${PORT:-5099}"
+PORT="${PORT:-5000}"
 export ASPNETCORE_ENVIRONMENT="${ASPNETCORE_ENVIRONMENT:-Development}"
 
 # DB=off disables persistence (in-memory repo). Otherwise inject the DB password (compose default).
