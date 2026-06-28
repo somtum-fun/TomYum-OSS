@@ -33,8 +33,10 @@ public enum UserPrivileges
     Developer = 1 << 4,
 
     /// <summary>
-    /// The server owner: a normal player who is also supporter, administrator, and developer.
-    /// Staff tiers carry <see cref="Supporter"/> so they get supporter perks/badge too.
+    /// The server owner: a normal player who is also supporter, moderator, administrator, and
+    /// developer. Staff tiers carry <see cref="Supporter"/> (supporter perks/badge) and
+    /// <see cref="Moderator"/> (the in-client staff badge — the stable client lights up its
+    /// moderator flag from this).
     /// </summary>
-    Owner = Normal | Supporter | Administrator | Developer,
+    Owner = Normal | Supporter | Moderator | Administrator | Developer,
 }
