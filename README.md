@@ -113,5 +113,5 @@ information. Copyright (c) 2026 blueskychan-dev & production.
 - [BanchoNET](https://github.com/NovemoG/BanchoNET) — osu!stable server in C#
 - [Sunrise](https://github.com/SunriseCommunity/Sunrise) — osu!stable server in C#
 - [osu!](https://github.com/ppy/osu) and [osu-server-spectator](https://github.com/ppy/osu-server-spectator) — official lazer client & spectator server
-- [g0v0-server](https://github.com/g0v0/g0v0-server) — osu!lazer server (Python), referenced for lazer API/flow understanding
+- [g0v0-server](https://github.com/GooGuTeam/g0v0-server) — osu!lazer server (Python), referenced for lazer API/flow understanding
 - [rosu-pp](https://github.com/MaxOhn/rosu-pp) — fast PP/difficulty calculation
