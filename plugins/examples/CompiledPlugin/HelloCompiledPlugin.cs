@@ -21,7 +21,7 @@ public sealed class HelloCompiledPlugin : IPlugin
         Id: "tomyum.example.hello-compiled",
         Name: "Hello (compiled)",
         Version: "0.1.0",
-        Authors: "TomYum contributors",
+        Authors: "Phapoom Saksri",
         Description: "Minimal no-op compiled-assembly example.");
 
     public Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)

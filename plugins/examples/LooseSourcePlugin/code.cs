@@ -21,7 +21,7 @@ public sealed class HelloSourcePlugin : IPlugin
         Id: "tomyum.example.hello-source",
         Name: "Hello (loose source)",
         Version: "0.1.0",
-        Authors: "TomYum contributors",
+        Authors: "Phapoom Saksri",
         Description: "Minimal no-op loose-source example compiled at runtime.");
 
     public Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)

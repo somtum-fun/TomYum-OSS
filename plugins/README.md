@@ -52,7 +52,7 @@ This is ideal for quick operator tweaks and small plugins with no build step. Se
   "id": "tomyum.example.hello-source",
   "name": "Hello (loose source)",
   "version": "0.1.0",
-  "authors": "TomYum contributors",
+  "authors": "Phapoom Saksri",
   "description": "Minimal no-op loose-source example.",
   "entryPoint": "HelloSourcePlugin"
 }
