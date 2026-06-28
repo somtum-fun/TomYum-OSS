@@ -1,73 +1,117 @@
 # TomYum
 
-An extensible, horizontally scalable osu! server backend (a "bancho" server) written in
+An extensible, horizontally scalable [osu!](https://osu.ppy.sh) bancho server written in
 C# / .NET 8, supporting **both** the osu!stable and osu!lazer clients.
 
-> Status: **early scaffolding.** The solution structure, contracts, and documentation are in
-> place; feature implementation has not started. See `memories/progress.md`.
+## Technologies
 
-## What it is
+- ASP.NET Core (.NET 8)
+- MySQL (MariaDB)
+- Redis
+- Docker / k8s / k3s
+- Caddy (edge + storage fronting)
 
-- Serves **osu!stable** (legacy bancho binary protocol + `/web/*.php` + IRC) and **osu!lazer**
-  (osu-web-style REST API + SignalR hubs) from a shared domain core.
-- **MySQL** for persistence, **Redis** for online state, pub/sub fan-out, and leaderboard caches.
-- Designed for **k8s/k3s**, targeting **100–1000+ concurrent players** across stateless web pods
-  coordinated through Redis.
-- **Pluggable**: a `plugins/` drop-in directory loads compiled `.dll` plugins or runtime-compiled
-  loose `.cs` source. DAN Mode and Session ship as plugins, not core code.
-- **Storage-agnostic**: avatars, replays, screenshots, beatmaps, and sets sit behind a provider
-  interface with Cloudflare R2 / AWS S3 / OVH S3 / Azure Blob / local-filesystem implementations,
-  configurable per asset type.
-- Hosts its own **custom beatmaps** in the reserved ID range `100000000+`.
+## Progress
 
-## Repository layout
+See [`memories/progress.md`](memories/progress.md) for the living status of the project.
 
-| Path | What lives here |
-|------|-----------------|
-| `src/` | Core libraries (Domain, Bancho, Lazer, Persistence, Caching, Storage, Irc, Performance, Plugins.*) and the `TomYum.Server` host |
-| `services/` | Independently deployable services (Spectator, ScoreQueue, BeatmapSubmission, ReplayStore) |
-| `plugins/` | Runtime plugin drop-in directory + examples |
-| `tests/` | Unit tests |
-| `config/` | Sample configuration (`appsettings`, `tomyum.yaml`, `.env.example`) |
-| `deploy/` | Docker, k8s, k3s, and Caddy deployment scaffolding |
-| `docs/` | Human and AI-oriented documentation |
-| `memories/` | The knowledge base — protocols, architecture/ADRs, library usage, study notes |
-| `reference/` | Read-only third-party reference implementations (do not modify) |
+> Status: **early development.** The solution structure, contracts, and documentation are
+> in place, and the osu!stable login handshake works end to end. Most features are still
+> to come.
 
-## Getting started
+## Features
 
+- osu!stable login handshake (binary packet protocol, `cho-token` session)
+- In-memory online-player registry + per-player outbound packet queue
+
+## In development / TODO
+
+- [ ] Post-login packet dispatch (chat, presence, status, spectate)
+- [ ] Persistence (MySQL via EF Core) + password verification
+- [ ] Redis-backed online state for cross-node fan-out (100–1000+ players)
+- [ ] osu!lazer support (osu-web-style REST API + SignalR hubs)
+- [ ] IRC server for external bots (auth via osu! API key)
+- [ ] Plugin system (`.dll` + runtime-compiled loose `.cs`); DAN Mode & Session as plugins
+- [ ] Score submission pipeline + async statistics/PP queue
+- [ ] Configurable multi-target storage (R2 / AWS S3 / OVH S3 / Azure Blob / local)
+- [ ] Custom beatmap submission (reserved ID range `100000000+`)
+- [ ] osu!Direct, leaderboards, multiplayer, spectating
+- [ ] Docker / k8s deployment
+
+## Building
+
+### Prerequisites
+
+- .NET SDK 8.0 (pinned in `global.json`)
+- MySQL / MariaDB Server
+- Redis Server
+
+### Building
+
+1. Clone the repository to your local machine.
 ```bash
-# Verify the SDK (pinned in global.json)
-dotnet --info
-
-# Build everything (warnings are errors)
+git clone https://github.com/somtum-fun/TomYum-OSS.git
+```
+2. Navigate to the project directory.
+```bash
+cd TomYum
+```
+3. Restore the project dependencies.
+```bash
+dotnet restore TomYum.sln
+```
+4. Build the solution (warnings are errors).
+```bash
 dotnet build TomYum.sln
-
-# Run the tests
+```
+5. Run the tests.
+```bash
 dotnet test TomYum.sln
+```
 
-# Start local dependencies (MySQL + Redis)
+## Usage
+
+### Running
+
+1. Start local dependencies (MySQL + Redis).
+```bash
 docker compose -f deploy/docker/docker-compose.yml up -d mysql redis
-
-# Run the server host (health probe at /health)
+```
+2. Run the server host (health probe at `/health`).
+```bash
 dotnet run --project src/TomYum.Server
 ```
 
+TomYum routes by subdomain (`c`, `c4`, `cho` for bancho, `osu` for `/web/*.php`). Front it
+with Caddy and point the subdomain records at your host — see `deploy/caddy/Caddyfile`.
+
+### Deployment
+
+Docker, k8s, k3s, and Caddy scaffolding lives under `deploy/`.
+
 ## Documentation
 
-- **`AGENTS.md`** — canonical onboarding for any contributor (human or AI): facts, layering
-  rules, conventions, Do/Don't.
-- **`memories/`** — start at `memories/README.md`. Protocols live in `memories/protocols/`,
-  architecture decisions in `memories/architecture/decisions/`, per-library usage guides in
-  `memories/libraries/`.
+- **`AGENTS.md`** — canonical onboarding for any contributor (human or AI).
+- **`memories/`** — start at `memories/README.md`: protocols, architecture/ADRs, and
+  per-library usage guides.
+
+## Contributing
+
+- **Fork** the Project
+- Create your **Feature Branch** `git checkout -b feature/AmazingFeature`
+- Commit your **Changes** `git commit -m 'Add some AmazingFeature'`
+- Push **to the Branch** `git push origin feature/AmazingFeature`
+- Open a **Pull Request**
 
 ## License
 
-TomYum is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
-Copyright (c) 2026 blueskychan-dev & production.
+TomYum is licensed under the MIT License. Please see the [LICENSE](LICENSE) file for more
+information. Copyright (c) 2026 blueskychan-dev & production.
 
-The repos under `reference/` keep their own licenses and are **study material only** — no
-code is copied from them into TomYum. Most are MIT (preserve their notice if you ever copy
-verbatim); `g0v0-server` is AGPL-3.0 and `osu-bancho-main` /
-`osu-server-beatmap-submission` / `osu-server-replay-store` have no license file, so all of
-those are read-to-learn, never copy.
+## Acknowledgments
+
+- Heavily inspired by [bancho.py](https://github.com/osuAkatsuki/bancho.py)
+- [BanchoNET](https://github.com/NovemoG/BanchoNET) — osu!stable server in C#
+- [Sunrise](https://github.com/SunriseCommunity/Sunrise) — osu!stable server in C#
+- [osu!](https://github.com/ppy/osu) and [osu-server-spectator](https://github.com/ppy/osu-server-spectator) — official lazer client & spectator server
+- [rosu-pp](https://github.com/MaxOhn/rosu-pp) — fast PP/difficulty calculation
