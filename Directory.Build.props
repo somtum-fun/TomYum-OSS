@@ -28,8 +28,10 @@
     -->
     <NoWarn>$(NoWarn);CS1591;CA1848;CA1716;CA1707</NoWarn>
 
-    <Authors>TomYum contributors</Authors>
+    <Authors>blueskychan-dev &amp; production</Authors>
     <Product>TomYum</Product>
+    <Copyright>Copyright (c) 2026 blueskychan-dev &amp; production</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
 
 </Project>

@@ -63,6 +63,11 @@ dotnet run --project src/TomYum.Server
 
 ## License
 
-See individual reference repositories under `reference/` for their respective licenses
-(mostly MIT; `osu-bancho-main` is reference-only with no usable license). A project license
-for TomYum itself is TODO.
+TomYum is licensed under the **MIT License** — see [`LICENSE`](LICENSE).
+Copyright (c) 2026 blueskychan-dev & production.
+
+The repos under `reference/` keep their own licenses and are **study material only** — no
+code is copied from them into TomYum. Most are MIT (preserve their notice if you ever copy
+verbatim); `g0v0-server` is AGPL-3.0 and `osu-bancho-main` /
+`osu-server-beatmap-submission` / `osu-server-replay-store` have no license file, so all of
+those are read-to-learn, never copy.
