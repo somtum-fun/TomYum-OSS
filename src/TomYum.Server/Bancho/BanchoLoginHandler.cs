@@ -23,18 +23,21 @@ public sealed class BanchoLoginHandler
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _passwordHasher;
     private readonly PlayerRegistry _registry;
+    private readonly ChannelRegistry _channels;
     private readonly ILogger<BanchoLoginHandler> _logger;
 
-    /// <summary>Creates the handler over the user repository, password hasher, and the online-player registry.</summary>
+    /// <summary>Creates the handler over the user repository, password hasher, online-player registry, and channel registry.</summary>
     public BanchoLoginHandler(
         IUserRepository users,
         IPasswordHasher passwordHasher,
         PlayerRegistry registry,
+        ChannelRegistry channels,
         ILogger<BanchoLoginHandler> logger)
     {
         _users = users;
         _passwordHasher = passwordHasher;
         _registry = registry;
+        _channels = channels;
         _logger = logger;
     }
 
@@ -80,11 +83,38 @@ public sealed class BanchoLoginHandler
         var player = _registry.Add(presence);
         var welcome = string.Create(CultureInfo.InvariantCulture, $"Welcome to TomYum, {user.Username}!");
 
+        // Auto-join the player to the auto-join channels (e.g. #osu) so they can chat immediately,
+        // and advertise every channel in the login burst. CHANNEL_AUTO_JOIN tells the client to
+        // open the tab; CHANNEL_INFO just lists it. Member counts reflect post-join state.
+        foreach (var channel in _channels.All)
+        {
+            if (channel.AutoJoin)
+            {
+                channel.Join(player);
+                player.JoinChannel(channel.Name);
+            }
+        }
+
+        void WriteChannels(BanchoPacketWriter w)
+        {
+            foreach (var channel in _channels.All)
+            {
+                if (channel.AutoJoin)
+                {
+                    ChatEncoder.WriteChannelAutoJoin(w, channel.Name, channel.Topic, channel.MemberCount);
+                }
+                else
+                {
+                    ChatEncoder.WriteChannelInfo(w, channel.Name, channel.Topic, channel.MemberCount);
+                }
+            }
+        }
+
         // Build the success burst, then append the presence + stats of every other online
         // player so the newcomer's user list is populated immediately. Their own presence/stats
         // are already in the burst (BuildSuccess), so skip self here to avoid a duplicate.
         var writer = new BanchoPacketWriter(1024);
-        writer.WriteRaw(LoginResponseBuilder.BuildSuccess(presence, welcome));
+        writer.WriteRaw(LoginResponseBuilder.BuildSuccess(presence, welcome, WriteChannels));
         foreach (var other in _registry.All)
         {
             if (other.UserId == player.UserId)

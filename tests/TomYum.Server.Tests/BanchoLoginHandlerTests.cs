@@ -17,7 +17,8 @@ public class BanchoLoginHandlerTests
         users = new InMemoryUserRepository();
         var hasher = new BcryptPasswordHasher();
         var registry = new PlayerRegistry();
-        var handler = new BanchoLoginHandler(users, hasher, registry, NullLogger<BanchoLoginHandler>.Instance);
+        var channels = new ChannelRegistry();
+        var handler = new BanchoLoginHandler(users, hasher, registry, channels, NullLogger<BanchoLoginHandler>.Instance);
         return (handler, registry);
     }
 

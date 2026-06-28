@@ -14,6 +14,9 @@ builder.Configuration.AddEnvironmentVariables(prefix: "TOMYUM_");
 // In-memory single-node services for this vertical slice. Persistence (MySQL) and
 // cross-node online state (Redis, ADR-0003) replace the in-memory pieces in later slices.
 builder.Services.AddSingleton<PlayerRegistry>();
+builder.Services.AddSingleton<ChannelRegistry>();
+builder.Services.AddSingleton<TomYumVersion>();
+builder.Services.AddSingleton<BanchoBot>();
 builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<BanchoLoginHandler>();
@@ -28,11 +31,27 @@ builder.Services.AddSingleton<IClientPacketHandler, UserStatsRequestHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, UserPresenceRequestHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, UserPresenceRequestAllHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, LogoutHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, SendPublicMessageHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, SendPrivateMessageHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, ChannelJoinHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, ChannelPartHandler>();
 builder.Services.AddSingleton<BanchoPacketDispatcher>();
 
 var app = builder.Build();
 
-app.Logger.LogInformation("TomYum starting — environment: {Environment}", app.Environment.EnvironmentName);
+var version = app.Services.GetRequiredService<TomYumVersion>();
+app.Logger.LogInformation(
+    "TomYum {Version} starting — environment: {Environment}",
+    version.Display, app.Environment.EnvironmentName);
+
+// Seed BanchoBot as a permanent virtual player: it joins every channel, shows in every
+// user list, and is never reaped. It logs in here once at startup rather than over the wire.
+var botPlayer = app.Services.GetRequiredService<PlayerRegistry>().Add(BanchoBot.CreatePresence());
+foreach (var channel in app.Services.GetRequiredService<ChannelRegistry>().All)
+{
+    channel.Join(botPlayer);
+    botPlayer.JoinChannel(channel.Name);
+}
 
 // Seed a test player (password "faker123") so the login handshake can be exercised end to
 // end until the real user table lands. TODO: remove once TomYum.Persistence backs the repo.

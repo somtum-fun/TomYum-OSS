@@ -1,0 +1,212 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using TomYum.Bancho;
+using TomYum.Server.Bancho;
+using TomYum.Server.Bancho.Packets;
+using Xunit;
+
+namespace TomYum.Server.Tests;
+
+/// <summary>
+/// Tests the chat slice: public messages fan out to channel members, private messages relay to
+/// the target, BanchoBot answers commands, and channel join/part update membership. Channels and
+/// the bot are wired the same way the server wires them at startup.
+/// </summary>
+public class ChatHandlerTests
+{
+    private static BanchoBot NewBot() => new(new TomYumVersion());
+
+    private static OnlinePlayer AddPlayer(PlayerRegistry registry, int userId, string name) =>
+        registry.Add(new BanchoPresence { UserId = userId, Username = name });
+
+    /// <summary>Frames a single client packet (u16 id + pad + u32 length + payload).</summary>
+    private static byte[] Frame(ClientPacketId id, ReadOnlySpan<byte> payload)
+    {
+        var buffer = new byte[PacketHeader.Size + payload.Length];
+        buffer[0] = (byte)((ushort)id & 0xFF);
+        buffer[1] = (byte)((ushort)id >> 8);
+        var len = (uint)payload.Length;
+        buffer[3] = (byte)(len & 0xFF);
+        buffer[4] = (byte)((len >> 8) & 0xFF);
+        buffer[5] = (byte)((len >> 16) & 0xFF);
+        buffer[6] = (byte)((len >> 24) & 0xFF);
+        payload.CopyTo(buffer.AsSpan(PacketHeader.Size));
+        return buffer;
+    }
+
+    private static byte[] MessagePayload(string text, string target)
+    {
+        var w = new BanchoPacketWriter(64);
+        w.WriteString(string.Empty); // sender (ignored)
+        w.WriteString(text);
+        w.WriteString(target);
+        w.WriteInt32(0);             // sender_id (ignored)
+        return w.ToArray();
+    }
+
+    /// <summary>Collects the ids of every framed packet in a server→client body.</summary>
+    private static List<ushort> PacketIds(byte[] body)
+    {
+        var ids = new List<ushort>();
+        var reader = new BanchoPacketReader(body);
+        while (reader.CanReadHeader)
+        {
+            var header = reader.ReadHeader();
+            ids.Add((ushort)header.Id);
+            reader.Skip(checked((int)header.Length));
+        }
+
+        return ids;
+    }
+
+    private static ClientPacketContext Context(
+        OnlinePlayer player, PlayerRegistry registry, ChannelRegistry channels, byte[] payload, BanchoPacketWriter response) =>
+        new(player, registry, channels, payload, response);
+
+    [Fact]
+    public void PublicMessage_FansOutToOtherChannelMembers()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var sender = AddPlayer(registry, 2, "Sender");
+        var listener = AddPlayer(registry, 3, "Listener");
+
+        var osu = channels.Get("#osu")!;
+        osu.Join(sender);
+        osu.Join(listener);
+
+        var response = new BanchoPacketWriter(64);
+        new SendPublicMessageHandler(NewBot()).Handle(
+            Context(sender, registry, channels, MessagePayload("hello world", "#osu"), response));
+
+        // The listener received a SEND_MESSAGE; the sender did not get it echoed back.
+        Assert.Contains((ushort)ServerPacketId.SendMessage, PacketIds(listener.DequeueAll()));
+        Assert.DoesNotContain((ushort)ServerPacketId.SendMessage, PacketIds(sender.DequeueAll()));
+    }
+
+    [Fact]
+    public void PublicMessage_NonMember_IsDropped()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var sender = AddPlayer(registry, 2, "Sender");
+        var listener = AddPlayer(registry, 3, "Listener");
+        channels.Get("#osu")!.Join(listener); // sender is NOT a member
+
+        var response = new BanchoPacketWriter(64);
+        new SendPublicMessageHandler(NewBot()).Handle(
+            Context(sender, registry, channels, MessagePayload("hi", "#osu"), response));
+
+        Assert.Empty(listener.DequeueAll());
+    }
+
+    [Fact]
+    public void PublicMessage_BotCommand_PostsReplyToChannel()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var sender = AddPlayer(registry, 2, "Sender");
+        channels.Get("#osu")!.Join(sender);
+
+        var response = new BanchoPacketWriter(64);
+        new SendPublicMessageHandler(NewBot()).Handle(
+            Context(sender, registry, channels, MessagePayload("!ping", "#osu"), response));
+
+        // The bot's reply is queued back to the sender (a channel member).
+        Assert.Contains((ushort)ServerPacketId.SendMessage, PacketIds(sender.DequeueAll()));
+    }
+
+    [Fact]
+    public void PrivateMessage_ToBanchoBot_RepliesToSender()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var sender = AddPlayer(registry, 2, "Sender");
+
+        var response = new BanchoPacketWriter(64);
+        new SendPrivateMessageHandler(NewBot()).Handle(
+            Context(sender, registry, channels, MessagePayload("!help", "BanchoBot"), response));
+
+        Assert.Contains((ushort)ServerPacketId.SendMessage, PacketIds(response.ToArray()));
+    }
+
+    [Fact]
+    public void PrivateMessage_ToOnlineUser_IsRelayed()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var sender = AddPlayer(registry, 2, "Sender");
+        var target = AddPlayer(registry, 3, "Target");
+
+        var response = new BanchoPacketWriter(64);
+        new SendPrivateMessageHandler(NewBot()).Handle(
+            Context(sender, registry, channels, MessagePayload("hey", "Target"), response));
+
+        Assert.Contains((ushort)ServerPacketId.SendMessage, PacketIds(target.DequeueAll()));
+    }
+
+    [Fact]
+    public void ChannelJoin_Known_AddsMember_AndConfirms()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var player = AddPlayer(registry, 2, "Player");
+
+        var nameW = new BanchoPacketWriter(16);
+        nameW.WriteString("#osu");
+
+        var response = new BanchoPacketWriter(32);
+        new ChannelJoinHandler().Handle(Context(player, registry, channels, nameW.ToArray(), response));
+
+        Assert.True(channels.Get("#osu")!.Contains(2));
+        Assert.True(player.IsInChannel("#osu"));
+        Assert.Contains((ushort)ServerPacketId.ChannelJoinSuccess, PacketIds(response.ToArray()));
+    }
+
+    [Fact]
+    public void ChannelJoin_Unknown_IsKicked()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var player = AddPlayer(registry, 2, "Player");
+
+        var nameW = new BanchoPacketWriter(16);
+        nameW.WriteString("#nope");
+
+        var response = new BanchoPacketWriter(32);
+        new ChannelJoinHandler().Handle(Context(player, registry, channels, nameW.ToArray(), response));
+
+        Assert.Contains((ushort)ServerPacketId.ChannelKick, PacketIds(response.ToArray()));
+    }
+
+    [Fact]
+    public void ChannelPart_RemovesMember()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var player = AddPlayer(registry, 2, "Player");
+        channels.Get("#osu")!.Join(player);
+        player.JoinChannel("#osu");
+
+        var nameW = new BanchoPacketWriter(16);
+        nameW.WriteString("#osu");
+
+        var response = new BanchoPacketWriter(16);
+        new ChannelPartHandler().Handle(Context(player, registry, channels, nameW.ToArray(), response));
+
+        Assert.False(channels.Get("#osu")!.Contains(2));
+        Assert.False(player.IsInChannel("#osu"));
+    }
+
+    [Fact]
+    public void Bot_UnknownCommand_StillReplies()
+    {
+        var reply = NewBot().TryHandleCommand("Someone", "!frobnicate");
+        Assert.NotNull(reply);
+    }
+
+    [Fact]
+    public void Bot_NonCommand_ReturnsNull()
+    {
+        Assert.Null(NewBot().TryHandleCommand("Someone", "just chatting"));
+    }
+}

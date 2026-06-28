@@ -30,12 +30,17 @@ public static class LoginResponseBuilder
 
     /// <summary>
     /// Builds the successful-login burst for <paramref name="self"/>: protocol version,
-    /// the user id, privileges, a welcome notification, channel info terminator, the main
+    /// the user id, privileges, a welcome notification, the visible channel list, the main
     /// menu icon, friends list, silence-end, and the player's own presence + stats.
     /// </summary>
     /// <param name="self">The freshly authenticated player.</param>
     /// <param name="welcome">Welcome message shown as a NOTIFICATION (id 24).</param>
-    public static byte[] BuildSuccess(BanchoPresence self, string welcome)
+    /// <param name="writeChannels">
+    /// Optional callback that writes CHANNEL_INFO (65) / CHANNEL_AUTO_JOIN (67) packets for the
+    /// visible channels. Invoked before CHANNEL_INFO_END (89) so the client has the full list
+    /// before the terminator. <c>null</c> advertises no channels (just the terminator).
+    /// </param>
+    public static byte[] BuildSuccess(BanchoPresence self, string welcome, Action<BanchoPacketWriter>? writeChannels = null)
     {
         ArgumentNullException.ThrowIfNull(self);
 
@@ -53,8 +58,9 @@ public static class LoginResponseBuilder
         // 4. Welcome notification.
         writer.WriteStringPacket(ServerPacketId.Notification, welcome);
 
-        // 5. No channels advertised yet (chat lands in a later slice); terminate the list
-        //    so the client stops waiting for CHANNEL_INFO packets.
+        // 5. Advertise the visible channels (CHANNEL_INFO / CHANNEL_AUTO_JOIN), then terminate
+        //    the list so the client stops waiting for more CHANNEL_INFO packets.
+        writeChannels?.Invoke(writer);
         writer.WritePacket(ServerPacketId.ChannelInfoEnd, null);
 
         // 6. Main menu icon: "imageUrl|clickUrl"; empty string => default osu! icon.

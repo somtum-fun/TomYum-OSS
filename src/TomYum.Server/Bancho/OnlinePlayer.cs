@@ -16,6 +16,8 @@ public sealed class OnlinePlayer
 {
     private readonly object _queueLock = new();
     private readonly List<byte> _outbound = [];
+    private readonly HashSet<string> _channels = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _channelsLock = new();
 
     /// <summary>Creates a session for <paramref name="presence"/> identified by <paramref name="token"/>.</summary>
     public OnlinePlayer(string token, BanchoPresence presence)
@@ -62,6 +64,45 @@ public sealed class OnlinePlayer
             var bytes = _outbound.ToArray();
             _outbound.Clear();
             return bytes;
+        }
+    }
+
+    /// <summary>A snapshot of the channel names this player has joined.</summary>
+    public IReadOnlyCollection<string> Channels
+    {
+        get
+        {
+            lock (_channelsLock)
+            {
+                return _channels.ToArray();
+            }
+        }
+    }
+
+    /// <summary>Records that this player joined <paramref name="channelName"/>. Idempotent.</summary>
+    public void JoinChannel(string channelName)
+    {
+        lock (_channelsLock)
+        {
+            _channels.Add(channelName);
+        }
+    }
+
+    /// <summary>Records that this player left <paramref name="channelName"/>. Idempotent.</summary>
+    public void LeaveChannel(string channelName)
+    {
+        lock (_channelsLock)
+        {
+            _channels.Remove(channelName);
+        }
+    }
+
+    /// <summary>Whether this player has joined <paramref name="channelName"/>.</summary>
+    public bool IsInChannel(string channelName)
+    {
+        lock (_channelsLock)
+        {
+            return _channels.Contains(channelName);
         }
     }
 }

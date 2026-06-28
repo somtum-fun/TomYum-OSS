@@ -21,11 +21,13 @@ public sealed class ClientPacketContext
     public ClientPacketContext(
         OnlinePlayer player,
         PlayerRegistry registry,
+        ChannelRegistry channels,
         ReadOnlyMemory<byte> payload,
         BanchoPacketWriter response)
     {
         Player = player;
         Registry = registry;
+        Channels = channels;
         Payload = payload;
         Response = response;
     }
@@ -35,6 +37,9 @@ public sealed class ClientPacketContext
 
     /// <summary>The online-player registry (lookups + broadcasts).</summary>
     public PlayerRegistry Registry { get; }
+
+    /// <summary>The chat-channel registry (membership + routing).</summary>
+    public ChannelRegistry Channels { get; }
 
     /// <summary>The raw payload bytes for this packet (header already consumed).</summary>
     public ReadOnlyMemory<byte> Payload { get; }

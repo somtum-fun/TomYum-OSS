@@ -22,6 +22,7 @@ public sealed class LogoutHandler : IClientPacketHandler
         ArgumentNullException.ThrowIfNull(context);
 
         context.Registry.Remove(context.Player.Token);
+        context.Channels.RemoveFromAll(context.Player.UserId);
 
         var writer = new BanchoPacketWriter(16);
         writer.WriteInt32Packet(ServerPacketId.UserLogout, context.Player.UserId);

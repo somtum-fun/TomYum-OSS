@@ -47,6 +47,7 @@ public static class BanchoEndpoints
         BanchoLoginHandler loginHandler,
         BanchoPacketDispatcher dispatcher,
         PlayerRegistry registry,
+        ChannelRegistry channels,
         CancellationToken cancellationToken)
     {
         // First contact: no osu-token header means the body is a plaintext login request.
@@ -70,7 +71,7 @@ public static class BanchoEndpoints
         // this player or others), then flush this player's queue followed by anything the
         // handlers produced for the originator in-line.
         var body = await ReadBodyAsync(context.Request, cancellationToken).ConfigureAwait(false);
-        var produced = dispatcher.Dispatch(player, registry, body);
+        var produced = dispatcher.Dispatch(player, registry, channels, body);
 
         var queued = player.DequeueAll();
         if (produced.Length == 0)
