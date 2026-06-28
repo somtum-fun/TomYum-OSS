@@ -1,6 +1,8 @@
 using System.Globalization;
 using TomYum.Bancho;
+using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
+using TomYum.Domain.Services;
 
 namespace TomYum.Server.Bancho;
 
@@ -10,22 +12,28 @@ namespace TomYum.Server.Bancho;
 /// resolve the user, then ask <see cref="LoginResponseBuilder"/> to encode the outcome.
 /// </summary>
 /// <remarks>
-/// First vertical slice (see <c>memories/progress.md</c>): authentication is intentionally
-/// minimal — any known username is accepted and the password is not yet verified, because
-/// persistence/hashing land in the next slice. The wire handshake, token minting, and the
-/// success packet burst are real. TODO: verify <c>password_md5</c> against the stored hash,
-/// honour ban/restriction state, and geolocate the client IP for presence.
+/// Credentials are real: the username is resolved by canonical <see cref="User.SafeName"/>
+/// and the client's md5-hex password is verified against the stored bcrypt hash
+/// (see <see cref="IPasswordHasher"/>). Still backed by an in-memory repository until
+/// <c>TomYum.Persistence</c> lands. TODO: honour ban/restriction state and geolocate the
+/// client IP for presence (country, lon/lat).
 /// </remarks>
 public sealed class BanchoLoginHandler
 {
     private readonly IUserRepository _users;
+    private readonly IPasswordHasher _passwordHasher;
     private readonly PlayerRegistry _registry;
     private readonly ILogger<BanchoLoginHandler> _logger;
 
-    /// <summary>Creates the handler over the user repository and the online-player registry.</summary>
-    public BanchoLoginHandler(IUserRepository users, PlayerRegistry registry, ILogger<BanchoLoginHandler> logger)
+    /// <summary>Creates the handler over the user repository, password hasher, and the online-player registry.</summary>
+    public BanchoLoginHandler(
+        IUserRepository users,
+        IPasswordHasher passwordHasher,
+        PlayerRegistry registry,
+        ILogger<BanchoLoginHandler> logger)
     {
         _users = users;
+        _passwordHasher = passwordHasher;
         _registry = registry;
         _logger = logger;
     }
@@ -47,15 +55,19 @@ public sealed class BanchoLoginHandler
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
         }
 
-        var user = await _users.GetByUsernameAsync(request.Username, cancellationToken).ConfigureAwait(false);
+        var user = await _users.GetBySafeNameAsync(User.MakeSafeName(request.Username), cancellationToken).ConfigureAwait(false);
         if (user is null)
         {
             _logger.LogInformation("Login failed: unknown username {Username}.", request.Username);
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
         }
 
-        // TODO (next slice): verify request.PasswordMd5 against the stored bcrypt/MD5 hash
-        // and reject with AuthenticationFailed on mismatch.
+        // The client sends the md5 hex of the plaintext; verify it against the stored bcrypt.
+        if (!_passwordHasher.Verify(request.PasswordMd5, user.PasswordBcrypt))
+        {
+            _logger.LogInformation("Login failed: bad password for {Username}.", request.Username);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
+        }
 
         var presence = new BanchoPresence
         {

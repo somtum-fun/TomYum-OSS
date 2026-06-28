@@ -2,6 +2,11 @@
 
   <!-- ASP.NET Core host: composes DI, stable endpoints, lazer endpoints/hubs, IRC, config. -->
   <ItemGroup>
+    <!-- bcrypt for osu!stable password hashing: bcrypt(md5_hex(plaintext)). $2 prefix, cost 12. -->
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
     <ProjectReference Include="../TomYum.Bancho/TomYum.Bancho.csproj" />
     <ProjectReference Include="../TomYum.Lazer/TomYum.Lazer.csproj" />

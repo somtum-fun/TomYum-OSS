@@ -5,17 +5,46 @@ namespace TomYum.Domain.Entities;
 /// state shared across both the stable and lazer protocol edges.
 /// </summary>
 /// <remarks>
-/// This is a scaffolding stub. Fields will be filled in as persistence and protocol
-/// work begins. Domain entities must stay free of infrastructure concerns
-/// (no EF attributes, no protocol DTOs). See ADR-0001 and ADR-0002.
+/// Domain entities must stay free of infrastructure concerns (no EF attributes, no
+/// protocol DTOs). See ADR-0001 and ADR-0002. Auth fields mirror the osu!stable model
+/// studied from bancho.py: the stored credential is <c>bcrypt(md5_hex(plaintext))</c>
+/// (see <see cref="PasswordBcrypt"/>), and <see cref="SafeName"/> is the canonical
+/// lookup key.
 /// </remarks>
 public sealed class User
 {
     /// <summary>Primary key / osu! user id.</summary>
     public int Id { get; init; }
 
-    /// <summary>Login name as shown in-client.</summary>
+    /// <summary>Login name as shown in-client (may contain spaces, 2–15 chars).</summary>
     public string Username { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Canonical lookup key: the username lowercased with spaces replaced by underscores.
+    /// All by-name lookups match on this so "Blue Sky" and "blue_sky" collide as intended.
+    /// Build it with <see cref="MakeSafeName"/>.
+    /// </summary>
+    public string SafeName { get; init; } = string.Empty;
+
+    /// <summary>Account email (unique). Used for website auth and account recovery.</summary>
+    public string Email { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The stored password credential: <c>bcrypt(md5_hex(plaintext))</c>, a 60-char
+    /// <c>$2*$</c> hash. The osu! client sends the md5 hex of the plaintext at login;
+    /// verification runs bcrypt over those 32 ASCII bytes. Never store the plaintext or
+    /// the bare md5. See <c>memories/protocols/bancho-stable.md</c> §3.
+    /// </summary>
+    public string PasswordBcrypt { get; init; } = string.Empty;
+
+    /// <summary>ISO-3166 alpha-2 country acronym (lowercase, e.g. <c>th</c>); <c>xx</c> when unknown.</summary>
+    public string Country { get; init; } = "xx";
+
+    /// <summary>Unix seconds when the account was created.</summary>
+    public long CreationTime { get; init; }
+
+    /// <summary>Unix seconds of the player's most recent activity.</summary>
+    public long LatestActivity { get; set; }
 
     /// <summary>
     /// The player's osu! API key. Doubles as the IRC password (PASS): external IRC
@@ -25,5 +54,15 @@ public sealed class User
     /// </summary>
     public string? ApiKey { get; init; }
 
-    // TODO: country, privileges, password hash reference, timestamps, etc.
+    // TODO: privileges, silence/donor end, clan, preferred mode, play style.
+
+    /// <summary>
+    /// Produces the canonical <see cref="SafeName"/> for a username: lowercase, spaces
+    /// replaced with underscores. Mirrors bancho.py's <c>make_safe_name</c>.
+    /// </summary>
+    public static string MakeSafeName(string username)
+    {
+        ArgumentNullException.ThrowIfNull(username);
+        return username.ToLowerInvariant().Replace(' ', '_');
+    }
 }

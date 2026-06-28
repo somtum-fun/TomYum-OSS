@@ -5,26 +5,19 @@ using TomYum.Domain.Repositories;
 namespace TomYum.Server.Bancho;
 
 /// <summary>
-/// A throwaway in-memory <see cref="IUserRepository"/> for the login vertical slice, so the
-/// handshake can be exercised end to end before <c>TomYum.Persistence</c> (EF Core + MySQL)
-/// is implemented. Seeded with a couple of demo accounts.
+/// A throwaway in-memory <see cref="IUserRepository"/> for the login + registration
+/// vertical slice, so the handshake and account creation can be exercised end to end
+/// before <c>TomYum.Persistence</c> (EF Core + MySQL) is implemented.
 /// </summary>
 /// <remarks>
-/// REMOVE when the real repository lands (next slice). Registered only so DI can satisfy
-/// <see cref="IUserRepository"/>. Usernames are matched case-insensitively, mirroring the
-/// repository contract.
+/// REMOVE when the real repository lands (next slice). All by-name lookups go through the
+/// canonical <see cref="User.SafeName"/>, mirroring the persistence contract.
 /// </remarks>
 public sealed class InMemoryUserRepository : IUserRepository
 {
-    private readonly ConcurrentDictionary<string, User> _byUsername = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, User> _bySafeName = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<int, User> _byId = new();
     private int _nextId = 2;
-
-    /// <summary>Seeds two demo users so a stable client can log in against the scaffold.</summary>
-    public InMemoryUserRepository()
-    {
-        Seed(new User { Id = 1, Username = "TomYum" });
-    }
 
     /// <inheritdoc />
     public Task<User?> GetByIdAsync(int id, CancellationToken cancellationToken = default) =>
@@ -32,7 +25,19 @@ public sealed class InMemoryUserRepository : IUserRepository
 
     /// <inheritdoc />
     public Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default) =>
-        Task.FromResult(_byUsername.TryGetValue(username, out var user) ? user : null);
+        GetBySafeNameAsync(User.MakeSafeName(username), cancellationToken);
+
+    /// <inheritdoc />
+    public Task<User?> GetBySafeNameAsync(string safeName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_bySafeName.TryGetValue(safeName, out var user) ? user : null);
+
+    /// <inheritdoc />
+    public Task<bool> SafeNameExistsAsync(string safeName, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_bySafeName.ContainsKey(safeName));
+
+    /// <inheritdoc />
+    public Task<bool> EmailExistsAsync(string email, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_bySafeName.Values.Any(u => string.Equals(u.Email, email, StringComparison.OrdinalIgnoreCase)));
 
     /// <inheritdoc />
     public Task<User> AddAsync(User user, CancellationToken cancellationToken = default)
@@ -41,14 +46,22 @@ public sealed class InMemoryUserRepository : IUserRepository
 
         // Honour a caller-supplied id (test seeding); otherwise assign the next free one.
         var id = user.Id != 0 ? user.Id : Interlocked.Increment(ref _nextId);
-        var assigned = new User { Id = id, Username = user.Username, ApiKey = user.ApiKey };
-        Seed(assigned);
-        return Task.FromResult(assigned);
-    }
+        var safeName = string.IsNullOrEmpty(user.SafeName) ? User.MakeSafeName(user.Username) : user.SafeName;
+        var assigned = new User
+        {
+            Id = id,
+            Username = user.Username,
+            SafeName = safeName,
+            Email = user.Email,
+            PasswordBcrypt = user.PasswordBcrypt,
+            Country = user.Country,
+            CreationTime = user.CreationTime,
+            LatestActivity = user.LatestActivity,
+            ApiKey = user.ApiKey,
+        };
 
-    private void Seed(User user)
-    {
-        _byId[user.Id] = user;
-        _byUsername[user.Username] = user;
+        _byId[assigned.Id] = assigned;
+        _bySafeName[assigned.SafeName] = assigned;
+        return Task.FromResult(assigned);
     }
 }

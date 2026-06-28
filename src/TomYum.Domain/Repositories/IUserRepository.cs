@@ -15,6 +15,18 @@ public interface IUserRepository
     /// <summary>Loads a user by exact username (case-insensitive), or <c>null</c>.</summary>
     Task<User?> GetByUsernameAsync(string username, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Loads a user by canonical <see cref="User.SafeName"/> (see <see cref="User.MakeSafeName"/>),
+    /// or <c>null</c>. This is the authoritative by-name lookup used at login.
+    /// </summary>
+    Task<User?> GetBySafeNameAsync(string safeName, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether a user already exists with the given canonical safe name.</summary>
+    Task<bool> SafeNameExistsAsync(string safeName, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether a user already exists with the given email (case-insensitive).</summary>
+    Task<bool> EmailExistsAsync(string email, CancellationToken cancellationToken = default);
+
     /// <summary>Inserts a new user and returns it with its assigned id.</summary>
     Task<User> AddAsync(User user, CancellationToken cancellationToken = default);
 }
