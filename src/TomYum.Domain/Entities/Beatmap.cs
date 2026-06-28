@@ -1,3 +1,5 @@
+using TomYum.Domain.Enums;
+
 namespace TomYum.Domain.Entities;
 
 /// <summary>
@@ -18,16 +20,60 @@ public sealed class Beatmap
     public const int CustomIdFloor = 100_000_000;
 
     /// <summary>Beatmap (difficulty) id.</summary>
-    public int Id { get; init; }
+    public int Id { get; set; }
 
     /// <summary>Owning beatmap set id.</summary>
-    public int SetId { get; init; }
+    public int SetId { get; set; }
 
     /// <summary>MD5 of the <c>.osu</c> file, used as the wire identity in both protocols.</summary>
-    public string Md5 { get; init; } = string.Empty;
+    public string Md5 { get; set; } = string.Empty;
 
     /// <summary>Whether this beatmap id is in the server-local custom range.</summary>
     public bool IsCustom => Id >= CustomIdFloor;
 
-    // TODO: title/artist/version, status, star rating, mode, owner, etc.
+    // --- Metadata (populated from the osu! v1 API or custom submission) ---
+
+    /// <summary>Track artist.</summary>
+    public string Artist { get; set; } = string.Empty;
+
+    /// <summary>Track title.</summary>
+    public string Title { get; set; } = string.Empty;
+
+    /// <summary>Difficulty (version) name, e.g. <c>Insane</c>.</summary>
+    public string Version { get; set; } = string.Empty;
+
+    /// <summary>Mapper (creator) username.</summary>
+    public string Creator { get; set; } = string.Empty;
+
+    /// <summary>Ranked/approval status. Drives leaderboard visibility and pp eligibility.</summary>
+    public RankedStatus Status { get; set; } = RankedStatus.Pending;
+
+    /// <summary>
+    /// When set, <see cref="Status"/> is preserved across osu!-API refreshes even if the API
+    /// reports a different status (mirrors bancho.py's <c>frozen</c> flag). Map metadata is still
+    /// updated; only the status is held.
+    /// </summary>
+    public bool StatusFrozen { get; set; }
+
+    /// <summary>Game mode (0 = osu!, 1 = taiko, 2 = catch, 3 = mania).</summary>
+    public int Mode { get; set; }
+
+    /// <summary>Star difficulty rating.</summary>
+    public double StarRating { get; set; }
+
+    /// <summary>Total length in seconds.</summary>
+    public int TotalLength { get; set; }
+
+    /// <summary>Maximum achievable combo (0 when unknown).</summary>
+    public int MaxCombo { get; set; }
+
+    /// <summary>When the map was last updated upstream (drives the osu!-API recheck cadence).</summary>
+    public DateTimeOffset LastUpdate { get; set; }
+
+    /// <summary>Full display name: <c>{Artist} - {Title} [{Version}]</c>.</summary>
+    public string FullName => $"{Artist} - {Title} [{Version}]";
+
+    /// <summary>Whether this map has a leaderboard (ranked, approved, or loved).</summary>
+    public bool HasLeaderboard =>
+        Status is RankedStatus.Ranked or RankedStatus.Approved or RankedStatus.Loved;
 }

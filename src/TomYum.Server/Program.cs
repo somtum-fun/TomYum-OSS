@@ -3,6 +3,7 @@ using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
+using TomYum.Server.Beatmaps;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,6 +22,20 @@ builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
 builder.Services.AddScoped<BanchoLoginHandler>();
 builder.Services.AddScoped<RegistrationService>();
+
+// --- Beatmap status (osu! v1 API) ---
+// Bind the Osu options (key from config/OSU_API_KEY env) and a typed HttpClient pointed at
+// the keyed official endpoint or the keyless mirror. BeatmapService fronts the API with an
+// in-memory cache. See memories/references/bancho.py.md for the resolution model.
+var osuOptions = new OsuApiOptions();
+builder.Configuration.GetSection(OsuApiOptions.SectionName).Bind(osuOptions);
+builder.Services.AddSingleton(osuOptions);
+builder.Services.AddHttpClient<IOsuApiClient, OsuApiClient>(http =>
+{
+    http.BaseAddress = new Uri(osuOptions.BaseUrl);
+    http.Timeout = TimeSpan.FromSeconds(10);
+});
+builder.Services.AddSingleton<BeatmapService>();
 
 // Packet dispatch: one stateless handler per client packet id, discovered by the singleton
 // dispatcher into a frozen lookup. Register each handler so DI enumerates them.
@@ -86,6 +101,9 @@ app.MapBancho(BanchoHosts.Bancho(domain));
 
 // osu!stable in-game registration: POST /users (osu. host).
 app.MapRegistration(BanchoHosts.Web(domain));
+
+// osu!stable /web/*.php surface (osu. host): beatmap status via the osu! v1 API for now.
+app.MapWeb(BanchoHosts.Web(domain));
 
 app.Run();
 
