@@ -13,19 +13,24 @@ C# / .NET 8, supporting **both** the osu!stable and osu!lazer clients.
 
 ## Progress
 
-> Status: **early development.** The solution structure, contracts, and documentation are
-> in place, and the osu!stable login handshake works end to end. Most features are still
-> to come — see the TODO list below.
+> Status: **early development.** A player can register in-client, log in, chat, and appear
+> online to others, with accounts and beatmap metadata persisted to MySQL. Many features are
+> still to come — see the TODO list below.
 
 ## Features
 
 - osu!stable login handshake (binary packet protocol, `cho-token` session)
-- In-memory online-player registry + per-player outbound packet queue
+- In-game registration (`POST /users`) + real password auth (`bcrypt(md5_hex(plaintext))`)
+- Post-login packet dispatch: presence, stats, status changes, logout
+- Chat: server-side channels (`#osu`, `#announce`, `#lobby`, …), public + private messages
+- BanchoBot: resident bot answering `!`-commands (`!help`, `!stats`, `!setpriv`, …)
+- Role/privilege system: staff tiers (owner/admin/dev/mod) + supporter, mapped to client badges
+- MySQL persistence (EF Core + Pomelo): user + beatmap repositories
+- Beatmap ranked-status lookup via the osu! v1 API (keyed `old.ppy.sh` / keyless `osu.direct`)
+- Host-aware subdomain routing (`c`/`c4`/`ce`/`cho` for bancho, `osu` for `/web/*`)
 
 ## In development / TODO
 
-- [ ] Post-login packet dispatch (chat, presence, status, spectate)
-- [ ] Persistence (MySQL via EF Core) + password verification
 - [ ] Redis-backed online state for cross-node fan-out (100–1000+ players)
 - [ ] osu!lazer support (osu-web-style REST API + SignalR hubs)
 - [ ] IRC server for external bots (auth via osu! API key)
@@ -34,6 +39,7 @@ C# / .NET 8, supporting **both** the osu!stable and osu!lazer clients.
 - [ ] Configurable multi-target storage (R2 / AWS S3 / OVH S3 / Azure Blob / local)
 - [ ] Custom beatmap submission (reserved ID range `100000000+`)
 - [ ] osu!Direct, leaderboards, multiplayer, spectating
+- [ ] EF Core migrations (currently `EnsureCreated`; schema cannot evolve yet)
 - [ ] Docker / k8s deployment
 
 ## Building
@@ -77,8 +83,12 @@ docker compose -f deploy/docker/docker-compose.yml up -d mysql redis
 ```
 2. Run the server host (health probe at `/health`).
 ```bash
-dotnet run --project src/TomYum.Server
+scripts/dev-server.sh
 ```
+This wraps `dotnet run` with the right environment (`ASPNETCORE_ENVIRONMENT=Development` so the
+config loads, and the DB password injected to match the compose defaults). On a successful start
+the log prints `Database schema ensured (...)`, confirming it is using MySQL rather than the
+in-memory fallback. Pass `DB=off scripts/dev-server.sh` to run without a database.
 
 TomYum routes by subdomain (`c`, `c4`, `cho` for bancho, `osu` for `/web/*.php`). Front it
 with Caddy and point the subdomain records at your host — see `deploy/caddy/Caddyfile`.
