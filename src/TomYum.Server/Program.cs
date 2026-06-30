@@ -1,6 +1,7 @@
 using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
+using TomYum.Performance;
 using TomYum.Persistence;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
@@ -59,6 +60,8 @@ if (databaseOptions.Enabled)
 else
 {
     builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
+    builder.Services.AddSingleton<IScoreRepository, InMemoryScoreRepository>();
+    builder.Services.AddSingleton<IUserStatsRepository, InMemoryUserStatsRepository>();
 }
 builder.Services.AddScoped<BanchoLoginHandler>();
 builder.Services.AddScoped<RegistrationService>();
@@ -76,6 +79,8 @@ builder.Services.AddHttpClient<IOsuApiClient, OsuApiClient>(http =>
     http.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddSingleton<BeatmapService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpClient<IPerformanceCalculator, OsuPerformanceCalculator>();
 
 // Packet dispatch: one stateless handler per client packet id, discovered by the singleton
 // dispatcher into a frozen lookup. Register each handler so DI enumerates them.

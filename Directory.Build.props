@@ -2,7 +2,7 @@
 
   <!-- Shared build settings applied to every project in the solution. -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -26,7 +26,7 @@
       CA1707  underscores in member names (placeholder test names use them by convention).
       Revisit these as real implementation lands.
     -->
-    <NoWarn>$(NoWarn);CS1591;CA1848;CA1716;CA1707</NoWarn>
+    <NoWarn>$(NoWarn);CS1591;CA1848;CA1873;CA1716;CA1707</NoWarn>
 
     <Authors>blueskychan-dev &amp; production</Authors>
     <Product>TomYum</Product>
@@ -40,5 +40,18 @@
     <VersionPrefix>0.0.1</VersionPrefix>
     <VersionSuffix>dev</VersionSuffix>
   </PropertyGroup>
+
+  <!--
+    Solution-wide vulnerability overrides. These force-pin transitive packages that have known
+    CVEs to safe versions. Placed here so every project inherits the fix without repetition.
+    AutoMapper: GHSA-rvv3-g6hj-g44x — safe at 16.1.1+.
+    MessagePack: GHSA-382j-8mxh-c7x2 et al — safe at 3.1.7+.
+  -->
+  <ItemGroup>
+    <PackageReference Include="AutoMapper" Version="16.1.1" />
+    <PackageReference Include="MessagePack" Version="3.1.7" />
+    <!-- Microsoft.AspNetCore.SignalR.Protocols.MessagePack: GHSA-f8h2-vmm9-qhj6 — safe at 10.0.9+. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.9" />
+  </ItemGroup>
 
 </Project>

@@ -4,6 +4,8 @@
   <ItemGroup>
     <!-- bcrypt for osu!stable password hashing: bcrypt(md5_hex(plaintext)). $2 prefix, cost 12. -->
     <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <!-- Rijndael-256 CBC used by osu!stable score submission encryption. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
   </ItemGroup>
 
   <ItemGroup>

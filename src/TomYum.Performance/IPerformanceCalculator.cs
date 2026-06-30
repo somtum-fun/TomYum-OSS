@@ -17,11 +17,27 @@ public interface IPerformanceCalculator
     Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default);
 }
 
-/// <summary>
-/// Minimal placeholder for the inputs a pp calculation needs. TODO: expand with
-/// beatmap reference, ruleset id, mods, and score statistics when implemented.
-/// </summary>
-/// <param name="BeatmapId">Id of the beatmap the score was set on.</param>
-/// <param name="RulesetId">Ruleset (0 = osu!, 1 = taiko, 2 = catch, 3 = mania).</param>
-/// <param name="Mods">Bitwise/string mod selection placeholder.</param>
-public sealed record PerformanceRequest(int BeatmapId, int RulesetId, string Mods);
+/// <summary>Full set of inputs the pp calculator needs for one submitted score.</summary>
+/// <param name="BeatmapId">Online beatmap id.</param>
+/// <param name="RulesetId">0 = osu!, 1 = taiko, 2 = catch, 3 = mania.</param>
+/// <param name="Mods">Legacy mod bitmask (e.g. Hidden = 8, HardRock = 16).</param>
+/// <param name="MaxCombo">Highest combo reached during the play.</param>
+/// <param name="Count300">Hit count mapped to HitResult.Great.</param>
+/// <param name="Count100">Hit count mapped to HitResult.Ok / LargeTickHit.</param>
+/// <param name="Count50">Hit count mapped to HitResult.Meh / SmallTickHit.</param>
+/// <param name="CountMiss">Miss count.</param>
+/// <param name="CountGeki">Geki count (taiko: LargeBonus, mania: Perfect).</param>
+/// <param name="CountKatu">Katu count (catch: SmallTickMiss, mania: Good).</param>
+/// <param name="Passed">Whether the score cleared the map.</param>
+public sealed record PerformanceRequest(
+    int BeatmapId,
+    int RulesetId,
+    int Mods,
+    int MaxCombo,
+    int Count300,
+    int Count100,
+    int Count50,
+    int CountMiss,
+    int CountGeki,
+    int CountKatu,
+    bool Passed);

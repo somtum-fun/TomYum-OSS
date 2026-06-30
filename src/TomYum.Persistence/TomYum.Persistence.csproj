@@ -3,14 +3,14 @@
   <!--
     EF Core + MySQL persistence: TomYumDbContext, entity configurations, repository
     implementations of the Domain ports, and migrations. Provider is Pomelo (built on
-    MySqlConnector). Pomelo 8.x targets EF Core 8 / MySQL 8 — keep the EF Core packages
-    on the matching 8.0.x line (Pomelo providers do not cross EF Core major versions).
+    MySqlConnector). Pomelo 9.x targets EF Core 9 / MySQL 8 — keep the EF Core packages
+    on the matching 9.0.x line (Pomelo providers do not cross EF Core major versions).
   -->
   <ItemGroup>
-    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.28" />
+    <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.17" />
     <!-- Design-time package so `dotnet ef migrations` works against this project. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.28">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="9.0.17">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

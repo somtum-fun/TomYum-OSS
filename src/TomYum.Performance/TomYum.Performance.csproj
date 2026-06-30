@@ -7,5 +7,12 @@
   <ItemGroup>
     <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ppy.osu.Game.Rulesets.Osu" Version="2026.605.0" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Taiko" Version="2026.605.0" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Catch" Version="2026.605.0" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Mania" Version="2026.605.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
+  </ItemGroup>
 
 </Project>

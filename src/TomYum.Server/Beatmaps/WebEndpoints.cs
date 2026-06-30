@@ -1,46 +1,47 @@
 using System.Globalization;
+using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
+using TomYum.Domain.Repositories;
+using TomYum.Server.Bancho;
 
 namespace TomYum.Server.Beatmaps;
 
-/// <summary>
-/// Maps the osu!stable <c>/web/*.php</c> surface served from the <c>osu.</c> host. This slice
-/// implements <c>osu-osz2-getscores.php</c> at the <em>status-line</em> level only: it resolves the
-/// beatmap by MD5 and returns the leaderboard header bancho.py emits, so the client shows the
-/// correct ranked status. Leaderboard score rows and score submission are later slices.
-/// </summary>
-/// <remarks>
-/// Response line 1 (bancho.py <c>osu.py</c> ~line 982):
-/// <c>{ranked_status}|{server_has_osz2:false}|{map_id}|{set_id}|{n_scores}|{fa_track_id}|{fa_license}</c>.
-/// The status integer is the internal <see cref="RankedStatus"/> value written verbatim. When the
-/// map is below <see cref="RankedStatus.Ranked"/> (or unknown), the client only needs
-/// <c>{status}|false</c> with no leaderboard — matching bancho.py's early-out.
-/// </remarks>
 public static class WebEndpoints
 {
-    /// <summary>
-    /// Registers the <c>/web/*</c> handlers, constrained to the <c>osu.</c> host (plus localhost
-    /// for development). The host patterns come from <see cref="Bancho.BanchoHosts.Web"/>.
-    /// </summary>
     public static void MapWeb(this IEndpointRouteBuilder app, params string[] hosts)
     {
         ArgumentNullException.ThrowIfNull(app);
 
         app.MapGet("/web/osu-osz2-getscores.php", HandleGetScoresAsync)
             .RequireHost(hosts);
+
+        // osu!stable rates beatmaps after score submission; just ack it.
+        app.MapGet("/web/osu-rate.php", () => Results.Text("ok", "text/plain"))
+            .RequireHost(hosts);
+
+        app.MapGet("/web/osu-getreplay.php", HandleGetReplayAsync)
+            .RequireHost(hosts);
+
+        // Last.fm scrobbling and friends list — not implemented, ack to suppress 404s.
+        app.MapGet("/web/lastfm.php", () => Results.Text("-3", "text/plain"))
+            .RequireHost(hosts);
+        app.MapGet("/web/osu-getfriends.php", () => Results.Text(string.Empty, "text/plain"))
+            .RequireHost(hosts);
+
+        app.MapScoreSubmission(hosts);
     }
 
     private static async Task<IResult> HandleGetScoresAsync(
         HttpContext context,
         BeatmapService beatmaps,
+        IScoreRepository scores,
+        IUserRepository users,
+        PlayerRegistry registry,
         CancellationToken cancellationToken)
     {
-        // The client passes the beatmap hash as `c` and the filename as `f`; we only need the hash
-        // for the status line. Other params (mods, mode, set id) matter once we serve scores.
         var md5 = context.Request.Query["c"].ToString();
         if (string.IsNullOrEmpty(md5))
         {
-            // No hash: nothing to resolve. Report not-submitted so the client stops asking.
             return Results.Text(NotSubmitted, "text/plain");
         }
 
@@ -50,23 +51,86 @@ public static class WebEndpoints
             return Results.Text(NotSubmitted, "text/plain");
         }
 
-        // Below Ranked there is no leaderboard — the client only needs "{status}|false".
         if (!beatmap.Status.HasLeaderboard())
         {
             var line = string.Create(CultureInfo.InvariantCulture, $"{(int)beatmap.Status}|false");
             return Results.Text(line, "text/plain");
         }
 
-        // Ranked/Approved/Qualified/Loved: emit the full header (no score rows yet).
-        // {status}|{has_osz2}|{map_id}|{set_id}|{n_scores}|{fa_track_id}|{fa_license}
-        // followed by offset, beatmap name, and rating lines, then an empty personal-best line.
-        var header = string.Create(
-            CultureInfo.InvariantCulture,
-            $"{(int)beatmap.Status}|false|{beatmap.Id}|{beatmap.SetId}|0|0|\n0\n{beatmap.FullName}\n10.0\n\n");
-        return Results.Text(header, "text/plain");
+        if (!int.TryParse(context.Request.Query["m"].ToString(), out var mode))
+        {
+            mode = 0;
+        }
+
+        var board = await scores.GetLeaderboardAsync(md5, mode, 50, cancellationToken).ConfigureAwait(false);
+
+        // Look up requesting player's personal best via token
+        Score? personalBest = null;
+        var token = context.Request.Query["us"].ToString();
+        var requestingPlayer = string.IsNullOrEmpty(token) ? null : registry.GetByToken(token);
+        if (requestingPlayer is not null)
+        {
+            personalBest = await scores.GetPersonalBestAsync(requestingPlayer.UserId, md5, mode, cancellationToken).ConfigureAwait(false);
+        }
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
+            $"{(int)beatmap.Status}|false|{beatmap.Id}|{beatmap.SetId}|{board.Count}|0|"));
+        sb.AppendLine("0");
+        sb.AppendLine(beatmap.FullName);
+        sb.AppendLine("10.0");
+
+        if (personalBest is not null)
+        {
+            var pbUsername = await GetUsernameAsync(personalBest.UserId, users, registry, cancellationToken).ConfigureAwait(false);
+            var pbRank = board.TakeWhile(s => s.Id != personalBest.Id).Count() + 1;
+            sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank));
+        }
+        else
+        {
+            sb.AppendLine(string.Empty);
+        }
+
+        for (var i = 0; i < board.Count; i++)
+        {
+            var s = board[i];
+            var username = await GetUsernameAsync(s.UserId, users, registry, cancellationToken).ConfigureAwait(false);
+            sb.AppendLine(FormatScoreLine(s, username, i + 1));
+        }
+
+        return Results.Text(sb.ToString(), "text/plain");
     }
 
-    /// <summary>The not-submitted status line: <c>-1|false</c>.</summary>
+    private static IResult HandleGetReplayAsync(HttpContext context, IConfiguration configuration)
+    {
+        if (!long.TryParse(context.Request.Query["c"].ToString(), out var scoreId))
+            return Results.NotFound();
+
+        var replayDir = configuration["Replays:Path"] ?? "data/replays";
+        var path = Path.Combine(replayDir, $"{scoreId}.osr");
+
+        if (!File.Exists(path))
+            return Results.NotFound();
+
+        return Results.File(path, "application/octet-stream", $"{scoreId}.osr");
+    }
+
+    private static async Task<string> GetUsernameAsync(int userId, IUserRepository users, PlayerRegistry registry, CancellationToken ct)
+    {
+        var online = registry.GetByUserId(userId);
+        if (online is not null)
+        {
+            return online.Presence.Username;
+        }
+
+        var user = await users.GetByIdAsync(userId, ct).ConfigureAwait(false);
+        return user?.Username ?? userId.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatScoreLine(Score s, string username, int rank) =>
+        string.Create(CultureInfo.InvariantCulture,
+            $"{s.Id}|{username}|{s.ScoreValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? 1 : 0)}|{s.Mods}|{s.UserId}|{rank}|{s.SubmittedAt.ToUnixTimeSeconds()}|0");
+
     private static readonly string NotSubmitted =
         string.Create(CultureInfo.InvariantCulture, $"{(int)RankedStatus.NotSubmitted}|false");
 }

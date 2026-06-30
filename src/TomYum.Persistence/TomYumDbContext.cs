@@ -21,6 +21,12 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Cached beatmap metadata (mirrors official maps + server-local custom maps).</summary>
     public DbSet<Beatmap> Beatmaps => Set<Beatmap>();
 
+    /// <summary>Submitted scores.</summary>
+    public DbSet<Score> Scores => Set<Score>();
+
+    /// <summary>Per-user per-mode statistics.</summary>
+    public DbSet<UserStats> UserStats => Set<UserStats>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

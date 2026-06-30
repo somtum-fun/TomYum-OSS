@@ -1,12 +1,12 @@
 # TomYum
 
 An extensible, horizontally scalable [osu!](https://osu.ppy.sh) bancho server written in
-C# / .NET 8, supporting **both** the osu!stable and osu!lazer clients.
+C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 
 ## Technologies
 
-- ASP.NET Core (.NET 8)
-- MySQL (MariaDB)
+- ASP.NET Core (.NET 10)
+- MySQL 8.4 (EF Core + Pomelo 9)
 - Redis
 - Docker / k8s / k3s
 - Caddy (edge + storage fronting)
@@ -25,28 +25,36 @@ C# / .NET 8, supporting **both** the osu!stable and osu!lazer clients.
 - Chat: server-side channels (`#osu`, `#announce`, `#lobby`, …), public + private messages
 - BanchoBot: resident bot answering `!`-commands (`!help`, `!stats`, `!setpriv`, …)
 - Role/privilege system: staff tiers (owner/admin/dev/mod) + supporter, mapped to client badges
-- MySQL persistence (EF Core + Pomelo): user + beatmap repositories
+- MySQL persistence (EF Core + Pomelo): user, score, and beatmap repositories
+- Score submission (`POST /web/osu-submit-modular-selector.php`): Rijndael-256 CBC decryption, status tracking (Best/Submitted/Failed), leaderboard update
+- Real PP calculation via `ppy.osu.Game.Rulesets.*` (all four rulesets); weighted PP + accuracy using the standard osu! formula
+- Replay save (`data/replays/{id}.osr`) and serve (`GET /web/osu-getreplay.php`)
+- Leaderboards (`GET /web/osu-osz2-getscores.php`) with personal-best row
 - Beatmap ranked-status lookup via the osu! v1 API (keyed `old.ppy.sh` / keyless `osu.direct`)
 - Host-aware subdomain routing (`c`/`c4`/`ce`/`cho` for bancho, `osu` for `/web/*`)
 
 ## In development / TODO
 
+- [x] Score submission with Rijndael-256 CBC decryption, status tracking, and chart response
+- [x] Real PP calculation (all four rulesets) + weighted PP/accuracy formula
+- [x] Replay save and serve (`/web/osu-getreplay.php`)
+- [ ] Redis score queue (`TomYum.ScoreQueue` worker for async PP recalc + stats, ADR-0004)
 - [ ] Redis-backed online state for cross-node fan-out (100–1000+ players)
-- [ ] osu!lazer support (osu-web-style REST API + SignalR hubs)
+- [ ] EF Core migrations (currently `EnsureCreated`; schema cannot evolve without data loss)
+- [ ] osu!lazer support (osu-web REST API + SignalR hubs)
 - [ ] IRC server for external bots (auth via osu! API key)
 - [ ] Plugin system (`.dll` + runtime-compiled loose `.cs`); DAN Mode & Session as plugins
-- [ ] Score submission pipeline + async statistics/PP queue
 - [ ] Configurable multi-target storage (R2 / AWS S3 / OVH S3 / Azure Blob / local)
 - [ ] Custom beatmap submission (reserved ID range `100000000+`)
-- [ ] osu!Direct, leaderboards, multiplayer, spectating
-- [ ] EF Core migrations (currently `EnsureCreated`; schema cannot evolve yet)
+- [ ] Multiplayer, spectating
+- [ ] Geolocation for presence (lon/lat/country from client IP)
 - [ ] Docker / k8s deployment
 
 ## Building
 
 ### Prerequisites
 
-- .NET SDK 8.0 (pinned in `global.json`)
+- .NET SDK 10.0 (pinned in `global.json`)
 - MySQL / MariaDB Server
 - Redis Server
 
