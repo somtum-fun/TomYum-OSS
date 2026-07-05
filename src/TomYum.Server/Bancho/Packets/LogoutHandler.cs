@@ -1,16 +1,12 @@
 using TomYum.Bancho;
+using TomYum.Server.Bancho.Packets.Match;
 
 namespace TomYum.Server.Bancho.Packets;
 
 /// <summary>
-/// LOGOUT (id 2): the client is disconnecting. We remove the session from the registry and
-/// broadcast USER_LOGOUT (id 12) to every remaining player so their user lists drop the player.
+/// LOGOUT (id 2): the client is disconnecting. Cleans up match membership (if any), removes
+/// the session, and broadcasts USER_LOGOUT (id 12) to everyone else.
 /// </summary>
-/// <remarks>
-/// The client sends a trailing i32 (an unused timestamp/zero) which we do not need to read.
-/// Stable also fires a spurious LOGOUT immediately after login on some builds; guarding against
-/// that (e.g. ignoring a logout within the first second) is a refinement for a later slice.
-/// </remarks>
 public sealed class LogoutHandler : IClientPacketHandler
 {
     /// <inheritdoc />
@@ -20,6 +16,11 @@ public sealed class LogoutHandler : IClientPacketHandler
     public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+
+        // Clean up match membership before removing from registry (RemovePlayer needs the registry).
+        var match = context.Matches.GetByUserId(context.Player.UserId);
+        if (match is not null)
+            MatchBroadcast.RemovePlayer(match, context.Player, context.Registry, context.Matches);
 
         context.Registry.Remove(context.Player.Token);
         context.Channels.RemoveFromAll(context.Player.UserId);

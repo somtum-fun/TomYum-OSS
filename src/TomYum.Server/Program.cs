@@ -1,3 +1,4 @@
+using TomYum.Caching;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
@@ -5,6 +6,7 @@ using TomYum.Performance;
 using TomYum.Persistence;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
+using TomYum.Server.Bancho.Packets.Match;
 using TomYum.Server.Beatmaps;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -20,22 +22,26 @@ static string ResolveConfigDir(string start)
     {
         var candidate = Path.Combine(dir.FullName, "config");
         if (Directory.Exists(candidate))
-        {
             return candidate;
-        }
     }
-
-    // Fall back to a config/ beside the content root; AddJsonFile treats missing files as optional.
     return Path.Combine(start, "config");
 }
 
 var configDir = ResolveConfigDir(builder.Environment.ContentRootPath);
+
+// Load .env from the config/ directory if present (local dev / docker-compose).
+// Environment variables already set in the process always win (docker -e, k8s secret mounts).
+var dotEnvPath = Path.Combine(configDir, ".env");
+if (File.Exists(dotEnvPath))
+    DotNetEnv.Env.Load(dotEnvPath);
+
 builder.Configuration
     .AddJsonFile(Path.Combine(configDir, "appsettings.json"), optional: true, reloadOnChange: true)
     .AddJsonFile(
         Path.Combine(configDir, $"appsettings.{builder.Environment.EnvironmentName}.json"),
         optional: true,
-        reloadOnChange: true);
+        reloadOnChange: true)
+    .AddYamlFile(Path.Combine(configDir, "tomyum.yaml"), optional: true, reloadOnChange: true);
 builder.Configuration.AddEnvironmentVariables(prefix: "TOMYUM_");
 
 // --- Bancho (osu!stable) online state + auth ---
@@ -43,6 +49,7 @@ builder.Configuration.AddEnvironmentVariables(prefix: "TOMYUM_");
 // cross-node online state (Redis, ADR-0003) replace the in-memory pieces in later slices.
 builder.Services.AddSingleton<PlayerRegistry>();
 builder.Services.AddSingleton<ChannelRegistry>();
+builder.Services.AddSingleton<MatchRegistry>();
 builder.Services.AddSingleton<TomYumVersion>();
 builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
@@ -65,6 +72,7 @@ else
 }
 builder.Services.AddScoped<BanchoLoginHandler>();
 builder.Services.AddScoped<RegistrationService>();
+builder.Services.AddTomYumCaching(builder.Configuration);
 
 // --- Beatmap status (osu! v1 API) ---
 // Bind the Osu options (key from config/OSU_API_KEY env) and a typed HttpClient pointed at
@@ -95,6 +103,31 @@ builder.Services.AddSingleton<IClientPacketHandler, SendPublicMessageHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, SendPrivateMessageHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, ChannelJoinHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, ChannelPartHandler>();
+
+// Multiplayer match handlers.
+builder.Services.AddSingleton<IClientPacketHandler, JoinLobbyHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, PartLobbyHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, CreateMatchHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, JoinMatchHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, PartMatchHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchChangeSlotHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchReadyHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchNotReadyHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchLockHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchChangeSettingsHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchStartHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchLoadCompleteHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchNoBeatmapHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchHasBeatmapHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchScoreUpdateHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchFailedHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchCompleteHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchSkipRequestHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchChangeModsHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchChangeTeamHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchTransferHostHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchInviteHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, MatchChangePasswordHandler>();
 builder.Services.AddSingleton<BanchoPacketDispatcher>();
 
 var app = builder.Build();

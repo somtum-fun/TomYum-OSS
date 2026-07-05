@@ -1,35 +1,56 @@
-# TomYum edge configuration (Caddy, NOT nginx). Caddy fronts the server and proxies
-# large asset downloads to object storage (R2 / OVH S3). Scaffold stub — replace
-# example.com with your domain and adjust storage origins. The host routing here must
-# match the in-code RequireHost constraints (see TomYum.Server/Bancho/BanchoHosts.cs and
-# memories/protocols/bancho-stable.md §1).
+# TomYum reverse proxy configuration (Caddy).
+#
+# Replace example.com with your actual domain. This configuration matches the subdomain
+# patterns that osu!stable expects (see memories/protocols/bancho-stable.md).
+#
+# Subdomains:
+#   c, ce, c4, cho  - Bancho binary protocol (login + packet polling)
+#   osu             - Web API (/web/*.php, in-game registration, osu!Direct)
+#   a               - Avatars (served from local files or storage)
+#   api             - REST API (future: osu!lazer)
+#   session         - Session frontend (future: plugin)
+#   b               - Beatmaps (future: custom beatmap hosting)
 
-# Bancho binary protocol. The osu!stable client connects to c.<domain> (older clients
-# also use c4./ce.), and bancho-likes use cho.<domain>. All carry POST / login + polls.
-c.example.com, c4.example.com, ce.example.com, cho.example.com {
-	encode zstd gzip
-	reverse_proxy tomyum-server:8080
+# Bancho binary protocol + Web API
+c.example.com, ce.example.com, c4.example.com, cho.example.com, osu.example.com, api.example.com, session.example.com, b.example.com {
+  # TLS cert paths - adjust for your setup (Let's Encrypt, custom certs, etc.)
+  # For Let's Encrypt: remove the tls line entirely and Caddy will auto-provision
+  # tls /etc/caddy/certs/example.com.pem /etc/caddy/certs/example.com.key
+
+  # Allow large request bodies (replays, beatmap uploads)
+  request_body {
+    max_size 20MB
+  }
+
+  # Proxy to TomYum.Server
+  reverse_proxy localhost:8080 {
+    header_up Host {host}
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+
+  # Optional: enable compression for text responses
+  encode gzip zstd
 }
 
-# Web surface: /web/*.php, in-game registration (POST /users), osu!Direct, screenshots.
-osu.example.com {
-	encode zstd gzip
+# Avatars - serve from local filesystem with caching headers
+# Adjust root path to match your storage.providers.local.bucket or object storage
+a.example.com {
+  # tls /etc/caddy/certs/example.com.pem /etc/caddy/certs/example.com.key
 
-	# Health/liveness passthrough.
-	handle /health {
-		reverse_proxy tomyum-server:8080
-	}
+  root * /var/lib/tomyum/storage/avatars
 
-	# Everything else to the main server.
-	reverse_proxy tomyum-server:8080
-}
+  # Aggressive no-cache so avatar changes are visible immediately
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
 
-# Asset CDN front: serve beatmap sets / replays / avatars from object storage, with
-# Caddy caching at the edge. Buckets are S3-compatible (R2, OVH). TODO: wire signed URLs.
-assets.example.com {
-	encode zstd gzip
-	# reverse_proxy https://<bucket>.<r2-account>.r2.cloudflarestorage.com {
-	#   header_up Host {http.reverse_proxy.upstream.hostport}
-	# }
-	respond "TomYum asset edge (configure storage origin)" 200
+  # Try requested path with common image extensions, fallback to default.png
+  try_files {path} {path}.png {path}.jpg {path}.gif {path}.jpeg {path}.jfif /default.png
+
+  file_server
+  encode gzip
 }

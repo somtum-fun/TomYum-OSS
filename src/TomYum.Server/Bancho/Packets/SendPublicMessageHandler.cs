@@ -35,7 +35,18 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             return;
         }
 
-        var channel = context.Channels.Get(target);
+        ChatChannel? channel;
+        if (target == "#multiplayer")
+        {
+            var matchForChannel = context.Matches.GetByUserId(context.Player.UserId);
+            if (matchForChannel is null) return;
+            channel = matchForChannel.Channel;
+        }
+        else
+        {
+            channel = context.Channels.Get(target);
+        }
+
         if (channel is null || !channel.Contains(context.Player.UserId))
         {
             return;

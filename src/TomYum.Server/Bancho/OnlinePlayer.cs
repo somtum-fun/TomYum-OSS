@@ -39,6 +39,9 @@ public sealed class OnlinePlayer
     /// <summary>When this session last sent or was sent data; used to reap dead sessions.</summary>
     public DateTimeOffset LastActivityUtc { get; set; }
 
+    /// <summary>Whether this player currently has the multiplayer lobby open.</summary>
+    public bool InLobby { get; set; }
+
     /// <summary>Appends already-framed packet bytes to this player's outbound queue.</summary>
     public void Enqueue(ReadOnlySpan<byte> framedPackets)
     {

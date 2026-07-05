@@ -5,6 +5,7 @@ using Org.BouncyCastle.Crypto.Modes;
 using Org.BouncyCastle.Crypto.Paddings;
 using Org.BouncyCastle.Crypto.Parameters;
 using TomYum.Bancho;
+using TomYum.Caching;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
@@ -36,6 +37,7 @@ public static class ScoreSubmissionEndpoint
         IScoreRepository scores,
         IUserStatsRepository userStats,
         IPerformanceCalculator pp,
+        IScoreQueue scoreQueue,
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("TomYum.ScoreSubmission");
@@ -158,6 +160,15 @@ public static class ScoreSubmissionEndpoint
         // Fetch before insert so the Status==Best filter returns the genuine prior best, not this score
         var prevBest = await scores.GetPersonalBestAsync(user.Id, bmk, mode, cancellationToken).ConfigureAwait(false);
 
+        // Fetch the leaderboard before insert to determine the player's beatmap rank before this submission.
+        // After insert the position of the previous best is no longer queryable.
+        var preBoardForRank = await scores.GetLeaderboardAsync(bmk, mode, 50, cancellationToken).ConfigureAwait(false);
+        var prevBeatmapRank = prevBest is not null
+            ? preBoardForRank.TakeWhile(s => s.Id != prevBest.Id).Count() + 1 as int?
+            : null;
+        // If prevBest wasn't in the top-50 window it won't be found; treat as no previous rank.
+        if (prevBeatmapRank > preBoardForRank.Count) prevBeatmapRank = null;
+
         var ppValue = 0.0;
         try
         {
@@ -224,14 +235,35 @@ public static class ScoreSubmissionEndpoint
             logger.LogInformation("Replay saved: {Path} ({Bytes} bytes)", replayPath, replayBytes.Length);
         }
 
+        // Enqueue for async post-processing (spectator broadcast, achievements, etc.).
+        // Best-effort: a Redis hiccup must not fail the submission response.
+        try
+        {
+            await scoreQueue.EnqueueAsync(score.Id, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Score {ScoreId} could not be enqueued; submission still succeeds", score.Id);
+        }
+
         var stats = await userStats.GetOrCreateAsync(user.Id, mode, cancellationToken).ConfigureAwait(false);
+
+        var prevRankedScore = stats.RankedScore;
+        var prevTotalScore  = stats.TotalScore;
+        var prevPp          = stats.Pp;
+        var prevAccuracy    = stats.Accuracy;
 
         stats.PlayCount++;
         stats.TotalScore += scoreValue;
 
         if (scoreStatus == ScoreStatus.Best)
         {
-            stats.RankedScore += scoreValue - (prevBest?.ScoreValue ?? 0);
+            // Ranked score is the delta: new score minus the previous best score on this map.
+            // If the player had no prior best, the full score value is added.
+            // Clamp to 0 so ranked score can never go negative (e.g. a retry that somehow
+            // ends up as Best with a lower score value due to PP > prevBest.PP).
+            var delta = scoreValue - (prevBest?.ScoreValue ?? 0);
+            stats.RankedScore = Math.Max(0, stats.RankedScore + delta);
 
             // Weighted PP and accuracy across all best scores (standard osu! formula).
             var bestPerfs = await scores.GetBestPerformancesAsync(user.Id, mode, cancellationToken).ConfigureAwait(false);
@@ -246,6 +278,8 @@ public static class ScoreSubmissionEndpoint
                 stats.Accuracy = (float)(weightedAcc * bonusAcc / 100.0);
             }
         }
+
+        var prevGlobalRank = await userStats.GetGlobalRankAsync(user.Id, mode, cancellationToken).ConfigureAwait(false);
 
         stats = await userStats.UpdateAsync(stats, cancellationToken).ConfigureAwait(false);
         var globalRank = await userStats.GetGlobalRankAsync(user.Id, mode, cancellationToken).ConfigureAwait(false);
@@ -288,8 +322,8 @@ public static class ScoreSubmissionEndpoint
 
         var response = string.Create(CultureInfo.InvariantCulture,
             $"beatmapId:{beatmap.Id}|beatmapSetId:{beatmap.SetId}|beatmapPlaycount:1|beatmapPasscount:1|approvedDate:\n\n" +
-            $"chartId:beatmap|chartUrl:https://osu.ppy.sh/b/{beatmap.Id}|chartName:Beatmap Ranking|rankBefore:|rankAfter:{scoreRank}|maxComboBefore:{prevBestCombo}|maxComboAfter:{maxCombo}|accuracyBefore:{prevBestAccPct:F2}|accuracyAfter:{accuracyPct:F2}|rankedScoreBefore:{prevBestScore}|rankedScoreAfter:{scoreValue}|totalScoreBefore:{prevBestScore}|totalScoreAfter:{scoreValue}|ppBefore:{prevBestPp:F0}|ppAfter:{ppValue:F0}|onlineScoreId:{score.Id}\n\n" +
-            $"chartId:overall|chartUrl:https://osu.ppy.sh/u/{user.Id}|chartName:Overall Ranking|rankBefore:|rankAfter:{globalRank}|accuracyBefore:|accuracyAfter:{accuracyPct:F2}|rankedScoreBefore:|rankedScoreAfter:{stats.RankedScore}|totalScoreBefore:|totalScoreAfter:{stats.TotalScore}|ppBefore:|ppAfter:{stats.Pp:F0}|toNextRank:|toNextRankUser:\n");
+            $"chartId:beatmap|chartUrl:https://osu.ppy.sh/b/{beatmap.Id}|chartName:Beatmap Ranking|rankBefore:{prevBeatmapRank}|rankAfter:{scoreRank}|maxComboBefore:{prevBestCombo}|maxComboAfter:{maxCombo}|accuracyBefore:{prevBestAccPct:F2}|accuracyAfter:{accuracyPct:F2}|rankedScoreBefore:{prevBestScore}|rankedScoreAfter:{scoreValue}|totalScoreBefore:{prevBestScore}|totalScoreAfter:{scoreValue}|ppBefore:{prevBestPp:F2}|ppAfter:{ppValue:F2}|onlineScoreId:{score.Id}\n\n" +
+            $"chartId:overall|chartUrl:https://osu.ppy.sh/u/{user.Id}|chartName:Overall Ranking|rankBefore:{prevGlobalRank}|rankAfter:{globalRank}|accuracyBefore:{prevAccuracy * 100.0:F2}|accuracyAfter:{stats.Accuracy * 100.0:F2}|rankedScoreBefore:{prevRankedScore}|rankedScoreAfter:{stats.RankedScore}|totalScoreBefore:{prevTotalScore}|totalScoreAfter:{stats.TotalScore}|ppBefore:{prevPp:F0}|ppAfter:{stats.Pp:F0}|toNextRank:|toNextRankUser:\n");
 
         return Results.Text(response, "text/plain");
     }

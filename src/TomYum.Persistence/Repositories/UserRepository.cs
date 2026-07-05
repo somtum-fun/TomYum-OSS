@@ -60,4 +60,10 @@ public sealed class UserRepository : IUserRepository
         _db.Entry(user).State = EntityState.Detached;
         return user;
     }
+
+    /// <inheritdoc />
+    public Task UpdateCountryAsync(int userId, string country, CancellationToken cancellationToken = default) =>
+        _db.Users
+            .Where(u => u.Id == userId)
+            .ExecuteUpdateAsync(s => s.SetProperty(u => u.Country, country), cancellationToken);
 }

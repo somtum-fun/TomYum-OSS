@@ -36,4 +36,10 @@ public interface IUserRepository
     /// exists.
     /// </summary>
     Task<User> UpdateAsync(User user, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Updates only the <see cref="User.Country"/> field for the given user id.
+    /// No-op when no user with that id exists.
+    /// </summary>
+    Task UpdateCountryAsync(int userId, string country, CancellationToken cancellationToken = default);
 }

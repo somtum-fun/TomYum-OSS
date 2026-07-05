@@ -6,6 +6,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="3.1.0" />
+    <PackageReference Include="DotNetEnv" Version="3.2.0" />
+    <PackageReference Include="StackExchange.Redis" Version="2.8.41" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/TomYum.Domain/TomYum.Domain.csproj" />
     <ProjectReference Include="../../src/TomYum.Caching/TomYum.Caching.csproj" />
     <ProjectReference Include="../../src/TomYum.Persistence/TomYum.Persistence.csproj" />

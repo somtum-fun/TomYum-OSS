@@ -4,7 +4,8 @@ namespace TomYum.Persistence;
 
 /// <summary>
 /// MySQL connection settings, bound from the <c>Database</c> configuration section. The discrete
-/// fields (host/port/name/user) live in <c>config/tomyum.yaml</c> or <c>appsettings.json</c>; the
+/// fields (host/port/name/user) live in <c>config/tomyum.yaml</c> (copy from
+/// <c>tomyum.yaml.example</c>) or <c>appsettings.json</c>; the
 /// password is injected via <c>TOMYUM_DATABASE__PASSWORD</c> and never committed (ADR-0008).
 /// </summary>
 /// <remarks>

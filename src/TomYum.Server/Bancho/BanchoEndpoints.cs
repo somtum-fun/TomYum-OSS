@@ -49,6 +49,7 @@ public static class BanchoEndpoints
         BanchoPacketDispatcher dispatcher,
         PlayerRegistry registry,
         ChannelRegistry channels,
+        MatchRegistry matches,
         CancellationToken cancellationToken)
     {
         // First contact: no osu-token header means the body is a plaintext login request.
@@ -72,7 +73,7 @@ public static class BanchoEndpoints
         // this player or others), then flush this player's queue followed by anything the
         // handlers produced for the originator in-line.
         var body = await ReadBodyAsync(context.Request, cancellationToken).ConfigureAwait(false);
-        var produced = await dispatcher.DispatchAsync(player, registry, channels, body).ConfigureAwait(false);
+        var produced = await dispatcher.DispatchAsync(player, registry, channels, matches, body).ConfigureAwait(false);
 
         var queued = player.DequeueAll();
         if (produced.Length == 0)
@@ -107,7 +108,8 @@ public static class BanchoEndpoints
         using var reader = new StreamReader(context.Request.Body);
         var body = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
-        var outcome = await loginHandler.HandleAsync(body, cancellationToken).ConfigureAwait(false);
+        var countryIso = context.Request.Headers["CF-IPCountry"].ToString();
+        var outcome = await loginHandler.HandleAsync(body, countryIso, cancellationToken).ConfigureAwait(false);
 
         // The client reads cho-token from the response header on every login attempt; on
         // failure the value is irrelevant (it branches on the USER_ID packet) but must exist.

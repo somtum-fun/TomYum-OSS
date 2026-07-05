@@ -46,10 +46,12 @@ public static class RegistrationEndpoints
         // check == 0 means "create the account"; any non-zero value is validate-only.
         var create = int.TryParse(checkRaw, out var check) && check == 0;
 
-        // TODO (geoloc slice): resolve the client country from CF-IPCountry / X-Forwarded-For.
-        // For now new accounts default to "xx" until IP geolocation lands.
+        var countryIso = context.Request.Headers["CF-IPCountry"].ToString();
+        if (string.IsNullOrWhiteSpace(countryIso))
+            countryIso = "xx";
+
         var result = await registration
-            .RegisterAsync(username, email, password, create, country: "xx", cancellationToken)
+            .RegisterAsync(username, email, password, create, country: countryIso.ToLowerInvariant(), cancellationToken)
             .ConfigureAwait(false);
 
         if (!result.IsValid)

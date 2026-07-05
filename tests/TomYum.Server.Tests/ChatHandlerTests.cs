@@ -20,6 +20,7 @@ public class ChatHandlerTests
             new TomYumVersion(),
             new PlayerRegistry(),
             new ChannelRegistry(),
+            new MatchRegistry(),
             new BeatmapService(new StubApiClient()),
             TestScopeFactory.Create(new InMemoryUserRepository())));
 
@@ -75,7 +76,7 @@ public class ChatHandlerTests
 
     private static ClientPacketContext Context(
         OnlinePlayer player, PlayerRegistry registry, ChannelRegistry channels, byte[] payload, BanchoPacketWriter response) =>
-        new(player, registry, channels, payload, response);
+        new(player, registry, channels, new MatchRegistry(), payload, response);
 
     [Fact]
     public async Task PublicMessage_FansOutToOtherChannelMembers()

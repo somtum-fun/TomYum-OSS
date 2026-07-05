@@ -76,10 +76,33 @@ public sealed class InMemoryUserRepository : IUserRepository
             throw new InvalidOperationException($"Cannot update user {user.Id}: no such user.");
         }
 
-        // Overwrite both indexes with the supplied copy (safe name is immutable here).
         var safeName = string.IsNullOrEmpty(user.SafeName) ? User.MakeSafeName(user.Username) : user.SafeName;
         _byId[user.Id] = user;
         _bySafeName[safeName] = user;
         return Task.FromResult(user);
+    }
+
+    /// <inheritdoc />
+    public Task UpdateCountryAsync(int userId, string country, CancellationToken cancellationToken = default)
+    {
+        if (_byId.TryGetValue(userId, out var existing))
+        {
+            var updated = new User
+            {
+                Id = existing.Id,
+                Username = existing.Username,
+                SafeName = existing.SafeName,
+                Email = existing.Email,
+                PasswordBcrypt = existing.PasswordBcrypt,
+                Country = country,
+                CreationTime = existing.CreationTime,
+                LatestActivity = existing.LatestActivity,
+                ApiKey = existing.ApiKey,
+                Privileges = existing.Privileges,
+            };
+            _byId[userId] = updated;
+            _bySafeName[existing.SafeName] = updated;
+        }
+        return Task.CompletedTask;
     }
 }

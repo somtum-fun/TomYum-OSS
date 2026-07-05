@@ -1,4 +1,7 @@
-# TomYum optional configuration overlay (tomyum.yaml).
+# TomYum optional configuration overlay (tomyum.yaml.example).
+#
+# Copy this file to `tomyum.yaml` and edit it for your deployment.
+# `tomyum.yaml` is gitignored — it holds your local/deployment-specific settings.
 #
 # This file is an OPTIONAL overlay on top of appsettings.json + appsettings.{Env}.json
 # + environment variables. See memories/architecture/decisions/0008-config-strategy.md.
@@ -10,17 +13,29 @@
 # Inject them via environment variables / k8s secrets. Keys below are placeholders.
 
 server:
-  # Public domain the osu! client connects to (cho.<domain>, osu.<domain>, etc.).
+  # Public domain the osu! client connects to (c.<domain>, osu.<domain>, etc.).
   domain: "tomyum.example"
   # Bind address for the ASP.NET host inside the pod.
   bind: "http://0.0.0.0:8080"
 
 database:
-  # MySQL primary persistence. Password comes from TOMYUM_DATABASE__PASSWORD.
+  # Enable MySQL persistence. false = in-memory only (for quick local dev without a DB).
+  enabled: true
+  # MySQL host. Password comes from TOMYUM_DATABASE__PASSWORD env var.
   host: "mysql"
   port: 3306
   name: "tomyum"
   user: "tomyum"
+
+osu:
+  # osu! v1 API key for beatmap metadata lookup.
+  # Leave empty to use the keyless osu.direct mirror (works without a key).
+  # Get a key at https://old.ppy.sh/p/api
+  apiKey: ""
+
+replays:
+  # Directory where replay .osr files are stored (relative to the working directory).
+  path: "data/replays"
 
 redis:
   # Online state, pub/sub fan-out, leaderboard caches. See ADR-0003.
@@ -127,16 +142,10 @@ plugins:
   # to loading compiled .dll plugins.
   allowLooseSource: true
 
-  # Example per-plugin config blocks (consumed by the plugins themselves):
-  "tomyum.dan-mode":
-    enabled: true
-    danSetIds: [100000001, 100000002]
-    minAccuracy: 0.96
-    introMinAccuracy: 0.95
-    # webhook URLs injected via env, not committed here.
+  # Per-plugin config blocks go here: plugins.<plugin-id> with whatever settings
+  # that plugin reads. See each plugin's README for its config schema.
+  # Example:
+  #   "your.plugin.name":
+  #     enabled: true
+  #     someOption: value
 
-  "tomyum.session":
-    enabled: true
-    ttlHours: 168
-    bindClient: true
-    allowBodyToken: false

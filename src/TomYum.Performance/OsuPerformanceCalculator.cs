@@ -70,6 +70,11 @@ public sealed class OsuPerformanceCalculator : IPerformanceCalculator
             Mods = mods,
             MaxCombo = req.MaxCombo,
             Passed = req.Passed,
+            // All bancho-submitted scores come from osu!stable (legacy format).
+            // Without this flag the lazer PP calculator expects SliderTailHit /
+            // LargeTickHit statistics that stable never sends, treating every
+            // slider end/tick as missed and gutting aim PP.
+            IsLegacyScore = true,
         };
 
         // Map legacy hit counts to the HitResult statistics the PP calculator expects.
@@ -102,6 +107,25 @@ public sealed class OsuPerformanceCalculator : IPerformanceCalculator
                 scoreInfo.Statistics[HitResult.Meh] = req.Count50;
                 scoreInfo.Statistics[HitResult.Good] = req.CountKatu;
                 break;
+        }
+
+        // Compute accuracy: the PP calculator reads scoreInfo.Accuracy directly.
+        // Formula matches the standard osu! accuracy calculation per ruleset.
+        var totalHits = req.Count300 + req.Count100 + req.Count50 + req.CountMiss;
+        if (totalHits > 0)
+        {
+            scoreInfo.Accuracy = req.RulesetId switch
+            {
+                0 => (req.Count300 * 300.0 + req.Count100 * 100.0 + req.Count50 * 50.0) / (totalHits * 300.0),
+                1 => (req.Count300 + req.Count100 * 0.5) / totalHits,
+                // catch: missed droplets (nKatu) count against accuracy
+                2 => (double)(req.Count300 + req.Count100 + req.Count50)
+                     / (req.Count300 + req.Count100 + req.Count50 + req.CountKatu + req.CountMiss),
+                // mania: all note types (MAX/300g + 200) are in the denominator
+                3 => (req.CountGeki * 300.0 + req.Count300 * 300.0 + req.CountKatu * 200.0 + req.Count100 * 100.0 + req.Count50 * 50.0)
+                     / ((req.CountGeki + req.Count300 + req.CountKatu + req.Count100 + req.Count50 + req.CountMiss) * 300.0),
+                _ => 0.0,
+            };
         }
 
         return scoreInfo;

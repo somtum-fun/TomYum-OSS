@@ -18,7 +18,7 @@ public class BanchoLoginHandlerTests
         var hasher = new BcryptPasswordHasher();
         var registry = new PlayerRegistry();
         var channels = new ChannelRegistry();
-        var handler = new BanchoLoginHandler(users, hasher, registry, channels, NullLogger<BanchoLoginHandler>.Instance);
+        var handler = new BanchoLoginHandler(users, hasher, new InMemoryUserStatsRepository(), registry, channels, NullLogger<BanchoLoginHandler>.Instance);
         return (handler, registry);
     }
 
@@ -47,7 +47,7 @@ public class BanchoLoginHandlerTests
         var (handler, registry) = NewHandler(out var users);
         await RegisterAsync(users, "BlueSky", "s3cure-pass");
 
-        var outcome = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), CancellationToken.None);
+        var outcome = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
 
         Assert.NotNull(outcome.Token);
         Assert.Equal(1, registry.Count);
@@ -70,7 +70,7 @@ public class BanchoLoginHandlerTests
         var (handler, registry) = NewHandler(out var users);
         await RegisterAsync(users, "BlueSky", "s3cure-pass");
 
-        var outcome = await handler.HandleAsync(LoginBody("BlueSky", "wrong-pass-xyz"), CancellationToken.None);
+        var outcome = await handler.HandleAsync(LoginBody("BlueSky", "wrong-pass-xyz"), string.Empty, CancellationToken.None);
 
         Assert.Null(outcome.Token);
         Assert.Equal(0, registry.Count);
@@ -81,7 +81,7 @@ public class BanchoLoginHandlerTests
     {
         var (handler, registry) = NewHandler(out _);
 
-        var outcome = await handler.HandleAsync(LoginBody("NoSuchUser", "s3cure-pass"), CancellationToken.None);
+        var outcome = await handler.HandleAsync(LoginBody("NoSuchUser", "s3cure-pass"), string.Empty, CancellationToken.None);
 
         Assert.Null(outcome.Token);
         Assert.Equal(0, registry.Count);
@@ -94,7 +94,7 @@ public class BanchoLoginHandlerTests
         await RegisterAsync(users, "Blue_Sky", "s3cure-pass");
 
         // Logging in as "Blue Sky" (space) must resolve to the "blue_sky" safe name.
-        var outcome = await handler.HandleAsync(LoginBody("Blue Sky", "s3cure-pass"), CancellationToken.None);
+        var outcome = await handler.HandleAsync(LoginBody("Blue Sky", "s3cure-pass"), string.Empty, CancellationToken.None);
 
         Assert.NotNull(outcome.Token);
     }

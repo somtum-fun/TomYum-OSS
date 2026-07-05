@@ -13,9 +13,9 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 
 ## Progress
 
-> Status: **early development.** A player can register in-client, log in, chat, and appear
-> online to others, with accounts and beatmap metadata persisted to MySQL. Many features are
-> still to come — see the TODO list below.
+> Status: **early development.** A player can register in-client, log in, chat, play maps,
+> submit scores, and compete in multiplayer rooms. Accounts, scores, and beatmap metadata are
+> persisted to MySQL. Many features are still to come — see the TODO list below.
 
 ## Features
 
@@ -23,7 +23,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - In-game registration (`POST /users`) + real password auth (`bcrypt(md5_hex(plaintext))`)
 - Post-login packet dispatch: presence, stats, status changes, logout
 - Chat: server-side channels (`#osu`, `#announce`, `#lobby`, …), public + private messages
-- BanchoBot: resident bot answering `!`-commands (`!help`, `!stats`, `!setpriv`, …)
+- BanchoBot: resident bot answering `!`-commands (`!help`, `!stats`, `!setpriv`, `!roll`, `!mp …`)
 - Role/privilege system: staff tiers (owner/admin/dev/mod) + supporter, mapped to client badges
 - MySQL persistence (EF Core + Pomelo): user, score, and beatmap repositories
 - Score submission (`POST /web/osu-submit-modular-selector.php`): Rijndael-256 CBC decryption, status tracking (Best/Submitted/Failed), leaderboard update
@@ -32,21 +32,25 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - Leaderboards (`GET /web/osu-osz2-getscores.php`) with personal-best row
 - Beatmap ranked-status lookup via the osu! v1 API (keyed `old.ppy.sh` / keyless `osu.direct`)
 - Host-aware subdomain routing (`c`/`c4`/`ce`/`cho` for bancho, `osu` for `/web/*`)
+- **Multiplayer**: 16-slot lobby + match rooms with full lifecycle (create/join/part, ready, start, score updates, skip, fail, complete), per-match `#multiplayer` chat, host transfer, invites, password, freemods
+- **BanchoBot `!mp` commands**: `!mp start [s]` (immediate or countdown-then-start), `!mp countdown <s>` (count down only), `!mp abort`, `!mp host <player>`, `!mp kick <player>`
+- **Redis score queue**: `TomYum.ScoreQueue` background worker reads from a Redis Stream consumer group, publishes `osu-channel:score:processed` pub/sub, and ACKs
 
 ## In development / TODO
 
 - [x] Score submission with Rijndael-256 CBC decryption, status tracking, and chart response
 - [x] Real PP calculation (all four rulesets) + weighted PP/accuracy formula
 - [x] Replay save and serve (`/web/osu-getreplay.php`)
-- [ ] Redis score queue (`TomYum.ScoreQueue` worker for async PP recalc + stats, ADR-0004)
+- [x] Redis score queue (`TomYum.ScoreQueue` background worker, Redis Stream consumer group)
+- [x] Multiplayer: lobby, match rooms, full lifecycle, per-match chat, BanchoBot `!mp` commands
 - [ ] Redis-backed online state for cross-node fan-out (100–1000+ players)
 - [ ] EF Core migrations (currently `EnsureCreated`; schema cannot evolve without data loss)
+- [ ] Spectating
 - [ ] osu!lazer support (osu-web REST API + SignalR hubs)
 - [ ] IRC server for external bots (auth via osu! API key)
 - [ ] Plugin system (`.dll` + runtime-compiled loose `.cs`); DAN Mode & Session as plugins
 - [ ] Configurable multi-target storage (R2 / AWS S3 / OVH S3 / Azure Blob / local)
 - [ ] Custom beatmap submission (reserved ID range `100000000+`)
-- [ ] Multiplayer, spectating
 - [ ] Geolocation for presence (lon/lat/country from client IP)
 - [ ] Docker / k8s deployment
 

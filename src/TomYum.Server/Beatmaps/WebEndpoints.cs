@@ -29,10 +29,19 @@ public static class WebEndpoints
             .RequireHost(hosts);
 
         app.MapScoreSubmission(hosts);
+
+        // Seasonal backgrounds: return an empty array to suppress the feature.
+        app.MapGet("/web/osu-getseasonal.php", () => Results.Json(Array.Empty<string>()))
+            .RequireHost(hosts);
+
+        // webfm.php: osu!stable hits this from the multiplayer lobby; an empty 200 is sufficient.
+        app.MapGet("/web/webfm.php", () => Results.Text(string.Empty, "text/plain"))
+            .RequireHost(hosts);
     }
 
     private static async Task<IResult> HandleGetScoresAsync(
         HttpContext context,
+        IConfiguration configuration,
         BeatmapService beatmaps,
         IScoreRepository scores,
         IUserRepository users,
@@ -80,11 +89,15 @@ public static class WebEndpoints
         sb.AppendLine(beatmap.FullName);
         sb.AppendLine("10.0");
 
+        var replayDir = configuration["Replays:Path"] ?? "data/replays";
+        var replayDirFull = Path.GetFullPath(replayDir);
+
         if (personalBest is not null)
         {
             var pbUsername = await GetUsernameAsync(personalBest.UserId, users, registry, cancellationToken).ConfigureAwait(false);
             var pbRank = board.TakeWhile(s => s.Id != personalBest.Id).Count() + 1;
-            sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank));
+            var pbHasReplay = File.Exists(Path.Combine(replayDirFull, $"{personalBest.Id}.osr"));
+            sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank, pbHasReplay));
         }
         else
         {
@@ -95,7 +108,8 @@ public static class WebEndpoints
         {
             var s = board[i];
             var username = await GetUsernameAsync(s.UserId, users, registry, cancellationToken).ConfigureAwait(false);
-            sb.AppendLine(FormatScoreLine(s, username, i + 1));
+            var hasReplay = File.Exists(Path.Combine(replayDirFull, $"{s.Id}.osr"));
+            sb.AppendLine(FormatScoreLine(s, username, i + 1, hasReplay));
         }
 
         return Results.Text(sb.ToString(), "text/plain");
@@ -107,12 +121,17 @@ public static class WebEndpoints
             return Results.NotFound();
 
         var replayDir = configuration["Replays:Path"] ?? "data/replays";
-        var path = Path.Combine(replayDir, $"{scoreId}.osr");
+        // Path.GetFullPath resolves relative paths against the process working directory.
+        // Results.PhysicalFile requires an absolute path; Results.File with a relative path
+        // resolves against the web root (wwwroot), which is wrong for data files on disk.
+        var path = Path.GetFullPath(Path.Combine(replayDir, $"{scoreId}.osr"));
 
         if (!File.Exists(path))
             return Results.NotFound();
 
-        return Results.File(path, "application/octet-stream", $"{scoreId}.osr");
+        // Results.File(string) resolves against the web root (wwwroot), not the filesystem.
+        // Open a FileStream so we can use the stream overload, which serves any path.
+        return Results.File(File.OpenRead(path), "application/octet-stream", $"{scoreId}.osr");
     }
 
     private static async Task<string> GetUsernameAsync(int userId, IUserRepository users, PlayerRegistry registry, CancellationToken ct)
@@ -127,9 +146,9 @@ public static class WebEndpoints
         return user?.Username ?? userId.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static string FormatScoreLine(Score s, string username, int rank) =>
+    private static string FormatScoreLine(Score s, string username, int rank, bool hasReplay) =>
         string.Create(CultureInfo.InvariantCulture,
-            $"{s.Id}|{username}|{s.ScoreValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? 1 : 0)}|{s.Mods}|{s.UserId}|{rank}|{s.SubmittedAt.ToUnixTimeSeconds()}|0");
+            $"{s.Id}|{username}|{s.ScoreValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? 1 : 0)}|{s.Mods}|{s.UserId}|{rank}|{s.SubmittedAt.ToUnixTimeSeconds()}|{(hasReplay ? 1 : 0)}");
 
     private static readonly string NotSubmitted =
         string.Create(CultureInfo.InvariantCulture, $"{(int)RankedStatus.NotSubmitted}|false");

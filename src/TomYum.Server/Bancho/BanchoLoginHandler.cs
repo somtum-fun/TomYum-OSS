@@ -22,6 +22,7 @@ public sealed class BanchoLoginHandler
 {
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IUserStatsRepository _userStats;
     private readonly PlayerRegistry _registry;
     private readonly ChannelRegistry _channels;
     private readonly ILogger<BanchoLoginHandler> _logger;
@@ -30,12 +31,14 @@ public sealed class BanchoLoginHandler
     public BanchoLoginHandler(
         IUserRepository users,
         IPasswordHasher passwordHasher,
+        IUserStatsRepository userStats,
         PlayerRegistry registry,
         ChannelRegistry channels,
         ILogger<BanchoLoginHandler> logger)
     {
         _users = users;
         _passwordHasher = passwordHasher;
+        _userStats = userStats;
         _registry = registry;
         _channels = channels;
         _logger = logger;
@@ -50,7 +53,10 @@ public sealed class BanchoLoginHandler
     /// Handles a first-contact login (request had no <c>osu-token</c> header). Always returns
     /// a body to send; <see cref="LoginOutcome.Token"/> is non-null only when login succeeded.
     /// </summary>
-    public async Task<LoginOutcome> HandleAsync(string body, CancellationToken cancellationToken)
+    /// <param name="body">Raw login request body.</param>
+    /// <param name="countryIso">2-letter ISO country code from CF-IPCountry (or empty).</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task<LoginOutcome> HandleAsync(string body, string countryIso, CancellationToken cancellationToken)
     {
         if (!LoginRequest.TryParse(body, out var request) || request is null)
         {
@@ -72,13 +78,35 @@ public sealed class BanchoLoginHandler
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
         }
 
+        // Resolve the country for this session: prefer the live CF-IPCountry header, fall back
+        // to the stored user country. If the stored country is "xx" and we have a real one
+        // now, persist it so future logins don't need the header to show the correct flag.
+        var resolvedCountry = !string.IsNullOrEmpty(countryIso) ? countryIso.ToLowerInvariant() : user.Country;
+        if (user.Country == "xx" && resolvedCountry != "xx")
+        {
+            await _users.UpdateCountryAsync(user.Id, resolvedCountry, cancellationToken).ConfigureAwait(false);
+        }
+
         var presence = new BanchoPresence
         {
             UserId = user.Id,
             Username = user.Username,
             UtcOffset = request.UtcOffset,
             Privileges = PrivilegeMapper.ToBancho(user.Privileges),
+            CountryCode = CountryCodes.ToNumeric(resolvedCountry),
         };
+
+        var stats = await _userStats.GetAsync(user.Id, presence.Mode, cancellationToken).ConfigureAwait(false);
+        if (stats is not null)
+        {
+            var rank = await _userStats.GetGlobalRankAsync(user.Id, presence.Mode, cancellationToken).ConfigureAwait(false);
+            presence.RankedScore = stats.RankedScore;
+            presence.TotalScore  = stats.TotalScore;
+            presence.PlayCount   = stats.PlayCount;
+            presence.Accuracy    = stats.Accuracy;
+            presence.Performance = (short)Math.Clamp((int)stats.Pp, short.MinValue, short.MaxValue);
+            presence.GlobalRank  = rank;
+        }
 
         var player = _registry.Add(presence);
         var welcome = string.Create(CultureInfo.InvariantCulture, $"Welcome to TomYum, {user.Username}!");

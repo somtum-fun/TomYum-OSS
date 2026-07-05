@@ -50,6 +50,15 @@ public sealed class PlayerRegistry
     public OnlinePlayer? GetByUserId(int userId) =>
         _byUserId.TryGetValue(userId, out var player) ? player : null;
 
+    /// <summary>Looks up an online player by username (case-insensitive), or <c>null</c> when not found.</summary>
+    public OnlinePlayer? GetByUsername(string username)
+    {
+        foreach (var p in _byToken.Values)
+            if (string.Equals(p.Presence.Username, username, StringComparison.OrdinalIgnoreCase))
+                return p;
+        return null;
+    }
+
     /// <summary>Removes a session (logout or reap). Idempotent.</summary>
     public void Remove(string token)
     {

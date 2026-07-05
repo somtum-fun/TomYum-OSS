@@ -33,7 +33,7 @@ services:
 
   server:
     build:
-      context: ..
+      context: ../..
       dockerfile: deploy/docker/Dockerfile
       args:
         PROJECT: src/TomYum.Server/TomYum.Server.csproj
@@ -42,11 +42,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    env_file:
+      - ../../config/.env
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
-      TOMYUM_DATABASE__HOST: mysql
-      TOMYUM_REDIS__CONFIGURATION: redis:6379
     ports:
       - "8080:8080"
 

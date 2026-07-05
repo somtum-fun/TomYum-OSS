@@ -22,12 +22,15 @@ coverage/
 .env
 *.env
 !*.env.example
+config/tomyum.yaml
+!config/tomyum.yaml.example
 appsettings.*.local.json
 secrets.json
 
 ## Storage / runtime data (local provider, replays, beatmaps)
 .data/
 data/local-storage/
+data/replays/
 
 ## Local datastore (Podman MySQL bind-mount) — dev-only, never commit DB files
 .localdb/
