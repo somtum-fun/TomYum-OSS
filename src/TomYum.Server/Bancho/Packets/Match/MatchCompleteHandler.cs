@@ -25,23 +25,7 @@ public sealed class MatchCompleteHandler : IClientPacketHandler
         }
 
         if (allDone)
-        {
-            lock (match.SyncRoot)
-            {
-                match.InProgress = false;
-                foreach (var s in match.Slots)
-                    if (s.Status == SlotStatus.Complete)
-                        s.Status = SlotStatus.NotReady;
-            }
-
-            var completeBytes = new BanchoPacketWriter(16)
-                .WritePacket(ServerPacketId.MatchComplete, null)
-                .ToArray();
-            MatchBroadcast.ToMatch(match, context.Registry, completeBytes);
-
-            var lobbyUpdate = MatchBroadcast.EncodeMatch(ServerPacketId.UpdateMatch, match, sendPassword: false);
-            MatchBroadcast.ToLobby(context.Registry, lobbyUpdate);
-        }
+            MatchBroadcast.CompleteMatch(match, context.Registry);
 
         return Task.CompletedTask;
     }

@@ -51,6 +51,28 @@ internal static class MatchBroadcast
     }
 
     /// <summary>
+    /// Finalises a match: sets InProgress to false, resets all Complete slots to NotReady,
+    /// broadcasts MATCH_COMPLETE (58) to every player in the room, and sends UPDATE_MATCH to
+    /// both match players and lobby so every client reflects the new idle state.
+    /// </summary>
+    internal static void CompleteMatch(Bancho.Match match, PlayerRegistry registry)
+    {
+        lock (match.SyncRoot)
+        {
+            match.InProgress = false;
+            foreach (var s in match.Slots)
+                if (s.Status == SlotStatus.Complete)
+                    s.Status = SlotStatus.NotReady;
+        }
+
+        var completeBytes = new BanchoPacketWriter(16)
+            .WritePacket(ServerPacketId.MatchComplete, null)
+            .ToArray();
+        ToMatch(match, registry, completeBytes);
+        UpdateMatch(match, registry);
+    }
+
+    /// <summary>
     /// Removes <paramref name="player"/> from <paramref name="match"/>: clears their slot, leaves the
     /// match channel, sends CHANNEL_KICK #multiplayer, transfers host if needed, disbands an empty room,
     /// and auto-completes a match in-progress if all remaining players are done.
@@ -94,29 +116,14 @@ internal static class MatchBroadcast
             if (match.HostUserId == player.UserId)
                 match.HostUserId = remaining[0];
 
-            // If a match is in progress and all remaining players have finished, end it now.
+            // Check whether removing this player finishes the match; state reset is deferred to CompleteMatch.
             matchEnded = match.InProgress && match.AllComplete();
-            if (matchEnded)
-            {
-                match.InProgress = false;
-                foreach (var s in match.Slots)
-                    if (s.Status == SlotStatus.Complete)
-                        s.Status = SlotStatus.NotReady;
-            }
         }
 
         if (matchEnded)
-        {
-            var completeBytes = new BanchoPacketWriter(16)
-                .WritePacket(ServerPacketId.MatchComplete, null)
-                .ToArray();
-            ToMatch(match, registry, completeBytes);
-            ToLobby(registry, EncodeMatch(ServerPacketId.UpdateMatch, match, sendPassword: false));
-        }
+            CompleteMatch(match, registry);
         else
-        {
             UpdateMatch(match, registry);
-        }
 
         return false;
     }

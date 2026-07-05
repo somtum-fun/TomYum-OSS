@@ -17,13 +17,26 @@ public sealed class MatchFailedHandler : IClientPacketHandler
         if (match is null) return Task.CompletedTask;
 
         int slotIdx;
-        lock (match.SyncRoot) { slotIdx = match.IndexOf(context.Player.UserId); }
-        if (slotIdx < 0) return Task.CompletedTask;
+        bool allDone;
+        lock (match.SyncRoot)
+        {
+            slotIdx = match.IndexOf(context.Player.UserId);
+            if (slotIdx < 0) return Task.CompletedTask;
+
+            // A failed player never sends MatchComplete (49). Move them to Complete so
+            // AllComplete() can fire once every remaining player has finished or failed.
+            match.Slots[slotIdx].Status = SlotStatus.Complete;
+            allDone = match.InProgress && match.AllComplete();
+        }
 
         var bytes = new BanchoPacketWriter(16)
             .WriteInt32Packet(ServerPacketId.MatchPlayerFailed, slotIdx)
             .ToArray();
         MatchBroadcast.ToMatch(match, context.Registry, bytes);
+
+        if (allDone)
+            MatchBroadcast.CompleteMatch(match, context.Registry);
+
         return Task.CompletedTask;
     }
 }
