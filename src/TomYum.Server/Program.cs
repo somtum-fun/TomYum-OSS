@@ -90,6 +90,15 @@ builder.Services.AddSingleton<BeatmapService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient<IPerformanceCalculator, OsuPerformanceCalculator>();
 
+// --- osu!Direct beatmap browser ---
+// Named HttpClient for the mirror; options let operators point at any mino.pw-compatible mirror.
+builder.Services.Configure<DirectOptions>(builder.Configuration.GetSection(DirectOptions.Section));
+builder.Services.AddHttpClient(DirectEndpoints.HttpClientName, http =>
+{
+    http.Timeout = TimeSpan.FromSeconds(15);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
+});
+
 // Packet dispatch: one stateless handler per client packet id, discovered by the singleton
 // dispatcher into a frozen lookup. Register each handler so DI enumerates them.
 builder.Services.AddSingleton<IClientPacketHandler, PingHandler>();
@@ -201,6 +210,9 @@ app.MapRegistration(BanchoHosts.Web(domain));
 
 // osu!stable /web/*.php surface (osu. host): beatmap status via the osu! v1 API for now.
 app.MapWeb(BanchoHosts.Web(domain));
+
+// osu!Direct in-game beatmap browser: search, set-info, and download redirect.
+app.MapDirect(BanchoHosts.Web(domain));
 
 app.Run();
 

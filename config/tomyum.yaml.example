@@ -37,6 +37,19 @@ replays:
   # Directory where replay .osr files are stored (relative to the working directory).
   path: "data/replays"
 
+# osu!Direct in-game beatmap browser. Proxies search and set-info to a mino.pw-compatible
+# beatmap mirror and redirects .osz downloads to that mirror.
+direct:
+  # Base URL of the beatmap mirror (no trailing slash).
+  # catboy.best is the recommended default — free, no key required.
+  mirrorBaseUrl: "https://catboy.best"
+  # API path for search requests. Appended to mirrorBaseUrl with query string.
+  searchPath: "/api/search"
+  # Path template for single-set lookup by id. {0} = set id.
+  setPath: "/api/s/{0}"
+  # Path template for .osz download redirect. {0} = set id.
+  downloadPath: "/d/{0}"
+
 redis:
   # Online state, pub/sub fan-out, leaderboard caches. See ADR-0003.
   configuration: "redis:6379"
