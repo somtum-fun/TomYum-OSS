@@ -1,12 +1,21 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
+using TomYum.Domain.Services;
 using TomYum.Performance;
 using TomYum.Persistence;
 
 namespace TomYum.Tools.RecalcPp;
 
-internal sealed record RecalculationResult(int ScoresProcessed, int ScoresRecalculated, int UsersUpdated);
+internal sealed record ScoreChange(long ScoreId, int BeatmapId, int Mode, double OldPp, double NewPp);
+internal sealed record UserStatChange(int UserId, int Mode, double OldPp, double NewPp, float OldAcc, float NewAcc);
+internal sealed record RecalculationResult(
+    int ScoresProcessed,
+    int ScoresRecalculated,
+    int UsersUpdated,
+    IReadOnlyList<ScoreChange> ScoreChanges,
+    IReadOnlyList<UserStatChange> UserStatChanges);
 
 /// <summary>
 /// Core recalculation logic. For each Best score: recomputes PP via
@@ -19,6 +28,7 @@ internal sealed class RecalculationEngine
     private readonly IPerformanceCalculator _pp;
     private readonly ILogger<RecalculationEngine> _log;
     private readonly bool _dryRun;
+    private readonly bool _force;
     private readonly int _batchSize;
 
     public RecalculationEngine(
@@ -26,20 +36,28 @@ internal sealed class RecalculationEngine
         IPerformanceCalculator pp,
         ILogger<RecalculationEngine> log,
         bool dryRun,
-        int batchSize)
+        int batchSize,
+        bool force = false)
     {
         _db = db;
         _pp = pp;
         _log = log;
         _dryRun = dryRun;
+        _force = force;
         _batchSize = batchSize;
     }
 
     public async Task<RecalculationResult> RecalculateAsync(int? modeFilter, CancellationToken cancellationToken)
     {
-        // Step 1: collect all Best scores (non-tracked for read; we'll update in batches).
+        // Step 1: collect all Best scores on ranked/approved maps only.
         var query = _db.Scores.AsNoTracking()
-            .Where(s => s.Status == ScoreStatus.Best && s.Passed);
+            .Where(s => s.Status == ScoreStatus.Best && s.Passed)
+            .Join(_db.Beatmaps,
+                s => s.BeatmapId,
+                b => b.Id,
+                (s, b) => new { Score = s, BeatmapStatus = b.Status })
+            .Where(x => x.BeatmapStatus == RankedStatus.Ranked || x.BeatmapStatus == RankedStatus.Approved)
+            .Select(x => x.Score);
 
         if (modeFilter is not null)
             query = query.Where(s => s.Mode == modeFilter.Value);
@@ -49,12 +67,18 @@ internal sealed class RecalculationEngine
         _log.LogInformation("Found {Count} Best scores to recalculate", allScores.Count);
 
         if (allScores.Count == 0)
-            return new RecalculationResult(0, 0, 0);
+            return new RecalculationResult(0, 0, 0, [], []);
 
         // Step 2: recalculate PP for all scores, batch-saving to DB.
-        var updatedUserModes = new HashSet<(int UserId, int Mode)>();
+        // Seed all user+mode pairs upfront so stats are always refreshed — even when
+        // individual PP values haven't changed (e.g. accuracy formula was fixed but PP
+        // recalc derives accuracy from raw hit counts and was already correct).
+        var updatedUserModes = allScores
+            .Select(s => (s.UserId, s.Mode))
+            .ToHashSet();
         var recalculated = 0;
         var total = allScores.Count;
+        var scoreChanges = new List<ScoreChange>();
 
         for (var batchStart = 0; batchStart < total; batchStart += _batchSize)
         {
@@ -87,14 +111,10 @@ internal sealed class RecalculationEngine
                     continue;
                 }
 
-                if (Math.Abs(newPp - score.Pp) < 0.001)
-                {
-                    // No meaningful change; still mark user as needing stats refresh if PP was 0.
-                    if (score.Pp > 0)
-                        continue;
-                }
+                if (!_force && Math.Abs(newPp - score.Pp) < 0.001)
+                    continue;
 
-                _log.LogDebug("Score {Id}: {OldPp:F2}pp → {NewPp:F2}pp", score.Id, score.Pp, newPp);
+                scoreChanges.Add(new ScoreChange(score.Id, score.BeatmapId, score.Mode, score.Pp, newPp));
 
                 if (!_dryRun)
                 {
@@ -104,7 +124,6 @@ internal sealed class RecalculationEngine
                         .ConfigureAwait(false);
                 }
 
-                updatedUserModes.Add((score.UserId, score.Mode));
                 recalculated++;
             }
 
@@ -118,27 +137,30 @@ internal sealed class RecalculationEngine
         _log.LogInformation("Updating stats for {Count} user+mode pairs", updatedUserModes.Count);
 
         var usersUpdated = 0;
+        var userStatChanges = new List<UserStatChange>();
         foreach (var (userId, mode) in updatedUserModes)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            await RecalcUserStatsAsync(userId, mode, cancellationToken).ConfigureAwait(false);
+            var change = await RecalcUserStatsAsync(userId, mode, cancellationToken).ConfigureAwait(false);
+            if (change is not null)
+                userStatChanges.Add(change);
             usersUpdated++;
         }
 
-        return new RecalculationResult(total, recalculated, usersUpdated);
+        return new RecalculationResult(total, recalculated, usersUpdated, scoreChanges, userStatChanges);
     }
 
-    private async Task RecalcUserStatsAsync(int userId, int mode, CancellationToken cancellationToken)
+    private async Task<UserStatChange?> RecalcUserStatsAsync(int userId, int mode, CancellationToken cancellationToken)
     {
         // Fetch all Best scores for this user+mode ordered by PP desc (same as submission path).
         var bestScores = await _db.Scores.AsNoTracking()
             .Where(s => s.UserId == userId && s.Mode == mode && s.Status == ScoreStatus.Best && s.Pp > 0)
             .OrderByDescending(s => s.Pp)
-            .Select(s => new { s.Pp, s.Count300, s.Count100, s.Count50, s.CountMiss })
+            .Select(s => new { s.Pp, s.Mode, s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
         if (bestScores.Count == 0)
-            return;
+            return null;
 
         var n = bestScores.Count;
 
@@ -150,22 +172,23 @@ internal sealed class RecalculationEngine
         // Weighted accuracy: Σ(acc_i × 0.95^i) × 100 / (20 × (1 − 0.95^n))
         var weightedAcc = bestScores.Select((s, i) =>
         {
-            var total = s.Count300 + s.Count100 + s.Count50 + s.CountMiss;
-            var acc = total > 0 ? (s.Count300 * 300.0 + s.Count100 * 100.0 + s.Count50 * 50.0) / (total * 300.0) : 0.0;
+            var acc = ComputeAccuracy(s.Mode, s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss);
             return acc * Math.Pow(0.95, i);
         }).Sum();
         var bonusAcc = 100.0 / (20.0 * (1 - Math.Pow(0.95, n)));
         var totalAcc = (float)(weightedAcc * bonusAcc / 100.0);
 
-        _log.LogDebug("User {UserId} mode {Mode}: PP {Pp:F2}, Acc {Acc:P2}", userId, mode, totalPp, totalAcc);
-
-        if (_dryRun)
-            return;
-
-        // Upsert the stats row — create it first if it doesn't exist.
+        // Fetch old stats before writing so we can report the delta.
         var stats = await _db.UserStats
             .FirstOrDefaultAsync(s => s.UserId == userId && s.Mode == mode, cancellationToken)
             .ConfigureAwait(false);
+
+        var oldPp  = stats?.Pp ?? 0.0;
+        var oldAcc = stats?.Accuracy ?? 0f;
+        var change = new UserStatChange(userId, mode, oldPp, totalPp, oldAcc, totalAcc);
+
+        if (_dryRun)
+            return change;
 
         if (stats is null)
         {
@@ -178,5 +201,10 @@ internal sealed class RecalculationEngine
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
+
+        return change;
     }
+
+    private static double ComputeAccuracy(int mode, int n300, int n100, int n50, int ngeki, int nkatu, int nmiss) =>
+        AccuracyCalculator.Compute(mode, n300, n100, n50, ngeki, nkatu, nmiss);
 }

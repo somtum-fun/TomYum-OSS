@@ -35,7 +35,7 @@ public sealed class BanchoPacketDispatcher
     /// <paramref name="player"/>, returning the framed bytes any handler queued for the
     /// originator. Packets for other players are queued on them via the registry.
     /// </summary>
-    public async Task<byte[]> DispatchAsync(OnlinePlayer player, PlayerRegistry registry, ChannelRegistry channels, MatchRegistry matches, ReadOnlyMemory<byte> body)
+    public async Task<byte[]> DispatchAsync(OnlinePlayer player, PlayerRegistry registry, ChannelRegistry channels, MatchRegistry matches, IServiceProvider services, ReadOnlyMemory<byte> body)
     {
         ArgumentNullException.ThrowIfNull(player);
         ArgumentNullException.ThrowIfNull(registry);
@@ -69,7 +69,7 @@ public sealed class BanchoPacketDispatcher
 
             if (_handlers.TryGetValue(id, out var handler))
             {
-                var context = new ClientPacketContext(player, registry, channels, matches, payload, response);
+                var context = new ClientPacketContext(player, registry, channels, matches, services, payload, response);
                 try
                 {
                     await handler.HandleAsync(context).ConfigureAwait(false);

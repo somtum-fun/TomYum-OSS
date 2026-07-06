@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
+using TomYum.Domain.Services;
 
 namespace TomYum.Persistence.Repositories;
 
@@ -43,13 +44,12 @@ public sealed class ScoreRepository : IScoreRepository
         await _db.Scores.AsNoTracking()
             .Where(s => s.UserId == userId && s.Mode == mode && s.Status == ScoreStatus.Best && s.Pp > 0)
             .OrderByDescending(s => s.Pp)
-            .Select(s => new { s.Pp, s.Count300, s.Count100, s.Count50, s.CountMiss })
+            .Select(s => new { s.Pp, s.Mode, s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss })
             .ToListAsync(cancellationToken)
             .ContinueWith(t => (IReadOnlyList<(double, float)>)t.Result
                 .Select(r =>
                 {
-                    var total = r.Count300 + r.Count100 + r.Count50 + r.CountMiss;
-                    var acc = total > 0 ? (float)((r.Count300 * 300.0 + r.Count100 * 100.0 + r.Count50 * 50.0) / (total * 300.0)) : 0f;
+                    var acc = (float)AccuracyCalculator.Compute(r.Mode, r.Count300, r.Count100, r.Count50, r.CountGeki, r.CountKatu, r.CountMiss);
                     return (r.Pp, acc);
                 })
                 .ToList(), TaskScheduler.Default)

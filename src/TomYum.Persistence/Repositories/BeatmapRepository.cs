@@ -26,6 +26,37 @@ public sealed class BeatmapRepository : IBeatmapRepository
         _db.Beatmaps.AsNoTracking().FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
 
     /// <inheritdoc />
+    public async Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
+    {
+        var existing = await _db.Beatmaps
+            .FirstOrDefaultAsync(b => b.Id == beatmap.Id, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (existing is null)
+        {
+            _db.Beatmaps.Add(beatmap);
+        }
+        else
+        {
+            existing.SetId      = beatmap.SetId;
+            existing.Md5        = beatmap.Md5;
+            existing.Artist     = beatmap.Artist;
+            existing.Title      = beatmap.Title;
+            existing.Version    = beatmap.Version;
+            existing.Creator    = beatmap.Creator;
+            existing.Mode       = beatmap.Mode;
+            existing.StarRating = beatmap.StarRating;
+            existing.TotalLength = beatmap.TotalLength;
+            existing.MaxCombo   = beatmap.MaxCombo;
+            existing.LastUpdate = beatmap.LastUpdate;
+            if (!existing.StatusFrozen)
+                existing.Status = beatmap.Status;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
     public async Task<int> ReserveCustomSetIdAsync(CancellationToken cancellationToken = default)
     {
         // The next free server-local set id: one past the current maximum custom set id, or the

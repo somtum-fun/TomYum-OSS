@@ -3,7 +3,7 @@ namespace TomYum.Server.Beatmaps;
 /// <summary>
 /// Configuration for the osu!Direct beatmap browser endpoints. The mirror must expose a
 /// mino.pw-compatible JSON search API (the de-facto standard for private osu! servers;
-/// supported by catboy.best, nerinyan.moe, and others).
+/// supported by osu.direct, catboy.best, nerinyan.moe, and others).
 /// </summary>
 public sealed class DirectOptions
 {
@@ -11,14 +11,13 @@ public sealed class DirectOptions
 
     /// <summary>
     /// Base URL of the beatmap mirror (no trailing slash).
-    /// Search and download paths are appended to this.
-    /// Default: <c>https://catboy.best</c>.
+    /// Default: <c>https://osu.direct</c>.
     /// </summary>
-    public string MirrorBaseUrl { get; set; } = "https://catboy.best";
+    public string MirrorBaseUrl { get; set; } = "https://osu.direct";
 
     /// <summary>
     /// Path appended to <see cref="MirrorBaseUrl"/> for search requests.
-    /// Default: <c>/api/search</c> (catboy.best / mino.pw-compatible).
+    /// Default: <c>/api/search</c>.
     /// </summary>
     public string SearchPath { get; set; } = "/api/search";
 
@@ -32,7 +31,15 @@ public sealed class DirectOptions
     /// <summary>
     /// Path template for .osz downloads redirected to the mirror.
     /// <c>{0}</c> is replaced with the set id.
-    /// Default: <c>/d/{0}</c>.
+    /// Default: <c>/api/d/{0}</c>.
     /// </summary>
-    public string DownloadPath { get; set; } = "/d/{0}";
+    public string DownloadPath { get; set; } = "/api/d/{0}";
+
+    /// <summary>
+    /// Base URL for beatmap assets (thumbnails, audio previews, etc.) served from ppy's CDN.
+    /// Every request to the <c>b.</c> subdomain is redirected to this base with the path
+    /// forwarded verbatim — the same strategy as bancho.py's <c>map.py</c> domain.
+    /// Default: <c>https://b.ppy.sh</c>.
+    /// </summary>
+    public string ThumbnailBaseUrl { get; set; } = "https://b.ppy.sh";
 }

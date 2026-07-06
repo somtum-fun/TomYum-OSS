@@ -214,6 +214,9 @@ app.MapWeb(BanchoHosts.Web(domain));
 // osu!Direct in-game beatmap browser: search, set-info, and download redirect.
 app.MapDirect(BanchoHosts.Web(domain));
 
+// Beatmap assets (b. subdomain): cover thumbnails for osu!Direct.
+app.MapBeatmapAssets(BanchoHosts.Beatmap(domain));
+
 app.Run();
 
 /// <summary>Exposed so the integration test host (WebApplicationFactory) can reference the entry assembly.</summary>

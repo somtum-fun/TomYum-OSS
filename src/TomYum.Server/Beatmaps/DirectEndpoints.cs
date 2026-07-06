@@ -30,6 +30,21 @@ public static class DirectEndpoints
         app.MapGet("/d/{setId}", HandleDownload);
     }
 
+    /// <summary>
+    /// Maps a catch-all proxy for the <c>b.</c> subdomain onto <paramref name="hosts"/>.
+    /// osu!stable requests thumbnails (<c>/thumb/{id}[l].jpg</c>), audio previews
+    /// (<c>/preview/{id}.mp3</c>), and potentially other beatmap assets from this host.
+    /// We forward every path straight to ppy's CDN (<c>b.ppy.sh</c>), mirroring the
+    /// approach used by bancho.py's <c>map.py</c> domain.
+    /// </summary>
+    public static void MapBeatmapAssets(this IEndpointRouteBuilder app, params string[] hosts)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        app.MapGet("/{**path}", HandleBeatmapAsset)
+            .RequireHost(hosts);
+    }
+
     // ── /web/osu-search.php ────────────────────────────────────────────────────────────────
 
     private static async Task<IResult> HandleSearchAsync(
@@ -114,15 +129,20 @@ public static class DirectEndpoints
                     var ar = d.TryGetProperty("AR", out var arp) ? arp.GetDouble() : 0.0;
                     var hp = d.TryGetProperty("HP", out var hpp) ? hpp.GetDouble() : 0.0;
                     var m = d.TryGetProperty("Mode", out var mp) ? mp.GetInt32() : 0;
+                    // :.2f is Python syntax; the C# equivalent is :F2.
                     return string.Create(CultureInfo.InvariantCulture,
-                        $"[{sr:.2f}⭐] {name} {{cs: {cs} / od: {od} / ar: {ar} / hp: {hp}}}@{m}");
+                        $"[{sr:F2}⭐] {name} {{cs: {cs} / od: {od} / ar: {ar} / hp: {hp}}}@{m}");
                 });
 
             var setId   = set.TryGetProperty("SetID",        out var sid)  ? sid.GetInt32()    : 0;
             var artist  = SanitisePipeChar(set.TryGetProperty("Artist",       out var art)  ? art.GetString() ?? "" : "");
             var title   = SanitisePipeChar(set.TryGetProperty("Title",        out var tit)  ? tit.GetString() ?? "" : "");
             var creator = set.TryGetProperty("Creator",      out var cre)  ? cre.GetString() ?? "" : "";
-            var ranked  = set.TryGetProperty("RankedStatus", out var rs)   ? rs.GetInt32()    : 0;
+            // Pass the mirror's RankedStatus value through as-is. bancho.py sends it raw and
+            // the osu!stable client renders the icon from this field directly (1=ranked,
+            // 4=loved, 3=qualified, 0=pending, -2=graveyard). ToDirectStatus() was incorrectly
+            // remapping it to the *filter* codes (r= query param), which is a different domain.
+            var ranked  = set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0;
             var updated = set.TryGetProperty("LastUpdate",   out var lu)   ? lu.GetString() ?? "" : "";
             var hasVideo = set.TryGetProperty("HasVideo",    out var hv)
                 ? (hv.ValueKind == JsonValueKind.True ? 1 : hv.ValueKind == JsonValueKind.False ? 0 : hv.GetInt32())
@@ -184,7 +204,7 @@ public static class DirectEndpoints
         var artist  = SanitisePipeChar(set.TryGetProperty("Artist",  out var art) ? art.GetString() ?? "" : "");
         var title   = SanitisePipeChar(set.TryGetProperty("Title",   out var tit) ? tit.GetString() ?? "" : "");
         var creator = set.TryGetProperty("Creator",      out var cre) ? cre.GetString() ?? "" : "";
-        var status  = set.TryGetProperty("RankedStatus", out var rs)  ? rs.GetInt32()    : 0;
+        var status  = ToDirectStatus(set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0);
         var updated = set.TryGetProperty("LastUpdate",   out var lu)  ? lu.GetString() ?? "" : "";
 
         // Wire format (bancho.py osu-search-set response):
@@ -211,6 +231,17 @@ public static class DirectEndpoints
         return Results.Redirect(url, permanent: false);
     }
 
+    // ── b.{domain} catch-all ──────────────────────────────────────────────────────────────
+
+    private static IResult HandleBeatmapAsset(HttpRequest request, IOptions<DirectOptions> opts)
+    {
+        // Forward the path verbatim to ppy's CDN — covers /thumb/{id}[l].jpg,
+        // /preview/{id}.mp3, and anything else the client may request from b.*.
+        // bancho.py map.py uses the same strategy: redirect f"https://b.ppy.sh{path}".
+        var url = opts.Value.ThumbnailBaseUrl + request.Path;
+        return Results.Redirect(url, permanent: true);
+    }
+
     // ── helpers ───────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -225,6 +256,22 @@ public static class DirectEndpoints
     /// to the osu! API status value expected by mino.pw-compatible mirrors.
     /// Returns <c>null</c> for "all" (no status filter should be sent).
     /// </summary>
+    /// <summary>
+    /// Maps the osu! API ranked status returned by the mirror to the osu!Direct display code
+    /// the osu!stable client expects in the search response's status field.
+    /// </summary>
+    private static int ToDirectStatus(int mirrorStatus) => mirrorStatus switch
+    {
+        -2 => 5, // graveyard
+        -1 => 5, // WIP → graveyard
+         0 => 0, // pending
+         1 => 7, // ranked
+         2 => 7, // approved → ranked
+         3 => 3, // qualified
+         4 => 8, // loved
+         _ => 0,
+    };
+
     private static int? ToMirrorStatus(int directStatus) => directStatus switch
     {
         0 => 0,   // Pending

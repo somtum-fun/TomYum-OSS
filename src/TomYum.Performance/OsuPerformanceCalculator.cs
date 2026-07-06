@@ -50,7 +50,7 @@ public sealed class OsuPerformanceCalculator : IPerformanceCalculator
             entry.SlidingExpiration = TimeSpan.FromMinutes(30);
             var url = string.Format(CultureInfo.InvariantCulture, BeatmapDownloadUrl, request.BeatmapId);
             using var stream = await _http.GetStreamAsync(url, cancellationToken).ConfigureAwait(false);
-            var working = new StreamedWorkingBeatmap(stream);
+            var working = new StreamedWorkingBeatmap(stream, ruleset);
             return ruleset.CreateDifficultyCalculator(working).Calculate(mods);
         }).ConfigureAwait(false);
 
@@ -146,27 +146,24 @@ public sealed class OsuPerformanceCalculator : IPerformanceCalculator
     {
         private readonly Beatmap _beatmap;
 
-        public StreamedWorkingBeatmap(Stream stream) : this(new LineBufferedReader(stream))
+        public StreamedWorkingBeatmap(Stream stream, Ruleset targetRuleset) : this(new LineBufferedReader(stream), targetRuleset)
         {
             stream.Dispose();
         }
 
-        private StreamedWorkingBeatmap(LineBufferedReader reader) : this(osu.Game.Beatmaps.Formats.Decoder.GetDecoder<Beatmap>(reader).Decode(reader))
+        private StreamedWorkingBeatmap(LineBufferedReader reader, Ruleset targetRuleset) : this(osu.Game.Beatmaps.Formats.Decoder.GetDecoder<Beatmap>(reader).Decode(reader), targetRuleset)
         {
             reader.Dispose();
         }
 
-        private StreamedWorkingBeatmap(Beatmap beatmap) : base(beatmap.BeatmapInfo, null)
+        private StreamedWorkingBeatmap(Beatmap beatmap, Ruleset targetRuleset) : base(beatmap.BeatmapInfo, null)
         {
             _beatmap = beatmap;
-            beatmap.BeatmapInfo.Ruleset = beatmap.BeatmapInfo.Ruleset.OnlineID switch
-            {
-                0 => new OsuRuleset().RulesetInfo,
-                1 => new TaikoRuleset().RulesetInfo,
-                2 => new CatchRuleset().RulesetInfo,
-                3 => new ManiaRuleset().RulesetInfo,
-                _ => beatmap.BeatmapInfo.Ruleset,
-            };
+            // Always set BeatmapInfo.Ruleset to the target ruleset, NOT the .osu native mode.
+            // If we leave it as the native mode (e.g. OsuRuleset for a Mode-0 map) when the
+            // caller wants CatchRuleset, the catch difficulty calculator does not recognise it
+            // as a convert and produces wildly inflated SR (e.g. 4★ instead of 1★).
+            beatmap.BeatmapInfo.Ruleset = targetRuleset.RulesetInfo;
         }
 
         protected override IBeatmap GetBeatmap() => _beatmap;

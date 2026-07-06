@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TomYum.Bancho;
 using TomYum.Domain.Entities;
@@ -95,7 +96,7 @@ public class BanchoPacketDispatcherTests
         payload.WriteInt32(42);
         var body = FrameClientPacket(ClientPacketId.ChangeAction, payload.ToArray());
 
-        var produced = await dispatcher.DispatchAsync(sender, registry, new ChannelRegistry(), new MatchRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(sender, registry, new ChannelRegistry(), new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), body);
 
         // Presence was folded in.
         Assert.Equal(2, sender.Presence.Action);
@@ -122,7 +123,7 @@ public class BanchoPacketDispatcherTests
         payload.WriteInt32List([3, 99]);
         var body = FrameClientPacket(ClientPacketId.UserStatsRequest, payload.ToArray());
 
-        var produced = await dispatcher.DispatchAsync(requester, registry, new ChannelRegistry(), new MatchRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(requester, registry, new ChannelRegistry(), new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), body);
 
         // Exactly one UserStats (for id 3); the offline id 99 is skipped.
         Assert.Equal(1, PacketIds(produced).Count(id => id == (ushort)ServerPacketId.UserStats));
@@ -136,7 +137,7 @@ public class BanchoPacketDispatcherTests
         var player = AddPlayer(registry, 2, "TomYum");
 
         var body = FrameClientPacket(ClientPacketId.RequestStatusUpdate, []);
-        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), new MatchRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), body);
 
         Assert.Contains((ushort)ServerPacketId.UserStats, PacketIds(produced));
     }
@@ -150,7 +151,7 @@ public class BanchoPacketDispatcherTests
         AddPlayer(registry, 3, "Other");
 
         var body = FrameClientPacket(ClientPacketId.UserPresenceRequestAll, []);
-        var produced = await dispatcher.DispatchAsync(requester, registry, new ChannelRegistry(), new MatchRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(requester, registry, new ChannelRegistry(), new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), body);
 
         Assert.Equal(2, PacketIds(produced).Count(id => id == (ushort)ServerPacketId.UserPresence));
     }
@@ -168,7 +169,7 @@ public class BanchoPacketDispatcherTests
         payload.WriteInt32(0);
         var body = FrameClientPacket(ClientPacketId.Logout, payload.ToArray());
 
-        await dispatcher.DispatchAsync(leaver, registry, new ChannelRegistry(), new MatchRegistry(), body);
+        await dispatcher.DispatchAsync(leaver, registry, new ChannelRegistry(), new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), body);
 
         Assert.Null(registry.GetByUserId(2));
         Assert.Equal(1, registry.Count);
@@ -189,7 +190,7 @@ public class BanchoPacketDispatcherTests
         ping.CopyTo(body, 0);
         status.CopyTo(body, ping.Length);
 
-        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), new MatchRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), body);
 
         Assert.Contains((ushort)ServerPacketId.UserStats, PacketIds(produced));
     }
@@ -208,7 +209,7 @@ public class BanchoPacketDispatcherTests
         unknown.CopyTo(body, 0);
         ping.CopyTo(body, unknown.Length);
 
-        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), new MatchRegistry(), body);
+        var produced = await dispatcher.DispatchAsync(player, registry, new ChannelRegistry(), new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), body);
 
         // No reply expected, but the call must not throw and must consume the whole stream.
         Assert.Empty(produced);

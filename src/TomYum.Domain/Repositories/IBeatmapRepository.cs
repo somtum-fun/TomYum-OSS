@@ -15,6 +15,13 @@ public interface IBeatmapRepository
     Task<Beatmap?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Inserts the beatmap if it doesn't exist; updates all metadata fields if it does.
+    /// Respects <see cref="Beatmap.StatusFrozen"/>: when the existing row is frozen,
+    /// the <see cref="Beatmap.Status"/> field is left unchanged.
+    /// </summary>
+    Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Reserves and returns the next available server-local beatmap set id
     /// (≥ <see cref="Beatmap.CustomIdFloor"/>) for custom submission.
     /// </summary>

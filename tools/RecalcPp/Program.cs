@@ -28,12 +28,16 @@ internal static class Program
 
     private static async Task<int> Main(string[] args)
     {
-        var dryRun = args.Contains("--dry-run", StringComparer.OrdinalIgnoreCase);
-        var mode = GetArgValue(args, "--mode");
+        var dryRun   = args.Contains("--dry-run",  StringComparer.OrdinalIgnoreCase);
+        var force    = args.Contains("--force",    StringComparer.OrdinalIgnoreCase);
+        var backfill = args.Contains("--backfill", StringComparer.OrdinalIgnoreCase);
+        var mode      = GetArgValue(args, "--mode");
         var batchSize = GetArgValue(args, "--batch-size") is { } bsStr && int.TryParse(bsStr, out var bs) ? bs : DefaultBatchSize;
 
         Console.WriteLine("TomYum PP Recalculation Tool");
         Console.WriteLine($"Mode: {(dryRun ? "DRY RUN (no changes will be saved)" : "LIVE")}");
+        if (force)    Console.WriteLine("Force: enabled (PP written for every score regardless of change)");
+        if (backfill) Console.WriteLine("Backfill: enabled (will resolve missing beatmap rows before recalc)");
         Console.WriteLine($"Filter: {(mode is not null ? $"mode {mode}" : "all modes")}");
         Console.WriteLine($"Batch size: {batchSize}");
         Console.WriteLine();
@@ -42,26 +46,81 @@ internal static class Program
         await using var scope = services.CreateAsyncScope();
         var sp = scope.ServiceProvider;
 
-        var db = sp.GetRequiredService<TomYumDbContext>();
-        var pp = sp.GetRequiredService<IPerformanceCalculator>();
-        var logger = sp.GetRequiredService<ILogger<RecalculationEngine>>();
-
-        var engine = new RecalculationEngine(db, pp, logger, dryRun, batchSize);
-        var modeFilter = mode is not null && int.TryParse(mode, out var m) ? m : (int?)null;
+        var db         = sp.GetRequiredService<TomYumDbContext>();
+        var pp         = sp.GetRequiredService<IPerformanceCalculator>();
+        var logFactory = sp.GetRequiredService<ILoggerFactory>();
 
         var sw = Stopwatch.StartNew();
+
+        if (backfill)
+        {
+            Console.WriteLine("--- Backfilling beatmap rows ---");
+            var configuration = sp.GetRequiredService<IConfiguration>();
+            var apiKey        = configuration["Osu:ApiKey"];
+            var http          = sp.GetRequiredService<IHttpClientFactory>().CreateClient();
+            var bfLog         = logFactory.CreateLogger<BeatmapBackfiller>();
+            var backfiller    = new BeatmapBackfiller(db, http, bfLog, apiKey, dryRun);
+            await backfiller.BackfillAsync(CancellationToken.None).ConfigureAwait(false);
+            Console.WriteLine();
+        }
+
+        Console.WriteLine("--- Recalculating PP ---");
+        var engine     = new RecalculationEngine(db, pp, logFactory.CreateLogger<RecalculationEngine>(), dryRun, batchSize, force);
+        var modeFilter = mode is not null && int.TryParse(mode, out var m) ? m : (int?)null;
+
         var result = await engine.RecalculateAsync(modeFilter, CancellationToken.None).ConfigureAwait(false);
         sw.Stop();
 
         Console.WriteLine();
         Console.WriteLine("=== Summary ===");
         Console.WriteLine($"Total scores processed: {result.ScoresProcessed}");
-        Console.WriteLine($"PP recalculated: {result.ScoresRecalculated}");
-        Console.WriteLine($"Users updated: {result.UsersUpdated}");
-        Console.WriteLine($"Elapsed: {sw.Elapsed.TotalSeconds:F1}s");
+        Console.WriteLine($"PP recalculated:        {result.ScoresRecalculated}");
+        Console.WriteLine($"Users updated:          {result.UsersUpdated}");
+        Console.WriteLine($"Elapsed:                {sw.Elapsed.TotalSeconds:F1}s");
+
+        if (result.ScoreChanges.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("=== Score Changes ===");
+            Console.WriteLine($"{"Score ID",-10} {"Mode",-8} {"Beatmap",-10} {"Old PP",10} {"New PP",10} {"Delta",10}");
+            Console.WriteLine(new string('-', 62));
+            foreach (var sc in result.ScoreChanges.OrderByDescending(s => Math.Abs(s.NewPp - s.OldPp)))
+            {
+                var delta = sc.NewPp - sc.OldPp;
+                var sign  = delta >= 0 ? "+" : "";
+                Console.WriteLine($"{sc.ScoreId,-10} {ModeLabel(sc.Mode),-8} {sc.BeatmapId,-10} {sc.OldPp,10:F2} {sc.NewPp,10:F2} {sign}{delta,9:F2}");
+            }
+        }
+
+        if (result.UserStatChanges.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("=== Player PP Changes ===");
+            Console.WriteLine($"{"User ID",-10} {"Mode",-8} {"Old PP",10} {"New PP",10} {"PP Δ",10} {"Old Acc",10} {"New Acc",10} {"Acc Δ",10}");
+            Console.WriteLine(new string('-', 82));
+            foreach (var uc in result.UserStatChanges.OrderByDescending(u => Math.Abs(u.NewPp - u.OldPp)))
+            {
+                var ppDelta  = uc.NewPp - uc.OldPp;
+                var accDelta = uc.NewAcc - uc.OldAcc;
+                var ppSign   = ppDelta  >= 0 ? "+" : "";
+                var accSign  = accDelta >= 0 ? "+" : "";
+                Console.WriteLine(
+                    $"{uc.UserId,-10} {ModeLabel(uc.Mode),-8} {uc.OldPp,10:F2} {uc.NewPp,10:F2} {ppSign}{ppDelta,9:F2} " +
+                    $"{uc.OldAcc * 100,9:F2}% {uc.NewAcc * 100,9:F2}% {accSign}{accDelta * 100,8:F2}%");
+            }
+        }
 
         return 0;
     }
+
+    private static string ModeLabel(int mode) => mode switch
+    {
+        0 => "osu!",
+        1 => "taiko",
+        2 => "catch",
+        3 => "mania",
+        _ => $"mode{mode}",
+    };
 
     private static string? GetArgValue(string[] args, string flag)
     {
@@ -98,6 +157,7 @@ internal static class Program
 
         var services = new ServiceCollection();
         services.AddLogging(b => b.AddConsole().SetMinimumLevel(LogLevel.Information));
+        services.AddSingleton<IConfiguration>(configuration);
 
         var dbOptions = configuration.GetSection(DatabaseOptions.SectionName).Get<DatabaseOptions>()
             ?? throw new InvalidOperationException("Database configuration is missing");
@@ -105,6 +165,7 @@ internal static class Program
         services.AddTomYumPersistence(dbOptions);
         services.AddSingleton<IMemoryCache, MemoryCache>();
         services.AddHttpClient<IPerformanceCalculator, OsuPerformanceCalculator>();
+        services.AddHttpClient(); // registers IHttpClientFactory for BeatmapBackfiller
 
         return services.BuildServiceProvider();
     }

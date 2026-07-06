@@ -7,6 +7,7 @@ using Org.BouncyCastle.Crypto.Parameters;
 using TomYum.Bancho;
 using TomYum.Caching;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 using TomYum.Performance;
@@ -34,6 +35,7 @@ public static class ScoreSubmissionEndpoint
         IUserRepository users,
         IPasswordHasher hasher,
         BeatmapService beatmaps,
+        IBeatmapRepository beatmapRepo,
         IScoreRepository scores,
         IUserStatsRepository userStats,
         IPerformanceCalculator pp,
@@ -157,6 +159,17 @@ public static class ScoreSubmissionEndpoint
             return Results.Text("error: no", "text/plain");
         }
 
+        // Persist beatmap metadata so tools like RecalcPp can join against the beatmaps table.
+        // Best-effort: a DB hiccup must not block the submission response.
+        try
+        {
+            await beatmapRepo.UpsertAsync(beatmap, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Beatmap upsert failed for {BeatmapId}; submission continues", beatmap.Id);
+        }
+
         // Fetch before insert so the Status==Best filter returns the genuine prior best, not this score
         var prevBest = await scores.GetPersonalBestAsync(user.Id, bmk, mode, cancellationToken).ConfigureAwait(false);
 
@@ -170,26 +183,29 @@ public static class ScoreSubmissionEndpoint
         if (prevBeatmapRank > preBoardForRank.Count) prevBeatmapRank = null;
 
         var ppValue = 0.0;
-        try
+        if (beatmap.Status.AwardsRankedPp())
         {
-            ppValue = await pp.CalculateAsync(
-                new PerformanceRequest(
-                    BeatmapId: beatmap.Id,
-                    RulesetId: mode,
-                    Mods: mods,
-                    Count300: n300,
-                    Count100: n100,
-                    Count50: n50,
-                    CountMiss: nmiss,
-                    CountGeki: ngeki,
-                    CountKatu: nkatu,
-                    MaxCombo: maxCombo,
-                    Passed: passed),
-                cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            // pp calculation is best-effort
+            try
+            {
+                ppValue = await pp.CalculateAsync(
+                    new PerformanceRequest(
+                        BeatmapId: beatmap.Id,
+                        RulesetId: mode,
+                        Mods: mods,
+                        Count300: n300,
+                        Count100: n100,
+                        Count50: n50,
+                        CountMiss: nmiss,
+                        CountGeki: ngeki,
+                        CountKatu: nkatu,
+                        MaxCombo: maxCombo,
+                        Passed: passed),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                // pp calculation is best-effort
+            }
         }
 
         // A passed score is Best only if the player has no prior best or this score beats it by pp.
@@ -306,17 +322,14 @@ public static class ScoreSubmissionEndpoint
         var scoreRank = leaderboard.TakeWhile(s => s.Id != score.Id).Count() + 1;
 
         var totalHits = n300 + n100 + n50 + nmiss;
-        var accuracy = totalHits > 0
-            ? (n300 * 300.0 + n100 * 100.0 + n50 * 50.0) / (totalHits * 300.0)
-            : 0.0;
+        var accuracy = ComputeAccuracy(mode, n300, n100, n50, ngeki, nkatu, nmiss);
 
         var accuracyPct = accuracy * 100.0;
         var prevBestScore = prevBest is not null ? prevBest.ScoreValue : (long?)null;
         var prevBestCombo = prevBest is not null ? prevBest.MaxCombo : (int?)null;
         var prevBestAccPct = prevBest is not null
-            ? (prevBest.Count300 + prevBest.Count100 + prevBest.Count50 + prevBest.CountMiss) is var ph && ph > 0
-                ? (prevBest.Count300 * 300.0 + prevBest.Count100 * 100.0 + prevBest.Count50 * 50.0) / (ph * 300.0) * 100.0
-                : 0.0
+            ? ComputeAccuracy(mode, prevBest.Count300, prevBest.Count100, prevBest.Count50,
+                              prevBest.CountGeki, prevBest.CountKatu, prevBest.CountMiss) * 100.0
             : (double?)null;
         var prevBestPp = prevBest is not null ? prevBest.Pp : (double?)null;
 
@@ -327,4 +340,7 @@ public static class ScoreSubmissionEndpoint
 
         return Results.Text(response, "text/plain");
     }
+
+    private static double ComputeAccuracy(int mode, int n300, int n100, int n50, int ngeki, int nkatu, int nmiss) =>
+        AccuracyCalculator.Compute(mode, n300, n100, n50, ngeki, nkatu, nmiss);
 }

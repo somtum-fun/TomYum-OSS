@@ -14,6 +14,8 @@ namespace TomYum.Server.Bancho.Packets;
 /// <see cref="Payload"/>'s span when it needs to read fields. Packets destined for
 /// <em>other</em> players are queued on those players via <see cref="PlayerRegistry"/>;
 /// packets for the originator go through <see cref="Response"/>.
+/// Handlers that require scoped services (e.g. repositories) resolve them from
+/// <see cref="Services"/> using <c>GetRequiredService&lt;T&gt;()</c>.
 /// </remarks>
 public sealed class ClientPacketContext
 {
@@ -23,6 +25,7 @@ public sealed class ClientPacketContext
         PlayerRegistry registry,
         ChannelRegistry channels,
         MatchRegistry matches,
+        IServiceProvider services,
         ReadOnlyMemory<byte> payload,
         BanchoPacketWriter response)
     {
@@ -30,6 +33,7 @@ public sealed class ClientPacketContext
         Registry = registry;
         Channels = channels;
         Matches = matches;
+        Services = services;
         Payload = payload;
         Response = response;
     }
@@ -45,6 +49,12 @@ public sealed class ClientPacketContext
 
     /// <summary>The multiplayer match registry.</summary>
     public MatchRegistry Matches { get; }
+
+    /// <summary>
+    /// The request-scoped DI container. Handlers that need DB access resolve repositories
+    /// here (e.g. <c>Services.GetRequiredService&lt;IUserStatsRepository&gt;()</c>).
+    /// </summary>
+    public IServiceProvider Services { get; }
 
     /// <summary>The raw payload bytes for this packet (header already consumed).</summary>
     public ReadOnlyMemory<byte> Payload { get; }

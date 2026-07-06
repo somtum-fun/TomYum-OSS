@@ -31,6 +31,10 @@ public static class BanchoHosts
     public static string[] Web(string domain) =>
         [$"osu.{domain}", "localhost", "127.0.0.1"];
 
+    /// <summary>Host patterns that serve beatmap assets (thumbnails) for <paramref name="domain"/>.</summary>
+    public static string[] Beatmap(string domain) =>
+        [$"b.{domain}", "localhost", "127.0.0.1"];
+
     /// <summary>Reads the public domain from configuration, falling back to <see cref="DefaultDomain"/>.</summary>
     public static string ResolveDomain(IConfiguration configuration)
     {

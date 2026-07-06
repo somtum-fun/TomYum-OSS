@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TomYum.Bancho;
 using TomYum.Domain.Entities;
@@ -76,7 +77,7 @@ public class ChatHandlerTests
 
     private static ClientPacketContext Context(
         OnlinePlayer player, PlayerRegistry registry, ChannelRegistry channels, byte[] payload, BanchoPacketWriter response) =>
-        new(player, registry, channels, new MatchRegistry(), payload, response);
+        new(player, registry, channels, new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), payload, response);
 
     [Fact]
     public async Task PublicMessage_FansOutToOtherChannelMembers()
