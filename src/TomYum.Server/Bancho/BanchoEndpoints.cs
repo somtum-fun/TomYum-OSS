@@ -33,10 +33,10 @@ public static class BanchoEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
-        // Browsers hitting the bancho host get a human-readable status line; the osu! client
-        // only ever POSTs, so this never interferes with the protocol.
+        // Browsers hitting the bancho host get the animated osu!bancho-boat status page; the
+        // osu! client only ever POSTs, so this never interferes with the protocol.
         app.MapGet("/", (TomYumVersion version) =>
-                Results.Text($"TomYum bancho {version.Display} is running.", "text/plain"))
+                Results.Text(BanchoBoatPage.Render(version.Display), "text/html"))
             .RequireHost(hosts);
 
         app.MapPost("/", HandlePostAsync)

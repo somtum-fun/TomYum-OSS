@@ -11,6 +11,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The animated osu!bancho-boat status page served at GET / on the bancho subdomain. -->
+    <EmbeddedResource Include="Bancho/BanchoBoat.html" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
     <ProjectReference Include="../TomYum.Bancho/TomYum.Bancho.csproj" />
     <ProjectReference Include="../TomYum.Lazer/TomYum.Lazer.csproj" />
