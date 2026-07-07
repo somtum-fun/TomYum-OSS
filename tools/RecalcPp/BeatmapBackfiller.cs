@@ -107,7 +107,17 @@ internal sealed class BeatmapBackfiller
             if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
                 return null;
 
-            return MapElement(root[0]);
+            // The keyless osu.direct mirror ignores the h= filter and returns EVERY difficulty in
+            // the set — match the one whose file_md5 equals the requested hash rather than taking
+            // the first entry (same bug/fix as OsuApiClient.GetByMd5Async).
+            foreach (var el in root.EnumerateArray())
+            {
+                if (string.Equals(GetStr(el, "file_md5"), md5, StringComparison.OrdinalIgnoreCase))
+                    return MapElement(el);
+            }
+
+            _log.LogWarning("osu! API returned {Count} beatmap(s) for {Md5} but none matched the hash", root.GetArrayLength(), md5);
+            return null;
         }
         catch (Exception ex)
         {

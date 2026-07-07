@@ -66,7 +66,17 @@ public sealed class OsuApiClient : IOsuApiClient
         try
         {
             var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(query, JsonOptions, cancellationToken).ConfigureAwait(false);
-            var match = beatmaps?.FirstOrDefault();
+
+            // The keyless osu.direct mirror ignores the `h=` filter and returns EVERY difficulty in
+            // the set — each with its own file_md5 — whereas keyed old.ppy.sh returns only the exact
+            // match. Select the difficulty whose md5 actually equals the requested hash. Taking the
+            // first entry blindly files every play on a non-first difficulty under the wrong beatmap
+            // id (and then computes pp against the wrong map's difficulty — e.g. a 1★ convert scored
+            // as a 4★ one). If nothing matches, treat the map as unsubmitted rather than guess.
+            var match = beatmaps?.FirstOrDefault(b => string.Equals(b.FileMd5, md5, StringComparison.OrdinalIgnoreCase));
+            if (match is null && beatmaps is { Count: > 0 })
+                _logger.LogWarning("osu! API returned {Count} beatmap(s) for md5 {Md5} but none matched the hash; treating as unsubmitted.", beatmaps.Count, md5);
+
             return match is null ? null : Map(match);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
