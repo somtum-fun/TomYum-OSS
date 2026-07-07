@@ -10,6 +10,8 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use akatsuki_pp::{Beatmap, Difficulty, Performance};
@@ -49,9 +51,14 @@ struct PpResponse {
 #[derive(Clone)]
 struct AppState {
     http: reqwest::Client,
-    // Cache raw .osu bytes by beatmap id to avoid re-downloading on every request.
+    // L1: raw .osu bytes by beatmap id, in-memory (process lifetime).
     cache: Arc<Mutex<HashMap<i32, Arc<Vec<u8>>>>>,
+    // L2: on-disk cache dir (survives restarts; shareable with the C# official backend).
+    cache_dir: PathBuf,
 }
+
+// Unique suffix for temp files so concurrent writers of the same id can't corrupt each other.
+static TMP_SEQ: AtomicU64 = AtomicU64::new(0);
 
 fn game_mode(vanilla: u8) -> GameMode {
     match vanilla {
@@ -63,17 +70,42 @@ fn game_mode(vanilla: u8) -> GameMode {
 }
 
 async fn fetch_osu(state: &AppState, beatmap_id: i32) -> Result<Arc<Vec<u8>>, String> {
+    // L1: in-memory.
     if let Some(bytes) = state.cache.lock().await.get(&beatmap_id).cloned() {
         return Ok(bytes);
     }
+    // L2: on-disk. A locally-dropped custom map's .osu is served here without hitting osu.ppy.sh.
+    let path = state.cache_dir.join(format!("{beatmap_id}.osu"));
+    if let Ok(disk) = tokio::fs::read(&path).await {
+        if !disk.is_empty() {
+            let bytes = Arc::new(disk);
+            state.cache.lock().await.insert(beatmap_id, bytes.clone());
+            return Ok(bytes);
+        }
+    }
+    // Miss: download, then populate L2 (best-effort) and L1.
     let url = format!("https://osu.ppy.sh/osu/{beatmap_id}");
     let resp = state.http.get(&url).send().await.map_err(|e| e.to_string())?;
     if !resp.status().is_success() {
         return Err(format!("osu download {} returned {}", beatmap_id, resp.status()));
     }
     let bytes = Arc::new(resp.bytes().await.map_err(|e| e.to_string())?.to_vec());
+    write_cache_file(&state.cache_dir, beatmap_id, &bytes).await;
     state.cache.lock().await.insert(beatmap_id, bytes.clone());
     Ok(bytes)
+}
+
+/// Persist a downloaded .osu to the L2 cache. Best-effort: a cache-write failure must never fail a
+/// pp calc. Writes to a unique temp file then atomically renames, so a reader never sees a partial.
+async fn write_cache_file(dir: &Path, beatmap_id: i32, bytes: &[u8]) {
+    let seq = TMP_SEQ.fetch_add(1, Ordering::Relaxed);
+    let tmp = dir.join(format!("{beatmap_id}.{seq}.tmp"));
+    let final_path = dir.join(format!("{beatmap_id}.osu"));
+    if tokio::fs::write(&tmp, bytes).await.is_ok() {
+        if tokio::fs::rename(&tmp, &final_path).await.is_err() {
+            let _ = tokio::fs::remove_file(&tmp).await;
+        }
+    }
 }
 
 async fn calc(
@@ -127,12 +159,21 @@ async fn health() -> &'static str {
 async fn main() {
     tracing_subscriber::fmt::init();
 
+    let cache_dir: PathBuf = std::env::var("OSU_CACHE_DIR")
+        .unwrap_or_else(|_| "data/osu-cache".to_string())
+        .into();
+    if let Err(e) = std::fs::create_dir_all(&cache_dir) {
+        tracing::warn!("could not create osu cache dir {}: {}", cache_dir.display(), e);
+    }
+    tracing::info!(".osu disk cache at {}", cache_dir.display());
+
     let state = AppState {
         http: reqwest::Client::builder()
             .user_agent("tomyum-pp-sidecar/0.1")
             .build()
             .expect("http client"),
         cache: Arc::new(Mutex::new(HashMap::new())),
+        cache_dir,
     };
 
     let app = Router::new()

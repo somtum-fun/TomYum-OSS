@@ -50,6 +50,24 @@ services:
     ports:
       - "8080:8080"
 
+  # pp sidecar (relax/autopilot pp via akatsuki-pp-rs). The server routes relax/autopilot here
+  # and falls back to the in-process official calc if it is down (Performance:Backends fallback).
+  pp-sidecar:
+    build:
+      context: ../../sidecars/pp-sidecar
+    environment:
+      PORT: "9000"
+      OSU_CACHE_DIR: /osu-cache
+    ports:
+      - "9000:9000"
+    volumes:
+      - osu-cache:/osu-cache
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   # --- Independently-deployable services (placeholders; uncomment as they come online) ---
   # spectator:
   #   build: { context: .., dockerfile: deploy/docker/Dockerfile, args: { PROJECT: services/TomYum.Spectator/TomYum.Spectator.csproj } }
@@ -65,3 +83,4 @@ services:
 volumes:
   mysql-data:
   redis-data:
+  osu-cache:

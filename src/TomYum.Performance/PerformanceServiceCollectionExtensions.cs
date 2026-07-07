@@ -1,5 +1,9 @@
+using System.IO;
+using System.Net.Http;
+
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace TomYum.Performance;
 
@@ -54,9 +58,21 @@ public static class PerformanceServiceCollectionExtensions
 
         services.AddSingleton(options);
 
-        services.AddMemoryCache();                              // shared diff-attribute cache
-        services.AddHttpClient();                               // IHttpClientFactory for sidecars
-        services.AddHttpClient<OfficialPerformanceCalculator>(); // typed client for .osu downloads
+        services.AddMemoryCache();                       // shared diff-attribute cache
+        services.AddHttpClient();                        // IHttpClientFactory for sidecars
+        services.AddHttpClient(OsuFileCache.HttpClientName); // named client for .osu downloads
+
+        // Shared on-disk raw-.osu cache (survives restarts; feeds every mods/ruleset combo, and
+        // later serves locally-hosted custom maps). Default dir is overridable via config.
+        var osuCacheDirectory = string.IsNullOrWhiteSpace(options.OsuCacheDirectory)
+            ? Path.Combine(AppContext.BaseDirectory, "data", "osu-cache")
+            : options.OsuCacheDirectory!;
+        services.AddSingleton(sp => new OsuFileCache(
+            osuCacheDirectory,
+            sp.GetRequiredService<IHttpClientFactory>().CreateClient(OsuFileCache.HttpClientName),
+            sp.GetRequiredService<ILogger<OsuFileCache>>()));
+
+        services.AddTransient<OfficialPerformanceCalculator>(); // cheap; resolved per pp calc
 
         services.AddSingleton<IPerformanceBackendRegistry, PerformanceBackendRegistry>();
         services.AddSingleton<IPerformanceCalculator, RoutingPerformanceCalculator>();

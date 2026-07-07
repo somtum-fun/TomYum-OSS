@@ -33,6 +33,13 @@ public sealed class PerformanceOptions
     /// <summary>Named backend definitions referenced by <see cref="Default"/> and routes.</summary>
     public Dictionary<string, PerformanceBackendOptions> Backends { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>
+    /// Directory for the on-disk raw <c>.osu</c> cache (see <see cref="OsuFileCache"/>). When null or
+    /// empty, defaults to <c>data/osu-cache</c> under the app base directory. Point this at a shared
+    /// volume to dedupe downloads across replicas, or at the same path the sidecar uses.
+    /// </summary>
+    public string? OsuCacheDirectory { get; set; }
+
     /// <summary>The always-available in-process backend name (auto-registered if absent).</summary>
     public const string OfficialBackendName = "official";
 }

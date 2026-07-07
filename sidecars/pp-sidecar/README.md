@@ -22,15 +22,30 @@ can't provide, while keeping vanilla on the official calc.
 { "pp": 2.41, "starRating": 1.50 }
 ```
 
-`GET /health` → `ok`. The sidecar downloads the `.osu` from `osu.ppy.sh/osu/{beatmapId}` and caches
-it in memory. `mode` is the vanilla ruleset; Relax/Autopilot are read from `mods`, so an osu! map
-played as a catch convert with relax comes through as `mode: 2, mods: 128`.
+`GET /health` → `ok`. The sidecar downloads the `.osu` from `osu.ppy.sh/osu/{beatmapId}`. `mode` is
+the vanilla ruleset; Relax/Autopilot are read from `mods`, so an osu! map played as a catch convert
+with relax comes through as `mode: 2, mods: 128`.
+
+## `.osu` cache (two levels)
+
+`.osu` bytes are cached **L1 in-memory** (process lifetime) and **L2 on disk** so they survive
+restarts and are not re-downloaded on every request. The disk dir is set by `OSU_CACHE_DIR`
+(default `data/osu-cache`); a `{beatmapId}.osu` dropped there is served without ever hitting
+osu.ppy.sh — the seam for locally-hosted custom maps. Point it at the **same** dir the C# official
+backend uses (`Performance:OsuCacheDirectory`) to dedupe downloads across both.
 
 ## Run
 
 ```bash
-cargo run --release          # listens on :9000 (override with PORT)
-PORT=9100 cargo run --release
+cargo run --release                         # listens on :9000 (override with PORT)
+PORT=9100 OSU_CACHE_DIR=/srv/osu cargo run --release
+```
+
+## Smoke test
+
+```bash
+./smoke-test.sh            # builds, boots on :9101, checks /health + vanilla&relax pp + L2 cache write
+./smoke-test.sh 9200       # or on another port
 ```
 
 Then point TomYum at it (`config/tomyum.yaml`):

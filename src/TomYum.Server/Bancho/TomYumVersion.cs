@@ -11,7 +11,7 @@ namespace TomYum.Server.Bancho;
 public sealed class TomYumVersion
 {
     /// <summary>Fallback used when no informational version is baked into the assembly.</summary>
-    public const string Fallback = "0.0.1-dev";
+    public const string Fallback = "0.1.0-dev";
 
     /// <summary>Creates the version accessor, resolving the version from the entry assembly.</summary>
     public TomYumVersion()

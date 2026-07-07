@@ -1,6 +1,4 @@
-using System.Globalization;
 using System.IO;
-using System.Net.Http;
 
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging;
@@ -30,15 +28,13 @@ namespace TomYum.Performance;
 /// </summary>
 public sealed class OfficialPerformanceCalculator : IPerformanceCalculator
 {
-    private static readonly System.Text.CompositeFormat BeatmapDownloadUrl = System.Text.CompositeFormat.Parse("https://osu.ppy.sh/osu/{0}");
-
-    private readonly HttpClient _http;
+    private readonly OsuFileCache _files;
     private readonly IMemoryCache _cache;
     private readonly ILogger<OfficialPerformanceCalculator> _log;
 
-    public OfficialPerformanceCalculator(HttpClient http, IMemoryCache cache, ILogger<OfficialPerformanceCalculator> log)
+    public OfficialPerformanceCalculator(OsuFileCache files, IMemoryCache cache, ILogger<OfficialPerformanceCalculator> log)
     {
-        _http = http;
+        _files = files;
         _cache = cache;
         _log = log;
     }
@@ -52,8 +48,8 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator
         var diffAttribs = await _cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.SlidingExpiration = TimeSpan.FromMinutes(30);
-            var url = string.Format(CultureInfo.InvariantCulture, BeatmapDownloadUrl, request.BeatmapId);
-            using var stream = await _http.GetStreamAsync(url, cancellationToken).ConfigureAwait(false);
+            var bytes = await _files.GetAsync(request.BeatmapId, cancellationToken).ConfigureAwait(false);
+            using var stream = new MemoryStream(bytes, writable: false);
             var working = new StreamedWorkingBeatmap(stream, ruleset);
             return ruleset.CreateDifficultyCalculator(working).Calculate(mods);
         }).ConfigureAwait(false);

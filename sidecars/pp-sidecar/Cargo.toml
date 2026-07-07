@@ -9,7 +9,7 @@ description = "Reference pp sidecar for TomYum: computes pp (incl. relax/autopil
 # To use plain rosu-pp instead (no rx/ap tuning): akatsuki-pp = { package = "rosu-pp", version = "1" }
 akatsuki-pp = { git = "https://github.com/osuAkatsuki/akatsuki-pp-rs", branch = "main" }
 axum = "0.7"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "sync"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }

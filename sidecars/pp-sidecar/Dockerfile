@@ -9,7 +9,8 @@ RUN cargo build --release
 
 FROM debian:bookworm-slim
 # ca-certificates: TLS roots for downloading .osu over HTTPS (reqwest uses rustls).
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+# curl: used by the container healthcheck to probe /health.
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/target/release/tomyum-pp-sidecar /usr/local/bin/tomyum-pp-sidecar
 ENV PORT=9000
 EXPOSE 9000
