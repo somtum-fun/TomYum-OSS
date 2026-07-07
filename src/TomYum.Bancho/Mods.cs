@@ -104,3 +104,16 @@ public enum Mods
     /// <summary>Mirror (mania).</summary>
     Mirror = 1 << 30,
 }
+
+/// <summary>Helpers for turning mod bitmasks into the combined gamemode.</summary>
+public static class ModsExtensions
+{
+    /// <summary>
+    /// Folds a vanilla ruleset (0-3) and the Relax/Autopilot mods into the combined gamemode used
+    /// for stats and leaderboards (bancho.py's <c>GameMode.from_params</c>): Autopilot adds 8,
+    /// Relax adds 4, otherwise the vanilla mode is returned unchanged. Autopilot takes precedence
+    /// (the two are mutually exclusive in practice).
+    /// </summary>
+    public static int ToGameMode(this Mods mods, int vanillaMode)
+        => TomYum.Domain.Enums.GameMode.FromLegacyMods(vanillaMode, (int)mods);
+}

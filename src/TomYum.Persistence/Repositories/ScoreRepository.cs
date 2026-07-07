@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 
@@ -25,12 +26,18 @@ public sealed class ScoreRepository : IScoreRepository
             .Where(s => s.UserId == userId && s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)
             .FirstOrDefaultAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, CancellationToken cancellationToken = default) =>
-        await _db.Scores.AsNoTracking()
-            .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)
-            .OrderByDescending(s => s.ScoreValue)
-            .Take(count)
-            .ToListAsync(cancellationToken).ConfigureAwait(false);
+    public async Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, CancellationToken cancellationToken = default)
+    {
+        var query = _db.Scores.AsNoTracking()
+            .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best);
+
+        // Relax/Autopilot leaderboards rank by pp; vanilla ranks by score (bancho.py's rule).
+        query = GameMode.UsesPpLeaderboard(mode)
+            ? query.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue)
+            : query.OrderByDescending(s => s.ScoreValue);
+
+        return await query.Take(count).ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     public async Task MarkPreviousBestAsync(int userId, string beatmapMd5, int mode, CancellationToken cancellationToken = default)
     {
@@ -49,7 +56,7 @@ public sealed class ScoreRepository : IScoreRepository
             .ContinueWith(t => (IReadOnlyList<(double, float)>)t.Result
                 .Select(r =>
                 {
-                    var acc = (float)AccuracyCalculator.Compute(r.Mode, r.Count300, r.Count100, r.Count50, r.CountGeki, r.CountKatu, r.CountMiss);
+                    var acc = (float)AccuracyCalculator.Compute(GameMode.AsVanilla(r.Mode), r.Count300, r.Count100, r.Count50, r.CountGeki, r.CountKatu, r.CountMiss);
                     return (r.Pp, acc);
                 })
                 .ToList(), TaskScheduler.Default)

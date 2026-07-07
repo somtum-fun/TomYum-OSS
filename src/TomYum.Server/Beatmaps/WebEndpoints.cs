@@ -1,4 +1,5 @@
 using System.Globalization;
+using TomYum.Bancho;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
@@ -71,7 +72,12 @@ public static class WebEndpoints
             mode = 0;
         }
 
-        var board = await scores.GetLeaderboardAsync(md5, mode, 50, cancellationToken).ConfigureAwait(false);
+        // The client sends its active mods; Relax/Autopilot select that variant's leaderboard so
+        // relax scores never mix with vanilla. The combined mode also picks the sort (pp vs score).
+        _ = int.TryParse(context.Request.Query["mods"].ToString(), out var modsArg);
+        var gameMode = ((Mods)modsArg).ToGameMode(mode);
+
+        var board = await scores.GetLeaderboardAsync(md5, gameMode, 50, cancellationToken).ConfigureAwait(false);
 
         // Look up requesting player's personal best via token
         Score? personalBest = null;
@@ -79,7 +85,7 @@ public static class WebEndpoints
         var requestingPlayer = string.IsNullOrEmpty(token) ? null : registry.GetByToken(token);
         if (requestingPlayer is not null)
         {
-            personalBest = await scores.GetPersonalBestAsync(requestingPlayer.UserId, md5, mode, cancellationToken).ConfigureAwait(false);
+            personalBest = await scores.GetPersonalBestAsync(requestingPlayer.UserId, md5, gameMode, cancellationToken).ConfigureAwait(false);
         }
 
         var sb = new System.Text.StringBuilder();
@@ -92,12 +98,16 @@ public static class WebEndpoints
         var replayDir = configuration["Replays:Path"] ?? "data/replays";
         var replayDirFull = Path.GetFullPath(replayDir);
 
+        // On relax/autopilot boards the client should display pp as the "score" column
+        // (bancho.py's leaderboard_value), matching the pp-based ranking.
+        var showPp = GameMode.UsesPpLeaderboard(gameMode);
+
         if (personalBest is not null)
         {
             var pbUsername = await GetUsernameAsync(personalBest.UserId, users, registry, cancellationToken).ConfigureAwait(false);
             var pbRank = board.TakeWhile(s => s.Id != personalBest.Id).Count() + 1;
             var pbHasReplay = File.Exists(Path.Combine(replayDirFull, $"{personalBest.Id}.osr"));
-            sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank, pbHasReplay));
+            sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank, pbHasReplay, showPp));
         }
         else
         {
@@ -109,7 +119,7 @@ public static class WebEndpoints
             var s = board[i];
             var username = await GetUsernameAsync(s.UserId, users, registry, cancellationToken).ConfigureAwait(false);
             var hasReplay = File.Exists(Path.Combine(replayDirFull, $"{s.Id}.osr"));
-            sb.AppendLine(FormatScoreLine(s, username, i + 1, hasReplay));
+            sb.AppendLine(FormatScoreLine(s, username, i + 1, hasReplay, showPp));
         }
 
         return Results.Text(sb.ToString(), "text/plain");
@@ -146,9 +156,14 @@ public static class WebEndpoints
         return user?.Username ?? userId.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static string FormatScoreLine(Score s, string username, int rank, bool hasReplay) =>
-        string.Create(CultureInfo.InvariantCulture,
-            $"{s.Id}|{username}|{s.ScoreValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? 1 : 0)}|{s.Mods}|{s.UserId}|{rank}|{s.SubmittedAt.ToUnixTimeSeconds()}|{(hasReplay ? 1 : 0)}");
+    private static string FormatScoreLine(Score s, string username, int rank, bool hasReplay, bool showPp)
+    {
+        // The 3rd field is the value the client shows and ranks by: pp (rounded) on relax/autopilot
+        // boards, total score on vanilla — matching the leaderboard's sort metric.
+        var leaderboardValue = showPp ? (long)Math.Round(s.Pp, MidpointRounding.AwayFromZero) : s.ScoreValue;
+        return string.Create(CultureInfo.InvariantCulture,
+            $"{s.Id}|{username}|{leaderboardValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? 1 : 0)}|{s.Mods}|{s.UserId}|{rank}|{s.SubmittedAt.ToUnixTimeSeconds()}|{(hasReplay ? 1 : 0)}");
+    }
 
     private static readonly string NotSubmitted =
         string.Create(CultureInfo.InvariantCulture, $"{(int)RankedStatus.NotSubmitted}|false");

@@ -29,6 +29,7 @@ internal sealed class RecalculationEngine
     private readonly ILogger<RecalculationEngine> _log;
     private readonly bool _dryRun;
     private readonly bool _force;
+    private readonly bool _allPassed;
     private readonly int _batchSize;
 
     public RecalculationEngine(
@@ -37,21 +38,25 @@ internal sealed class RecalculationEngine
         ILogger<RecalculationEngine> log,
         bool dryRun,
         int batchSize,
-        bool force = false)
+        bool force = false,
+        bool allPassed = false)
     {
         _db = db;
         _pp = pp;
         _log = log;
         _dryRun = dryRun;
         _force = force;
+        _allPassed = allPassed;
         _batchSize = batchSize;
     }
 
     public async Task<RecalculationResult> RecalculateAsync(int? modeFilter, CancellationToken cancellationToken)
     {
-        // Step 1: collect all Best scores on ranked/approved maps only.
+        // Step 1: collect scores on ranked/approved maps. By default only the Best score per
+        // (user, map, mode) is recomputed; --all-passed also recomputes the Submitted history
+        // rows (used after a bulk re-resolve, so every passed score's pp reflects the correct map).
         var query = _db.Scores.AsNoTracking()
-            .Where(s => s.Status == ScoreStatus.Best && s.Passed)
+            .Where(s => s.Passed && (_allPassed || s.Status == ScoreStatus.Best))
             .Join(_db.Beatmaps,
                 s => s.BeatmapId,
                 b => b.Id,
@@ -93,7 +98,8 @@ internal sealed class RecalculationEngine
                 {
                     newPp = await _pp.CalculateAsync(new PerformanceRequest(
                         BeatmapId: score.BeatmapId,
-                        RulesetId: score.Mode,
+                        // score.Mode is the combined gamemode (rx/ap included); pp uses the vanilla ruleset.
+                        RulesetId: GameMode.AsVanilla(score.Mode),
                         Mods: score.Mods,
                         MaxCombo: score.MaxCombo,
                         Count300: score.Count300,
@@ -206,5 +212,6 @@ internal sealed class RecalculationEngine
     }
 
     private static double ComputeAccuracy(int mode, int n300, int n100, int n50, int ngeki, int nkatu, int nmiss) =>
-        AccuracyCalculator.Compute(mode, n300, n100, n50, ngeki, nkatu, nmiss);
+        // `mode` is the combined gamemode; accuracy is ruleset-specific, so fold to vanilla.
+        AccuracyCalculator.Compute(GameMode.AsVanilla(mode), n300, n100, n50, ngeki, nkatu, nmiss);
 }

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 
 namespace TomYum.Server.Bancho;
@@ -50,11 +51,15 @@ public sealed class InMemoryScoreRepository : IScoreRepository
 
     public Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<Score> board = _scores.Values
-            .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)
-            .OrderByDescending(s => s.ScoreValue)
-            .Take(count)
-            .ToList();
+        var filtered = _scores.Values
+            .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best);
+
+        // Relax/Autopilot leaderboards rank by pp; vanilla ranks by score (bancho.py's rule).
+        var ordered = GameMode.UsesPpLeaderboard(mode)
+            ? filtered.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue)
+            : filtered.OrderByDescending(s => s.ScoreValue);
+
+        IReadOnlyList<Score> board = ordered.Take(count).ToList();
         return Task.FromResult(board);
     }
 

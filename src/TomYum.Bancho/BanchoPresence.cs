@@ -54,8 +54,16 @@ public sealed class BanchoPresence
     /// <summary>Mods active for the current action.</summary>
     public Mods Mods { get; set; } = Mods.None;
 
-    /// <summary>Current game mode (0 = osu!, 1 = taiko, 2 = catch, 3 = mania).</summary>
+    /// <summary>Current game mode (0 = osu!, 1 = taiko, 2 = catch, 3 = mania). This is the wire
+    /// USER_PRESENCE playmode; use <see cref="GameMode"/> for stat/leaderboard keying.</summary>
     public int Mode { get; set; }
+
+    /// <summary>
+    /// Combined gamemode (0-11) folding <see cref="Mode"/> with the active Relax/Autopilot mods.
+    /// Identifies which stat row + leaderboard the player is currently viewing, so relax scores
+    /// stay separate from vanilla. See <c>TomYum.Domain.Enums.GameMode</c>.
+    /// </summary>
+    public int GameMode { get; set; }
 
     /// <summary>Beatmap id tied to the current action, or 0.</summary>
     public int BeatmapId { get; set; }

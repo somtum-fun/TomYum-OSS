@@ -145,6 +145,11 @@ public static class ScoreSubmissionEndpoint
         var passed = parts[14].Equals("True", StringComparison.OrdinalIgnoreCase);
         var grade = parts[12];
 
+        // Fold Relax/Autopilot into the combined gamemode used for stats + leaderboards so those
+        // scores stay off the vanilla boards. The vanilla ruleset (`mode`) still drives pp and
+        // accuracy. See TomYum.Domain.Enums.GameMode.
+        var gameMode = ((Mods)mods).ToGameMode(mode);
+
         // ScoreV2 changes the scoring algorithm server-side — not supported yet
         if ((mods & (1 << 29)) != 0)
         {
@@ -171,11 +176,11 @@ public static class ScoreSubmissionEndpoint
         }
 
         // Fetch before insert so the Status==Best filter returns the genuine prior best, not this score
-        var prevBest = await scores.GetPersonalBestAsync(user.Id, bmk, mode, cancellationToken).ConfigureAwait(false);
+        var prevBest = await scores.GetPersonalBestAsync(user.Id, bmk, gameMode, cancellationToken).ConfigureAwait(false);
 
         // Fetch the leaderboard before insert to determine the player's beatmap rank before this submission.
         // After insert the position of the previous best is no longer queryable.
-        var preBoardForRank = await scores.GetLeaderboardAsync(bmk, mode, 50, cancellationToken).ConfigureAwait(false);
+        var preBoardForRank = await scores.GetLeaderboardAsync(bmk, gameMode, 50, cancellationToken).ConfigureAwait(false);
         var prevBeatmapRank = prevBest is not null
             ? preBoardForRank.TakeWhile(s => s.Id != prevBest.Id).Count() + 1 as int?
             : null;
@@ -202,9 +207,11 @@ public static class ScoreSubmissionEndpoint
                         Passed: passed),
                     cancellationToken).ConfigureAwait(false);
             }
-            catch
+            catch (Exception ex)
             {
-                // pp calculation is best-effort
+                // pp calculation is best-effort — never fail submission over it — but surface the
+                // reason so a misconfigured backend / calc failure isn't silently recorded as 0 pp.
+                logger.LogWarning(ex, "PP calc failed for beatmap {BeatmapId} gamemode {GameMode}; recording 0 pp", beatmap.Id, gameMode);
             }
         }
 
@@ -215,14 +222,14 @@ public static class ScoreSubmissionEndpoint
             : ScoreStatus.Failed;
 
         if (scoreStatus == ScoreStatus.Best && prevBest is not null)
-            await scores.MarkPreviousBestAsync(user.Id, bmk, mode, cancellationToken).ConfigureAwait(false);
+            await scores.MarkPreviousBestAsync(user.Id, bmk, gameMode, cancellationToken).ConfigureAwait(false);
 
         var score = await scores.AddAsync(new Score
         {
             UserId = user.Id,
             BeatmapId = beatmap.Id,
             BeatmapMd5 = bmk,
-            Mode = mode,
+            Mode = gameMode,
             ScoreValue = scoreValue,
             MaxCombo = maxCombo,
             Count300 = n300,
@@ -262,7 +269,7 @@ public static class ScoreSubmissionEndpoint
             logger.LogWarning(ex, "Score {ScoreId} could not be enqueued; submission still succeeds", score.Id);
         }
 
-        var stats = await userStats.GetOrCreateAsync(user.Id, mode, cancellationToken).ConfigureAwait(false);
+        var stats = await userStats.GetOrCreateAsync(user.Id, gameMode, cancellationToken).ConfigureAwait(false);
 
         var prevRankedScore = stats.RankedScore;
         var prevTotalScore  = stats.TotalScore;
@@ -282,7 +289,7 @@ public static class ScoreSubmissionEndpoint
             stats.RankedScore = Math.Max(0, stats.RankedScore + delta);
 
             // Weighted PP and accuracy across all best scores (standard osu! formula).
-            var bestPerfs = await scores.GetBestPerformancesAsync(user.Id, mode, cancellationToken).ConfigureAwait(false);
+            var bestPerfs = await scores.GetBestPerformancesAsync(user.Id, gameMode, cancellationToken).ConfigureAwait(false);
             if (bestPerfs.Count > 0)
             {
                 var weightedPp = bestPerfs.Select((p, i) => p.Pp * Math.Pow(0.95, i)).Sum();
@@ -295,15 +302,15 @@ public static class ScoreSubmissionEndpoint
             }
         }
 
-        var prevGlobalRank = await userStats.GetGlobalRankAsync(user.Id, mode, cancellationToken).ConfigureAwait(false);
+        var prevGlobalRank = await userStats.GetGlobalRankAsync(user.Id, gameMode, cancellationToken).ConfigureAwait(false);
 
         stats = await userStats.UpdateAsync(stats, cancellationToken).ConfigureAwait(false);
-        var globalRank = await userStats.GetGlobalRankAsync(user.Id, mode, cancellationToken).ConfigureAwait(false);
+        var globalRank = await userStats.GetGlobalRankAsync(user.Id, gameMode, cancellationToken).ConfigureAwait(false);
 
         if (player is not null)
         {
             var presence = player.Presence;
-            if (mode == presence.Mode)
+            if (gameMode == presence.GameMode)
             {
                 presence.RankedScore = stats.RankedScore;
                 presence.TotalScore = stats.TotalScore;
@@ -318,7 +325,7 @@ public static class ScoreSubmissionEndpoint
             }
         }
 
-        var leaderboard = await scores.GetLeaderboardAsync(bmk, mode, 50, cancellationToken).ConfigureAwait(false);
+        var leaderboard = await scores.GetLeaderboardAsync(bmk, gameMode, 50, cancellationToken).ConfigureAwait(false);
         var scoreRank = leaderboard.TakeWhile(s => s.Id != score.Id).Count() + 1;
 
         var totalHits = n300 + n100 + n50 + nmiss;

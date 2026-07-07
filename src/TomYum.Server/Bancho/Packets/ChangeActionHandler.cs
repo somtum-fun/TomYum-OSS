@@ -33,24 +33,26 @@ public sealed class ChangeActionHandler : IClientPacketHandler
         var newMode         = reader.ReadByte();
         presence.BeatmapId  = reader.ReadInt32();
 
-        // If the player switched modes, reload their stats for the new mode from the DB
+        // The wire playmode stays vanilla (0-3); stats are keyed by the combined gamemode so
+        // toggling Relax/Autopilot in song-select shows that variant's stats.
+        presence.Mode = newMode;
+        var newGameMode = presence.Mods.ToGameMode(newMode);
+
+        // Reload stats when the combined mode changes (a mode switch OR a Relax/Autopilot toggle)
         // so the presence reflects the correct PP / accuracy / ranked score / rank.
-        if (newMode != presence.Mode)
+        if (newGameMode != presence.GameMode)
         {
-            presence.Mode = newMode;
+            presence.GameMode = newGameMode;
             var userStats = context.Services.GetRequiredService<IUserStatsRepository>();
-            var stats = await userStats.GetOrCreateAsync(context.Player.UserId, newMode, cancellationToken).ConfigureAwait(false);
-            var rank  = await userStats.GetGlobalRankAsync(context.Player.UserId, newMode, cancellationToken).ConfigureAwait(false);
+            var stats = await userStats.GetOrCreateAsync(context.Player.UserId, newGameMode, cancellationToken).ConfigureAwait(false);
+            var rank  = await userStats.GetGlobalRankAsync(context.Player.UserId, newGameMode, cancellationToken).ConfigureAwait(false);
 
             presence.RankedScore = stats.RankedScore;
+            presence.TotalScore  = stats.TotalScore;
             presence.Accuracy    = stats.Accuracy;
             presence.PlayCount   = stats.PlayCount;
             presence.Performance = (short)Math.Clamp((int)stats.Pp, short.MinValue, short.MaxValue);
             presence.GlobalRank  = rank;
-        }
-        else
-        {
-            presence.Mode = newMode;
         }
 
         // Encode the refreshed stats once, then fan out: everyone else gets it queued, and the
