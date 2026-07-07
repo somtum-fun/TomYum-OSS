@@ -3,6 +3,7 @@ using System.IO;
 using System.Net.Http;
 
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using osu.Framework.Audio.Track;
 using osu.Framework.Graphics.Textures;
 using osu.Game.Beatmaps;
@@ -22,21 +23,24 @@ using osu.Game.Skinning;
 namespace TomYum.Performance;
 
 /// <summary>
-/// Real PP calculator using the official ppy.osu.Game.Rulesets.* packages in-process.
-/// Downloads the .osu file from osu.ppy.sh, calculates difficulty attributes (cached by
-/// beatmapId+rulesetId+mods), then computes performance attributes per ADR-0005.
+/// The "official" pp backend: computes pp in-process with the official ppy.osu.Game.Rulesets.*
+/// packages (osu!lazer algorithms). Downloads the .osu from osu.ppy.sh, caches difficulty
+/// attributes 30 min by beatmapId+rulesetId+mods, then runs the performance calculator.
+/// One of the pluggable backends behind RoutingPerformanceCalculator (ADR-0005 / ADR-0010).
 /// </summary>
-public sealed class OsuPerformanceCalculator : IPerformanceCalculator
+public sealed class OfficialPerformanceCalculator : IPerformanceCalculator
 {
     private static readonly System.Text.CompositeFormat BeatmapDownloadUrl = System.Text.CompositeFormat.Parse("https://osu.ppy.sh/osu/{0}");
 
     private readonly HttpClient _http;
     private readonly IMemoryCache _cache;
+    private readonly ILogger<OfficialPerformanceCalculator> _log;
 
-    public OsuPerformanceCalculator(HttpClient http, IMemoryCache cache)
+    public OfficialPerformanceCalculator(HttpClient http, IMemoryCache cache, ILogger<OfficialPerformanceCalculator> log)
     {
         _http = http;
         _cache = cache;
+        _log = log;
     }
 
     public async Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
@@ -44,7 +48,7 @@ public sealed class OsuPerformanceCalculator : IPerformanceCalculator
         var ruleset = GetRuleset(request.RulesetId);
         var mods = ruleset.ConvertFromLegacyMods((LegacyMods)request.Mods).ToArray();
 
-        var cacheKey = $"diff:{request.BeatmapId}:{request.RulesetId}:{request.Mods}";
+        var cacheKey = $"diff:official:{request.BeatmapId}:{request.RulesetId}:{request.Mods}";
         var diffAttribs = await _cache.GetOrCreateAsync(cacheKey, async entry =>
         {
             entry.SlidingExpiration = TimeSpan.FromMinutes(30);
@@ -59,7 +63,18 @@ public sealed class OsuPerformanceCalculator : IPerformanceCalculator
 
         var scoreInfo = BuildScoreInfo(request, ruleset, mods);
         var perfAttribs = ruleset.CreatePerformanceCalculator()?.Calculate(scoreInfo, diffAttribs);
-        return perfAttribs?.Total ?? 0.0;
+        var pp = perfAttribs?.Total ?? 0.0;
+
+        // Diagnostic: surface the computed star rating alongside the resulting pp. This is the
+        // fastest way to tell a genuine calc problem (wrong SR) from stale stored/displayed
+        // values — a healthy 1★ catch convert logs SR≈1.0 / pp≈12 here even if the DB row and
+        // in-game screen still show an old inflated number. Enable via LogLevel Debug for
+        // "TomYum.Performance.OfficialPerformanceCalculator".
+        _log.LogDebug(
+            "PP calc: beatmap {BeatmapId} ruleset {RulesetId} mods {Mods} → SR={StarRating:F3} acc={Accuracy:P2} combo={MaxCombo} = {Pp:F2}pp",
+            request.BeatmapId, request.RulesetId, request.Mods, diffAttribs.StarRating, scoreInfo.Accuracy, request.MaxCombo, pp);
+
+        return pp;
     }
 
     internal static ScoreInfo BuildScoreInfo(PerformanceRequest req, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods)
@@ -159,10 +174,13 @@ public sealed class OsuPerformanceCalculator : IPerformanceCalculator
         private StreamedWorkingBeatmap(Beatmap beatmap, Ruleset targetRuleset) : base(beatmap.BeatmapInfo, null)
         {
             _beatmap = beatmap;
-            // Always set BeatmapInfo.Ruleset to the target ruleset, NOT the .osu native mode.
-            // If we leave it as the native mode (e.g. OsuRuleset for a Mode-0 map) when the
-            // caller wants CatchRuleset, the catch difficulty calculator does not recognise it
-            // as a convert and produces wildly inflated SR (e.g. 4★ instead of 1★).
+            // Record the target ruleset on BeatmapInfo for consistency (a Mode-0 map being
+            // calculated as catch reports the target ruleset). NOTE: this does NOT influence
+            // conversion or star rating — GetPlayableBeatmap converts purely from the ruleset
+            // passed to the difficulty calculator, so leaving the native mode here yields
+            // identical attributes. The earlier "native ruleset ⇒ 4★ inflation" theory was
+            // wrong: this map computes 1.02★ either way, in both 2026.605.0 and 2026.702.1.
+            // See memories/changelogs/CHANGELOG.md (2026-07-07 catch-convert PP investigation).
             beatmap.BeatmapInfo.Ruleset = targetRuleset.RulesetInfo;
         }
 

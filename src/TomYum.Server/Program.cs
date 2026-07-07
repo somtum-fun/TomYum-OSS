@@ -87,8 +87,11 @@ builder.Services.AddHttpClient<IOsuApiClient, OsuApiClient>(http =>
     http.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddSingleton<BeatmapService>();
-builder.Services.AddMemoryCache();
-builder.Services.AddHttpClient<IPerformanceCalculator, OsuPerformanceCalculator>();
+
+// --- Pluggable pp engine (ADR-0010) ---
+// RoutingPerformanceCalculator dispatches per gamemode to the configured backend (in-process
+// official ppy calc, or an http sidecar like akatsuki-pp-rs). Defaults to `official` for all modes.
+builder.Services.AddTomYumPerformance(builder.Configuration);
 
 // --- osu!Direct beatmap browser ---
 // Named HttpClient for the mirror; options let operators point at any mino.pw-compatible mirror.

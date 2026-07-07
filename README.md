@@ -40,7 +40,16 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 
 - [x] Score submission with Rijndael-256 CBC decryption, status tracking, and chart response
 - [x] Real PP calculation (all four rulesets) + weighted PP/accuracy formula
-  - ⚠️ **WIP / known issue**: PP for osu!standard maps played as catch converts may still be slightly off. Root causes identified and partially fixed (bumped `ppy.osu.Game.Rulesets.*` to `2026.702.1` for the 2026 Q2 SR/PP algorithm update; fixed `StreamedWorkingBeatmap` to set `BeatmapInfo.Ruleset` from the target ruleset rather than the `.osu` native mode). **Still broken in practice** — catch converts (e.g. a 1★ standard map) still produce ~180pp instead of ~12pp. Needs further investigation; the `IMemoryCache` diff-attrs cache and whether the server is actually loading the new binaries are the prime suspects.
+  - ✅ **"Catch convert = 180pp" bug fixed (2026-07-07) — it was a beatmap MD5→ID resolution
+    bug, not a PP bug.** `OsuApiClient.GetByMd5Async` took `FirstOrDefault()` of the
+    `get_beatmaps?h={md5}` response. With no API key set (the default) the request hits the
+    keyless osu.direct mirror, which **returns every difficulty in the set** — so plays on any
+    non-first difficulty were filed under the set's *first* difficulty's id, and pp was computed
+    against the wrong (often much harder) map. Example: an SS on beatmap 1801936 (1★→~12pp
+    catch) was stored as 1797542 (4.48★) → ~188pp. Fix: match on `file_md5` instead of taking
+    the first entry (regression tests in `OsuApiClientResolutionTests`). The PP calculator
+    itself was verified correct. Existing misfiled scores need a re-resolve + `RecalcPp --force`
+    migration. See CHANGELOG 2026-07-07.
 - [x] Replay save and serve (`/web/osu-getreplay.php`)
 - [x] Redis score queue (`TomYum.ScoreQueue` background worker, Redis Stream consumer group)
 - [x] Multiplayer: lobby, match rooms, full lifecycle, per-match chat, BanchoBot `!mp` commands

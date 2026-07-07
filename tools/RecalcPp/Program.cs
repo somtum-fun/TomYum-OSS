@@ -28,9 +28,10 @@ internal static class Program
 
     private static async Task<int> Main(string[] args)
     {
-        var dryRun   = args.Contains("--dry-run",  StringComparer.OrdinalIgnoreCase);
-        var force    = args.Contains("--force",    StringComparer.OrdinalIgnoreCase);
-        var backfill = args.Contains("--backfill", StringComparer.OrdinalIgnoreCase);
+        var dryRun    = args.Contains("--dry-run",   StringComparer.OrdinalIgnoreCase);
+        var force     = args.Contains("--force",     StringComparer.OrdinalIgnoreCase);
+        var backfill  = args.Contains("--backfill",  StringComparer.OrdinalIgnoreCase);
+        var allPassed = args.Contains("--all-passed", StringComparer.OrdinalIgnoreCase);
         var mode      = GetArgValue(args, "--mode");
         var batchSize = GetArgValue(args, "--batch-size") is { } bsStr && int.TryParse(bsStr, out var bs) ? bs : DefaultBatchSize;
 
@@ -65,7 +66,7 @@ internal static class Program
         }
 
         Console.WriteLine("--- Recalculating PP ---");
-        var engine     = new RecalculationEngine(db, pp, logFactory.CreateLogger<RecalculationEngine>(), dryRun, batchSize, force);
+        var engine     = new RecalculationEngine(db, pp, logFactory.CreateLogger<RecalculationEngine>(), dryRun, batchSize, force, allPassed);
         var modeFilter = mode is not null && int.TryParse(mode, out var m) ? m : (int?)null;
 
         var result = await engine.RecalculateAsync(modeFilter, CancellationToken.None).ConfigureAwait(false);
@@ -163,8 +164,9 @@ internal static class Program
             ?? throw new InvalidOperationException("Database configuration is missing");
 
         services.AddTomYumPersistence(dbOptions);
-        services.AddSingleton<IMemoryCache, MemoryCache>();
-        services.AddHttpClient<IPerformanceCalculator, OsuPerformanceCalculator>();
+        // Pluggable pp engine (routing calculator + backends), same wiring as the server so
+        // relax/autopilot scores recalc through their configured backend. See ADR-0010.
+        services.AddTomYumPerformance(configuration);
         services.AddHttpClient(); // registers IHttpClientFactory for BeatmapBackfiller
 
         return services.BuildServiceProvider();

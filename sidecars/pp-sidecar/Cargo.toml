@@ -1,0 +1,20 @@
+[package]
+name = "tomyum-pp-sidecar"
+version = "0.1.0"
+edition = "2021"
+description = "Reference pp sidecar for TomYum: computes pp (incl. relax/autopilot) via akatsuki-pp-rs behind the TomYum HttpPerformanceCalculator contract."
+
+[dependencies]
+# akatsuki-pp-rs — rosu-pp fork with relax/autopilot pp. Swap the git ref for a fork/tag as needed.
+# To use plain rosu-pp instead (no rx/ap tuning): akatsuki-pp = { package = "rosu-pp", version = "1" }
+akatsuki-pp = { git = "https://github.com/osuAkatsuki/akatsuki-pp-rs", branch = "main" }
+axum = "0.7"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+[profile.release]
+opt-level = 3
