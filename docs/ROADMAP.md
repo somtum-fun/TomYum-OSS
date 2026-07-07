@@ -18,14 +18,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 blocked-by · ⚖�
 
 ## Phase 0 — Foundations (small, unblock everything)
 
-- [ ] **`.osu` disk cache** — cache raw `.osu` bytes on disk so vanilla (C# `OfficialPerformanceCalculator`)
-      and rx/ap (Rust sidecar) stop re-downloading from `osu.ppy.sh/osu/{id}` every time. L1 mem + L2 disk.
-      Also the seam that later serves **custom** maps' `.osu` locally.
-- [ ] **PP sidecar smoke test + go-live** — documented build/run, a smoke-test script, a
-      `docker-compose` service, and a startup readiness log. (Sidecar already builds and returns
-      correct pp; this makes it operable + verifiable.)
-- [ ] ⚖️ **Version bump decision** — we're `0.0.1-dev` (pre-1.0). This wave is large; recommend a
-      **minor** bump to `0.1.0-dev` to mark it. No MAJOR bump until a stable `1.0.0` API baseline.
+- [x] **`.osu` disk cache** — `OsuFileCache` (C#, L2 on disk) + sidecar L2 (`OSU_CACHE_DIR`). Vanilla
+      and rx/ap now reuse one download; survives restarts; seam for serving custom `.osu` locally. `bd1d2e1`
+- [x] **PP sidecar smoke test + go-live** — `smoke-test.sh`, `pp-sidecar` compose service (persistent
+      volume + healthcheck), startup readiness log. Verified 11.70pp / 2.42pp, cache write. `bd1d2e1`
+- [x] ⚖️ **Version bump** → **`0.1.0-dev`** (minor; opens the feature wave; no MAJOR until `1.0.0`). `bd1d2e1`
 - [ ] **EF Core migrations bootstrap** — repo currently has **no migrations** (schema hand-managed).
       Every table below (client_hashes, restrictions, sessions, mapsets…) needs this first.
 
