@@ -44,8 +44,13 @@ _ABI already exists (`TomYum.Plugins.Abstractions`); ADR-0007 already picks `.dl
 - [x] Command bridge — unmatched `!cmd` → plugin `ICommandRegistry`. `563b9e5`
 - [x] **`!plugins`** — lists loaded plugins (name / version / author). `563b9e5`
 - [x] Example plugins: compiled (`.dll`) + loose (`.cs`), both verified loading into the live server. `563b9e5`
-- [x] ⚖️ **Plugin template** — `templates/plugin-template/` (compiled + loose) + **human docs**
-      (`docs/plugins.md`) + **agent docs** (`memories/features/plugins.md`). Submodule split instructions in the template README (you push).
+- [~] ⚖️ **Plugin template** — `templates/plugin-template/` (compiled + loose) + **human docs**
+      (`docs/plugins.md`) + **agent docs** (`memories/features/plugins.md`).
+  - [x] Scaffolded in-tree; standalone repo **prepared** and committed at
+        `../tomyum-plugin-template` (template + `docs/writing-plugins.md`, `main`, ready to push).
+  - [ ] **You**: create the empty GitHub repo (`somtum-fun/tomyum-plugin-template`).
+  - [ ] Then: `git remote add` + push the standalone repo, and wire it into TomYum as a submodule at
+        `templates/plugin-template` (`git rm` the in-tree copy → `git submodule add`).
 
 ## Phase 2 — Moderation + HWID anti-cheat 🔒 Phase 0 migrations
 _All packet IDs exist (`AccountRestricted=104`, `UserSilenced=94`, `SilenceEnd=92`, `TargetIsSilenced=101`).
