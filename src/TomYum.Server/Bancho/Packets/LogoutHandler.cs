@@ -1,5 +1,6 @@
 using TomYum.Bancho;
 using TomYum.Server.Bancho.Packets.Match;
+using TomYum.Server.Bancho.Packets.Spectate;
 
 namespace TomYum.Server.Bancho.Packets;
 
@@ -21,6 +22,9 @@ public sealed class LogoutHandler : IClientPacketHandler
         var match = context.Matches.GetByUserId(context.Player.UserId);
         if (match is not null)
             MatchBroadcast.RemovePlayer(match, context.Player, context.Registry, context.Matches);
+
+        // Tear down spectate links (stop watching + drain own spectators) while everyone is still online.
+        SpectatorManager.TeardownForLeaver(context.Player, context.Registry);
 
         context.Registry.Remove(context.Player.Token);
         context.Channels.RemoveFromAll(context.Player.UserId);

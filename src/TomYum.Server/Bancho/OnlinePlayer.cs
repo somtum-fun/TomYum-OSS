@@ -20,6 +20,8 @@ public sealed class OnlinePlayer
     private readonly List<byte> _outbound = [];
     private readonly HashSet<string> _channels = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _channelsLock = new();
+    private readonly HashSet<int> _spectators = new();
+    private readonly object _spectatorsLock = new();
     private readonly ConcurrentDictionary<string, object?> _state = new(StringComparer.Ordinal);
 
     /// <summary>Creates a session for <paramref name="presence"/> identified by <paramref name="token"/>.</summary>
@@ -44,6 +46,12 @@ public sealed class OnlinePlayer
 
     /// <summary>Whether this player currently has the multiplayer lobby open.</summary>
     public bool InLobby { get; set; }
+
+    /// <summary>
+    /// The user id of the host this player is currently spectating, or <c>null</c> when not
+    /// spectating anyone. Set by <c>START_SPECTATING</c>, cleared by <c>STOP_SPECTATING</c>/logout.
+    /// </summary>
+    public int? SpectatingUserId { get; set; }
 
     /// <summary>Appends already-framed packet bytes to this player's outbound queue.</summary>
     public void Enqueue(ReadOnlySpan<byte> framedPackets)
@@ -125,6 +133,50 @@ public sealed class OnlinePlayer
         lock (_channelsLock)
         {
             return _channels.Contains(channelName);
+        }
+    }
+
+    /// <summary>
+    /// A snapshot of the user ids currently spectating this player (i.e. this player is their host).
+    /// </summary>
+    public IReadOnlyCollection<int> Spectators
+    {
+        get
+        {
+            lock (_spectatorsLock)
+            {
+                return _spectators.ToArray();
+            }
+        }
+    }
+
+    /// <summary>How many players are currently spectating this player.</summary>
+    public int SpectatorCount
+    {
+        get
+        {
+            lock (_spectatorsLock)
+            {
+                return _spectators.Count;
+            }
+        }
+    }
+
+    /// <summary>Records that <paramref name="userId"/> started spectating this player. Returns <c>false</c> if already tracked.</summary>
+    public bool AddSpectator(int userId)
+    {
+        lock (_spectatorsLock)
+        {
+            return _spectators.Add(userId);
+        }
+    }
+
+    /// <summary>Records that <paramref name="userId"/> stopped spectating this player. Returns <c>false</c> if it wasn't tracked.</summary>
+    public bool RemoveSpectator(int userId)
+    {
+        lock (_spectatorsLock)
+        {
+            return _spectators.Remove(userId);
         }
     }
 

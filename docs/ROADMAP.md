@@ -73,12 +73,16 @@ only visible to self); **banned ≡ restricted** (no hard login reject); **silen
 
 ## Phase 3 — Stable spectating 🔒 (none) — prereq for DAN
 _All 10 packet IDs exist; `WriteRaw` fastpath exists (see `MatchScoreUpdateHandler`). Just handlers + state._
+_Core watch-and-relay done 2026-07-08 (`docs/spectating.md`). 143 tests. Chat channel deferred._
 
-- [ ] `Spectators` / `Spectating` on `OnlinePlayer`; ephemeral `#spec_<hostId>` channel;
-      `ChannelRegistry.Remove` + an "ephemeral" flag so it isn't listed like `#osu`.
-- [ ] Handlers: `StartSpectating(16)`, `StopSpectating(17)`, `SpectateFrames(18)` (raw relay),
-      `CantSpectate(21)` + spectator encoders (`SpectatorJoined/Left/Frames/CantSpectate/Fellow*`).
-- [ ] Logout/reaper teardown of spectate state.
+- [x] `Spectators` / `SpectatingUserId` on `OnlinePlayer` (id-keyed set). `48304f5`-line
+- [x] Handlers: `StartSpectating(16)`, `StopSpectating(17)`, `SpectateFrames(18)` (raw relay),
+      `CantSpectate(21)` + the six server encoders (`SpectatorManager`). Verified live (no packet-id clash).
+- [x] Logout teardown of spectate state (`SpectatorManager.TeardownForLeaver`; drains own spectators,
+      bancho.py fork behaviour). Shared with a future reaper.
+- [ ] Ephemeral `#spec_<hostId>` / `#spectator` chat channel (mirror `Match.Channel`; hidden from the
+      login channel-list; dispose when empty) + `#spectator` routing in `SendPublicMessageHandler`. Deferred.
+- [ ] Publish `SpectateFrameEvent` on the plugin bus (lands with the DAN plugin, Phase 4).
 
 ## Phase 4 — DAN mode + Session plugins (ports) 🔒 Phase 1 + Phase 3
 _Clean-room reimplementation from `memories/features/dan-mode.md` + `session.md` (fork is GPL — behavior only)._

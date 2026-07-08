@@ -7,6 +7,7 @@ using TomYum.Persistence;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
 using TomYum.Server.Bancho.Packets.Match;
+using TomYum.Server.Bancho.Packets.Spectate;
 using TomYum.Server.Beatmaps;
 using TomYum.Server.Plugins;
 
@@ -148,6 +149,13 @@ builder.Services.AddSingleton<IClientPacketHandler, MatchChangeTeamHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, MatchTransferHostHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, MatchInviteHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, MatchChangePasswordHandler>();
+
+// Spectating handlers.
+builder.Services.AddSingleton<IClientPacketHandler, StartSpectatingHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, StopSpectatingHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, SpectateFramesHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, CantSpectateHandler>();
+
 builder.Services.AddSingleton<BanchoPacketDispatcher>();
 
 var app = builder.Build();
