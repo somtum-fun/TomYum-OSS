@@ -8,7 +8,9 @@ hooks into the server through one interface — `IPluginContext` — and can add
 events, serve HTTP, and inspect live state. **DAN Mode** and the **Session** frontend ship as plugins
 on this same system.
 
-The fastest way to start is the template: [`templates/plugin-template/`](../templates/plugin-template/).
+The fastest way to start is the plugin template repo:
+**[somtum-fun/tomyum-plugin-template](https://github.com/somtum-fun/tomyum-plugin-template)** — compiled
+(`.dll`) and loose-source (`.cs`) starter shapes plus an authoring guide.
 
 ## Two shapes
 

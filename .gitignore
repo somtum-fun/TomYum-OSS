@@ -57,3 +57,7 @@ Thumbs.db
 ## These hold working notes/onboarding and are not yet published with the repo.
 AGENTS.md
 memories/
+
+## Plugin template — example code only; it lives in its own repo
+## (github.com/somtum-fun/tomyum-plugin-template). Kept locally for reference, not tracked here.
+/templates/

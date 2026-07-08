@@ -1,3 +1,0 @@
-[submodule "templates/plugin-template"]
-	path = templates/plugin-template
-	url = git@github.com:somtum-fun/tomyum-plugin-template.git
