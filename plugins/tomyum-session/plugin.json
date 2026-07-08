@@ -1,0 +1,8 @@
+{
+  "id": "tomyum.session",
+  "name": "Session (web auth)",
+  "version": "0.1.0",
+  "authors": "Phapoom Saksri",
+  "description": "Website session/auth layer (login, tokens, session management) served on session.<domain>. Clean-room port of bancho.py+prod session.py.",
+  "entryPoint": "SessionPlugin"
+}

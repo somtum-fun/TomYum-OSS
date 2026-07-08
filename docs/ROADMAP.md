@@ -82,9 +82,16 @@ _Clean-room reimplementation from `memories/features/dan-mode.md` + `session.md`
 
 - [ ] **DAN mode** plugin — mania clear validator: bot spectates on `CHANGE_ACTION`, taints on pause
       frame, vetoes score submit; `is_dan` per-diff flag + set-granularity tag endpoint; transient per-login state.
-- [ ] **Session** plugin — `session.<domain>` vhost, opaque web-session table (IP/UA binding),
-      the essential frontend endpoints (auth, profile, beatmap status). Scope out Thai-deployment
-      specifics (TrueMoney/PromptPay/OAuth/email) as optional plugin config.
+- [~] **Session** plugin — `session.<domain>` vhost, opaque web-session table (IP/UA binding).
+  - [x] **Auth core** (loose source `plugins/tomyum-session/`): `/login` (bcrypt, mint token, cookie),
+        `/check-session`, `/logout`, `GET`/`DELETE /user/sessions/web` (list + masked-suffix revoke),
+        `/health`, expiry reaper. Trusted plugin owns its `sessions` table. Auth resolved in-plugin
+        (`requireAuth:false`). Verified live vs MySQL. Docs: `docs/session-plugin.md`. (2026-07-08)
+  - [ ] Feature endpoints (profile, beatmap mode-status, clans, donations, admin, uploads,
+        change-password) — the other ~11k lines of `session.py`. Scope out Thai-deployment specifics
+        (TrueMoney/PromptPay/OAuth/email) as optional plugin config.
+  - [ ] Flip to `requireAuth:true` once the host grows an auth-resolver hook (Session provides it).
+  - [ ] Ship compiled `.dll` variant (net10.0 lib ref Abstractions + BCrypt.Net-Next).
 
 ## Phase 5 — Custom beatmaps 🔒 Phase 0 (storage/migrations); `!map` needs none
 _TomYum already **serves** status; it can't **accept uploads** yet. Split status-work (easy) from upload (hard)._
