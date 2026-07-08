@@ -30,22 +30,22 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 blocked-by · ⚖�
 _ABI already exists (`TomYum.Plugins.Abstractions`); ADR-0007 already picks `.dll` (AssemblyLoadContext)
 + loose `.cs` (Roslyn). This phase is the missing **host implementation**._
 
-- [ ] Concrete event types in Abstractions: `ActionChanged`, `ScoreSubmitting` (vetoable),
-      `ChatMessage`, `PlayerLogin`, `SpectateFrame` (ABI addition — design fields in one pass).
-- [ ] Host services: `PluginContext`, `EventBus`, `CommandRegistry`, `HttpRouteRegistry`,
-      `PluginConfig`, `PluginLogger`, `PluginDataAccess` (trusted-only DB connection).
-- [ ] `IPluginLoader` impl — `.dll` via collectible `AssemblyLoadContext`; loose `.cs` via Roslyn
-      (`plugin.json` manifest, gated by `plugins.allowLooseSource`).
-- [ ] `PluginHostService` (`IHostedService`) — load on start, `InitializeAsync`, graceful
-      `ShutdownAsync` + ALC unload. Wire in `Program.cs`.
-- [ ] Per-player state bag on `OnlinePlayer` (transient, cleared on logout — DAN needs this).
-- [ ] Hot-path publish sites: `ChangeActionHandler`, spectate-frames handler, `ScoreSubmissionEndpoint`
-      (pre-persist veto seam).
-- [ ] Command bridge — route unmatched `!cmd` from `BanchoBotCommands` into plugin `ICommandRegistry`.
-- [ ] **`!plugins`** — list loaded plugins with name / version / author.
-- [ ] Example plugins: one compiled (`.dll`) + one loose (`.cs`), both loading at runtime.
-- [ ] ⚖️ **Plugin template repo** — new git submodule (`TomYum-plugin-template`) + **human docs**
-      (`docs/plugins.md`: how to write/build/drop-in a plugin) and **agent docs** (`memories/features/plugins.md`).
+- [x] Concrete event types in Abstractions: `ActionChanged`, `ScoreSubmitting` (vetoable),
+      `ChatMessage`, `PlayerLogin`, `SpectateFrame` + `VetoableEvent` base. `563b9e5`
+- [x] Host services: `PluginContext`, `EventBus`, `CommandRegistry`, `HttpRouteRegistry` (+ middleware),
+      `PluginConfig`, `PluginLogger`, `PluginDataAccess` (trusted-only), `HostServiceRegistry`,
+      `HostPlayerView`. `563b9e5`
+- [x] `IPluginLoader` impl — `.dll` via collectible `AssemblyLoadContext`; loose `.cs` via Roslyn
+      (`plugin.json`, gated by `AllowLooseSource`). `563b9e5`
+- [x] `PluginHostService` (`IHostedService`) — load → Initialize → Shutdown + ALC unload; wired in `Program.cs`. `563b9e5`
+- [x] Per-player state bag on `OnlinePlayer` (transient). `563b9e5`
+- [~] Hot-path publish sites: `ActionChanged` live now (`563b9e5`); `ScoreSubmitting` veto, `SpectateFrame`,
+      `PlayerLogin`, `ChatMessage` land with their consumers in Phases 2–4.
+- [x] Command bridge — unmatched `!cmd` → plugin `ICommandRegistry`. `563b9e5`
+- [x] **`!plugins`** — lists loaded plugins (name / version / author). `563b9e5`
+- [x] Example plugins: compiled (`.dll`) + loose (`.cs`), both verified loading into the live server. `563b9e5`
+- [x] ⚖️ **Plugin template** — `templates/plugin-template/` (compiled + loose) + **human docs**
+      (`docs/plugins.md`) + **agent docs** (`memories/features/plugins.md`). Submodule split instructions in the template README (you push).
 
 ## Phase 2 — Moderation + HWID anti-cheat 🔒 Phase 0 migrations
 _All packet IDs exist (`AccountRestricted=104`, `UserSilenced=94`, `SilenceEnd=92`, `TargetIsSilenced=101`).

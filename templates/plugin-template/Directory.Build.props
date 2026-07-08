@@ -1,0 +1,8 @@
+<Project>
+  <!--
+    Intentionally empty. MSBuild walks UP for the nearest Directory.Build.props and stops here,
+    so this template does NOT inherit the TomYum repo's strict build gates (warnings-as-errors,
+    analyzers, forced XML docs). A plugin author's project should use plain SDK defaults.
+    When this template is split into its own repo (git submodule), this file can be deleted.
+  -->
+</Project>

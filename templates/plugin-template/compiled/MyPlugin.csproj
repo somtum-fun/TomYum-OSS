@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    A compiled (".dll") TomYum plugin. Build it, then drop bin/Release/net10.0/MyPlugin.dll into
+    the server's plugins/ directory. Target net10.0 to match the host's Abstractions assembly.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      A plugin references ONLY TomYum.Plugins.Abstractions — never the server or infra projects.
+      Pick ONE of the following:
+
+      (a) NuGet (once published):
+          <PackageReference Include="TomYum.Plugins.Abstractions" Version="0.1.*" />
+
+      (b) A local dll (out-of-tree): copy TomYum.Plugins.Abstractions.dll into ./libs/ and use:
+    -->
+    <Reference Include="TomYum.Plugins.Abstractions">
+      <HintPath>libs/TomYum.Plugins.Abstractions.dll</HintPath>
+      <!-- Do NOT copy it into output: the host already provides it (shared type identity). -->
+      <Private>false</Private>
+    </Reference>
+
+    <!--
+      (c) In a TomYum checkout, a project reference is simplest:
+          <ProjectReference Include="../../../src/TomYum.Plugins.Abstractions/TomYum.Plugins.Abstractions.csproj">
+            <Private>false</Private>
+          </ProjectReference>
+    -->
+  </ItemGroup>
+
+</Project>
