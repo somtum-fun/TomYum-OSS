@@ -9,18 +9,19 @@
     an isolated AssemblyLoadContext so it can be hot-unloaded.
 
     Build:  dotnet build plugins/examples/CompiledPlugin
-    Deploy: copy bin/Debug/net8.0/CompiledPlugin.dll into plugins/
+    Deploy: copy bin/Debug/net10.0/CompiledPlugin.dll into plugins/
 
     A plugin references ONLY TomYum.Plugins.Abstractions. The reference below uses a
     relative path for the example; a real out-of-tree plugin would reference the
     published TomYum.Plugins.Abstractions NuGet package instead.
+
+    Target net10.0 to match the host's Abstractions assembly. This project is NOT in
+    TomYum.sln, so it inherits the repo Directory.Build.props (net10.0, analyzers).
   -->
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <!-- Don't drag the abstractions dll into plugins/ output; the host already has it. -->
-    <Private>false</Private>
   </PropertyGroup>
 
   <ItemGroup>

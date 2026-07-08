@@ -4,8 +4,10 @@ using TomYum.Bancho;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
+using TomYum.Plugins.Abstractions;
 using TomYum.Server.Bancho.Packets.Match;
 using TomYum.Server.Beatmaps;
+using TomYum.Server.Plugins;
 
 namespace TomYum.Server.Bancho;
 
@@ -23,6 +25,8 @@ public sealed class BanchoBotCommands
     private readonly MatchRegistry _matches;
     private readonly BeatmapService _beatmaps;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly PluginCommandRegistry _pluginCommands;
+    private readonly LoadedPluginRegistry _loadedPlugins;
 
     public BanchoBotCommands(
         TomYumVersion version,
@@ -30,7 +34,9 @@ public sealed class BanchoBotCommands
         ChannelRegistry channels,
         MatchRegistry matches,
         BeatmapService beatmaps,
-        IServiceScopeFactory scopeFactory)
+        IServiceScopeFactory scopeFactory,
+        PluginCommandRegistry pluginCommands,
+        LoadedPluginRegistry loadedPlugins)
     {
         _version = version;
         _players = players;
@@ -38,6 +44,8 @@ public sealed class BanchoBotCommands
         _matches = matches;
         _beatmaps = beatmaps;
         _scopeFactory = scopeFactory;
+        _pluginCommands = pluginCommands;
+        _loadedPlugins = loadedPlugins;
     }
 
     public async Task<string?> TryHandleAsync(
@@ -65,8 +73,44 @@ public sealed class BanchoBotCommands
                 ? await SetPrivAsync(parts, cancellationToken).ConfigureAwait(false)
                 : StaffOnly,
             "mp" => await MpAsync(caller, parts, privileges, cancellationToken).ConfigureAwait(false),
-            _ => string.Create(CultureInfo.InvariantCulture, $"Unknown command \"{command}\". Try !help."),
+            "plugins" => ListPlugins(),
+            _ => await FallbackToPluginAsync(caller, command, parts, message, cancellationToken).ConfigureAwait(false),
         };
+    }
+
+    /// <summary>Lists loaded plugins (the <c>!plugins</c> command).</summary>
+    private string ListPlugins()
+    {
+        var loaded = _loadedPlugins.Loaded;
+        if (loaded.Count == 0)
+            return "No plugins are loaded.";
+
+        var entries = loaded.Select(m =>
+            string.Create(CultureInfo.InvariantCulture, $"{m.Name} v{m.Version} ({m.Id}) by {m.Authors}"));
+        return string.Create(CultureInfo.InvariantCulture, $"Loaded plugins ({loaded.Count}): ")
+            + string.Join(" | ", entries);
+    }
+
+    /// <summary>
+    /// Routes a command the built-in switch didn't handle to a plugin-registered command. Returns the
+    /// plugin's reply (which may be <c>null</c> = handled with no reply), or the "unknown command"
+    /// message when no plugin owns it.
+    /// </summary>
+    private async Task<string?> FallbackToPluginAsync(
+        OnlinePlayer caller,
+        string command,
+        string[] parts,
+        string rawText,
+        CancellationToken cancellationToken)
+    {
+        if (_pluginCommands.TryGet(command, out var pluginCommand) && pluginCommand is not null)
+        {
+            var arguments = parts.Length > 1 ? parts[1..] : [];
+            var invocation = new CommandInvocation(command, arguments, rawText, caller.UserId, Channel: null);
+            return await pluginCommand.Handler(invocation, cancellationToken).ConfigureAwait(false);
+        }
+
+        return string.Create(CultureInfo.InvariantCulture, $"Unknown command \"{command}\". Try !help.");
     }
 
     private const string StaffOnly = "That command is staff-only.";

@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+
 using TomYum.Bancho;
 
 namespace TomYum.Server.Bancho;
@@ -18,6 +20,7 @@ public sealed class OnlinePlayer
     private readonly List<byte> _outbound = [];
     private readonly HashSet<string> _channels = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _channelsLock = new();
+    private readonly ConcurrentDictionary<string, object?> _state = new(StringComparer.Ordinal);
 
     /// <summary>Creates a session for <paramref name="presence"/> identified by <paramref name="token"/>.</summary>
     public OnlinePlayer(string token, BanchoPresence presence)
@@ -124,4 +127,20 @@ public sealed class OnlinePlayer
             return _channels.Contains(channelName);
         }
     }
+
+    /// <summary>
+    /// Transient per-session state bag for plugins (e.g. DAN Mode stashing per-login flags such as
+    /// <c>dan.watched</c>/<c>dan.tainted</c>). Keys are plugin-namespaced by convention. The whole
+    /// bag is dropped when the session ends, so plugins never have to clean up on logout.
+    /// </summary>
+    public void SetState(string key, object? value) => _state[key] = value;
+
+    /// <summary>Reads a state value as <typeparamref name="T"/>, or <c>default</c> when absent/mistyped.</summary>
+    public T? GetState<T>(string key) => _state.TryGetValue(key, out var value) && value is T typed ? typed : default;
+
+    /// <summary>Removes a state value. Returns <c>true</c> if it was present.</summary>
+    public bool RemoveState(string key) => _state.TryRemove(key, out _);
+
+    /// <summary>Clears all plugin state for this session (called when the session ends).</summary>
+    public void ClearState() => _state.Clear();
 }

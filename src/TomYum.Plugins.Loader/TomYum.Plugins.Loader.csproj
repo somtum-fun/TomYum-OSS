@@ -2,8 +2,11 @@
 
   <!--
     Runtime loading: AssemblyLoadContext for .dll plugins, Roslyn for loose .cs plugins.
-    TODO: add Microsoft.CodeAnalysis.CSharp (Roslyn) package when loose-source compilation is implemented.
   -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
     <ProjectReference Include="../TomYum.Plugins.Abstractions/TomYum.Plugins.Abstractions.csproj" />

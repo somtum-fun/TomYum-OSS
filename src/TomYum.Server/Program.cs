@@ -8,6 +8,7 @@ using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
 using TomYum.Server.Bancho.Packets.Match;
 using TomYum.Server.Beatmaps;
+using TomYum.Server.Plugins;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -60,6 +61,7 @@ builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
 // (local dev, tests). The EF repositories are scoped; the in-memory ones are singletons.
 var databaseOptions = new DatabaseOptions();
 builder.Configuration.GetSection(DatabaseOptions.SectionName).Bind(databaseOptions);
+builder.Services.AddSingleton(databaseOptions); // shared with the plugin host (trusted data access)
 if (databaseOptions.Enabled)
 {
     builder.Services.AddTomYumPersistence(databaseOptions);
@@ -92,6 +94,12 @@ builder.Services.AddSingleton<BeatmapService>();
 // RoutingPerformanceCalculator dispatches per gamemode to the configured backend (in-process
 // official ppy calc, or an http sidecar like akatsuki-pp-rs). Defaults to `official` for all modes.
 builder.Services.AddTomYumPerformance(builder.Configuration);
+
+// --- Plugin host (ADR-0007) ---
+// Loads .dll + loose .cs plugins from the configured directory, gives each a scoped context
+// (config/logger/events/commands/http/trusted-data), and drives their lifecycle. DAN Mode and
+// Session ship as plugins on this host.
+builder.Services.AddTomYumPlugins(builder.Configuration);
 
 // --- osu!Direct beatmap browser ---
 // Named HttpClient for the mirror; options let operators point at any mino.pw-compatible mirror.
@@ -194,6 +202,10 @@ if (app.Environment.IsDevelopment())
         });
     }
 }
+
+// Plugin-contributed HTTP routes (Session's frontend, etc.) — served before the bancho/web
+// endpoints; non-matching requests pass straight through.
+app.UsePluginRoutes(app.Services.GetRequiredService<PluginRouteTable>());
 
 // Liveness probe for k8s/k3s.
 app.MapGet("/health", () => Results.Ok(new { status = "ok", service = "TomYum.Server", version = version.Display }));

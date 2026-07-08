@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using TomYum.Bancho;
 using TomYum.Domain.Repositories;
+using TomYum.Plugins.Abstractions;
 
 namespace TomYum.Server.Bancho.Packets;
 
@@ -63,5 +64,19 @@ public sealed class ChangeActionHandler : IClientPacketHandler
 
         context.Registry.EnqueueToAll(stats2, exceptUserId: context.Player.UserId);
         context.Response.WriteRaw(stats2);
+
+        // Notify plugins (DAN Mode watches this to start/stop bot-spectating). Cheap when no plugin
+        // subscribes — the bus early-returns. A plugin fault is logged, never breaks the packet.
+        await context.Services.GetRequiredService<IEventBus>()
+            .PublishAsync(
+                new ActionChangedEvent(
+                    context.Player.UserId,
+                    presence.Action,
+                    presence.BeatmapMd5,
+                    presence.BeatmapId,
+                    (uint)presence.Mods,
+                    (byte)presence.GameMode),
+                cancellationToken)
+            .ConfigureAwait(false);
     }
 }

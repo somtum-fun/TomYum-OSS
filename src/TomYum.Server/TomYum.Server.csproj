@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Lets the test project exercise internal plugin-host types (scoped facades, context). -->
+    <InternalsVisibleTo Include="TomYum.Server.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
     <ProjectReference Include="../TomYum.Bancho/TomYum.Bancho.csproj" />
     <ProjectReference Include="../TomYum.Lazer/TomYum.Lazer.csproj" />

@@ -18,7 +18,8 @@ public class BanchoPacketDispatcherTests
 {
     private static readonly BanchoBot Bot = new(new BanchoBotCommands(
         new TomYumVersion(), new PlayerRegistry(), new ChannelRegistry(), new MatchRegistry(), new BeatmapService(new StubApiClient()),
-        TestScopeFactory.Create(new InMemoryUserRepository())));
+        TestScopeFactory.Create(new InMemoryUserRepository()),
+        new Plugins.PluginCommandRegistry(), new Plugins.LoadedPluginRegistry()));
 
     /// <summary>An <see cref="IOsuApiClient"/> that knows no maps — enough to construct BeatmapService.</summary>
     private sealed class StubApiClient : IOsuApiClient
