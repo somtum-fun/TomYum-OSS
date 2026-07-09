@@ -80,8 +80,9 @@ _Core watch-and-relay done 2026-07-08 (`docs/spectating.md`). 143 tests. Chat ch
       `CantSpectate(21)` + the six server encoders (`SpectatorManager`). Verified live (no packet-id clash).
 - [x] Logout teardown of spectate state (`SpectatorManager.TeardownForLeaver`; drains own spectators,
       bancho.py fork behaviour). Shared with a future reaper.
-- [ ] Ephemeral `#spec_<hostId>` / `#spectator` chat channel (mirror `Match.Channel`; hidden from the
-      login channel-list; dispose when empty) + `#spectator` routing in `SendPublicMessageHandler`. Deferred.
+- [x] Ephemeral `#spectator` chat channel (`SpectatorChannel` on `OnlinePlayer`, mirroring
+      `Match.Channel`; hidden from the login channel-list; host joins on first spectator, all leave when
+      empty) + `#spectator` routing in `SendPublicMessageHandler`. 2026-07-09; 6 tests.
 - [ ] Publish `SpectateFrameEvent` on the plugin bus (lands with the DAN plugin, Phase 4).
 
 ## Phase 4 — DAN mode + Session plugins (ports) 🔒 Phase 1 + Phase 3

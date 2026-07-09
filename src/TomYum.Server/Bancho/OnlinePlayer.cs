@@ -181,6 +181,15 @@ public sealed class OnlinePlayer
     }
 
     /// <summary>
+    /// This player's ephemeral <c>#spectator</c> chat channel — the shared tab its spectators (and the
+    /// host itself) chat in while being watched. The client always sees it as <c>#spectator</c>, but
+    /// each host owns its own instance, exactly like <see cref="Match"/> owns <c>#multiplayer</c>; the
+    /// host joins it when the first spectator arrives and leaves when the last one goes, so it never
+    /// appears in the login channel list (which advertises only the shared <see cref="ChannelRegistry"/>).
+    /// </summary>
+    public ChatChannel SpectatorChannel { get; } = new("#spectator", "Spectator chat", autoJoin: false);
+
+    /// <summary>
     /// Transient per-session state bag for plugins (e.g. DAN Mode stashing per-login flags such as
     /// <c>dan.watched</c>/<c>dan.tainted</c>). Keys are plugin-namespaced by convention. The whole
     /// bag is dropped when the session ends, so plugins never have to clean up on logout.

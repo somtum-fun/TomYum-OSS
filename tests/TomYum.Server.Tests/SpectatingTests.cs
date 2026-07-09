@@ -1,9 +1,11 @@
 using Microsoft.Extensions.DependencyInjection;
 
 using TomYum.Bancho;
+using TomYum.Domain.Entities;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
 using TomYum.Server.Bancho.Packets.Spectate;
+using TomYum.Server.Beatmaps;
 
 using Xunit;
 
@@ -24,6 +26,36 @@ public class SpectatingTests
             new ServiceCollection().BuildServiceProvider(), payload, new BanchoPacketWriter(16));
 
     private static byte[] TargetId(int userId) => new BanchoPacketWriter(8).WriteInt32(userId).ToArray();
+
+    /// <summary>A resident BanchoBot wired with empty registries — enough to route a non-command message.</summary>
+    private static BanchoBot Bot() => new(
+        new BanchoBotCommands(
+            new TomYumVersion(),
+            new PlayerRegistry(),
+            new ChannelRegistry(),
+            new MatchRegistry(),
+            new BeatmapService(new StubApiClient()),
+            TestScopeFactory.Create(new InMemoryUserRepository()),
+            new Plugins.PluginCommandRegistry(),
+            new Plugins.LoadedPluginRegistry()));
+
+    /// <summary>An <see cref="IOsuApiClient"/> that knows no maps — enough to construct BeatmapService.</summary>
+    private sealed class StubApiClient : IOsuApiClient
+    {
+        public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default) =>
+            Task.FromResult<Beatmap?>(null);
+    }
+
+    /// <summary>Builds a SEND_PUBLIC_MESSAGE payload (sender + text + target + sender_id; sender fields ignored).</summary>
+    private static byte[] PublicMessage(string text, string target)
+    {
+        var w = new BanchoPacketWriter(64);
+        w.WriteString(string.Empty); // sender (ignored)
+        w.WriteString(text);
+        w.WriteString(target);
+        w.WriteInt32(0);             // sender_id (ignored)
+        return w.ToArray();
+    }
 
     /// <summary>Collects the ids of every framed packet in an outbound body.</summary>
     private static List<ushort> PacketIds(byte[] body)
@@ -192,5 +224,116 @@ public class SpectatingTests
 
         Assert.Null(spectator.SpectatingUserId); // no stale pointer to a gone host
         Assert.Equal(0, host.SpectatorCount);
+    }
+
+    // ---- #spectator ephemeral chat channel ----
+
+    [Fact]
+    public async Task First_spectator_opens_the_channel_for_both_host_and_spectator()
+    {
+        var registry = new PlayerRegistry();
+        var host = AddPlayer(registry, 10, "Host");
+        var spectator = AddPlayer(registry, 20, "Spectator");
+
+        await new StartSpectatingHandler().HandleAsync(Context(spectator, registry, TargetId(host.UserId)));
+
+        // Both are members of the host's channel and both were told to open the tab.
+        Assert.True(host.SpectatorChannel.Contains(host.UserId));      // host joins its own channel
+        Assert.True(host.SpectatorChannel.Contains(spectator.UserId));
+        Assert.True(host.IsInChannel("#spectator"));
+        Assert.True(spectator.IsInChannel("#spectator"));
+        Assert.True(Has(host, ServerPacketId.ChannelJoinSuccess));
+        Assert.True(Has(spectator, ServerPacketId.ChannelJoinSuccess));
+    }
+
+    [Fact]
+    public async Task Chat_in_spectator_channel_reaches_host_and_fellows()
+    {
+        var registry = new PlayerRegistry();
+        var host = AddPlayer(registry, 10, "Host");
+        var first = AddPlayer(registry, 20, "First");
+        var second = AddPlayer(registry, 30, "Second");
+
+        await new StartSpectatingHandler().HandleAsync(Context(first, registry, TargetId(host.UserId)));
+        await new StartSpectatingHandler().HandleAsync(Context(second, registry, TargetId(host.UserId)));
+        host.DequeueAll();
+        first.DequeueAll();
+        second.DequeueAll();
+
+        // The spectator "First" posts to #spectator; the message resolves via the host it watches.
+        await new SendPublicMessageHandler(Bot()).HandleAsync(
+            Context(first, registry, PublicMessage("hi all", "#spectator")));
+
+        Assert.True(Has(host, ServerPacketId.SendMessage));    // host sees it
+        Assert.True(Has(second, ServerPacketId.SendMessage));  // fellow spectator sees it
+        Assert.False(Has(first, ServerPacketId.SendMessage));  // sender does not get its own echo
+    }
+
+    [Fact]
+    public async Task Host_can_chat_in_its_own_spectator_channel()
+    {
+        var registry = new PlayerRegistry();
+        var host = AddPlayer(registry, 10, "Host");
+        var spectator = AddPlayer(registry, 20, "Spectator");
+
+        await new StartSpectatingHandler().HandleAsync(Context(spectator, registry, TargetId(host.UserId)));
+        host.DequeueAll();
+        spectator.DequeueAll();
+
+        // The host has no SpectatingUserId, so #spectator must resolve to its own channel.
+        await new SendPublicMessageHandler(Bot()).HandleAsync(
+            Context(host, registry, PublicMessage("welcome", "#spectator")));
+
+        Assert.True(Has(spectator, ServerPacketId.SendMessage));
+    }
+
+    [Fact]
+    public async Task Last_spectator_leaving_closes_the_channel_for_the_host()
+    {
+        var registry = new PlayerRegistry();
+        var host = AddPlayer(registry, 10, "Host");
+        var spectator = AddPlayer(registry, 20, "Spectator");
+
+        await new StartSpectatingHandler().HandleAsync(Context(spectator, registry, TargetId(host.UserId)));
+        host.DequeueAll();
+        spectator.DequeueAll();
+
+        await new StopSpectatingHandler().HandleAsync(Context(spectator, registry, []));
+
+        // Both left the channel; both got a CHANNEL_KICK to close the tab.
+        Assert.False(host.SpectatorChannel.Contains(host.UserId));       // host left when the last spectator did
+        Assert.False(host.SpectatorChannel.Contains(spectator.UserId));
+        Assert.False(host.IsInChannel("#spectator"));
+        Assert.False(spectator.IsInChannel("#spectator"));
+        Assert.True(Has(host, ServerPacketId.ChannelKick));
+        Assert.True(Has(spectator, ServerPacketId.ChannelKick));
+    }
+
+    [Fact]
+    public async Task Host_stays_in_channel_while_a_fellow_spectator_remains()
+    {
+        var registry = new PlayerRegistry();
+        var host = AddPlayer(registry, 10, "Host");
+        var leaver = AddPlayer(registry, 20, "Leaver");
+        var stayer = AddPlayer(registry, 30, "Stayer");
+
+        await new StartSpectatingHandler().HandleAsync(Context(leaver, registry, TargetId(host.UserId)));
+        await new StartSpectatingHandler().HandleAsync(Context(stayer, registry, TargetId(host.UserId)));
+
+        await new StopSpectatingHandler().HandleAsync(Context(leaver, registry, []));
+
+        Assert.True(host.SpectatorChannel.Contains(host.UserId));         // host keeps the channel open
+        Assert.True(host.SpectatorChannel.Contains(stayer.UserId));
+        Assert.False(host.SpectatorChannel.Contains(leaver.UserId));      // only the leaver left
+    }
+
+    [Fact]
+    public void Spectator_channel_is_not_advertised_in_the_login_channel_list()
+    {
+        // #spectator is instanced per host (hung off OnlinePlayer), so it must never appear in the
+        // shared ChannelRegistry that the login burst advertises.
+        var channels = new ChannelRegistry();
+        Assert.Null(channels.Get("#spectator"));
+        Assert.DoesNotContain(channels.All, c => c.Name == "#spectator");
     }
 }

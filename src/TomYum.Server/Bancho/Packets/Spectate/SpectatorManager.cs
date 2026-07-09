@@ -6,8 +6,8 @@ namespace TomYum.Server.Bancho.Packets.Spectate;
 /// Shared spectating logic: attaching/detaching a spectator to a host and the resulting packet
 /// fan-out. Used by the four spectate handlers and by logout teardown, so the behaviour lives in
 /// one place. Clean-room port of bancho.py's <c>add_spectator</c>/<c>remove_spectator</c>
-/// (see <c>memories/protocols/</c>); the ephemeral <c>#spectator</c> chat channel is a later slice —
-/// this covers the core "watch a player" flow (join/leave notifications + frame relay).
+/// (see <c>memories/protocols/</c>): the core "watch a player" flow (join/leave notifications +
+/// frame relay) plus the ephemeral <c>#spectator</c> chat channel the host and its spectators share.
 /// </summary>
 /// <remarks>
 /// Every packet is enqueued via <see cref="PlayerRegistry"/> (never written to a response), so this
@@ -16,6 +16,17 @@ namespace TomYum.Server.Bancho.Packets.Spectate;
 /// </remarks>
 internal static class SpectatorManager
 {
+    /// <summary>The client-facing name of every host's ephemeral spectator channel.</summary>
+    private const string SpectatorChannelName = "#spectator";
+
+    // The #spectator join/kick packets are constant (a fixed channel name), so frame them once.
+    // Enqueue copies the bytes, so sharing these read-only arrays across sessions is safe.
+    private static readonly byte[] SpectatorChannelJoin =
+        new BanchoPacketWriter(32).WriteStringPacket(ServerPacketId.ChannelJoinSuccess, SpectatorChannelName).ToArray();
+
+    private static readonly byte[] SpectatorChannelKick =
+        new BanchoPacketWriter(32).WriteStringPacket(ServerPacketId.ChannelKick, SpectatorChannelName).ToArray();
+
     // The six server packets are all a single i32 (the subject user id) or a raw relay.
     private static byte[] SpectatorJoined(int uid) =>
         new BanchoPacketWriter(16).WriteInt32Packet(ServerPacketId.SpectatorJoined, uid).ToArray();
@@ -41,6 +52,8 @@ internal static class SpectatorManager
     /// </summary>
     public static void Attach(OnlinePlayer host, OnlinePlayer spectator, PlayerRegistry registry)
     {
+        var isFirstSpectator = host.SpectatorCount == 0;
+
         var fellowJoined = FellowSpectatorJoined(spectator.UserId);
         foreach (var existingId in host.Spectators) // existing spectators, before this one is added
         {
@@ -52,6 +65,12 @@ internal static class SpectatorManager
 
         host.AddSpectator(spectator.UserId);
         spectator.SpectatingUserId = host.UserId;
+
+        // Ephemeral #spectator chat channel (mirrors Match.Channel): the host joins its own channel
+        // when the first spectator arrives; every spectator joins on attach.
+        if (isFirstSpectator)
+            JoinSpectatorChannel(host, host);
+        JoinSpectatorChannel(host, spectator);
     }
 
     /// <summary>
@@ -64,11 +83,34 @@ internal static class SpectatorManager
         host.RemoveSpectator(spectator.UserId);
         spectator.SpectatingUserId = null;
 
+        // Leave the ephemeral #spectator channel (client closes the tab on CHANNEL_KICK).
+        LeaveSpectatorChannel(host, spectator);
+
         var fellowLeft = FellowSpectatorLeft(spectator.UserId);
         foreach (var remainingId in host.Spectators) // now excludes the leaver
             registry.GetByUserId(remainingId)?.Enqueue(fellowLeft);
 
         host.Enqueue(SpectatorLeft(spectator.UserId));
+
+        // When the last spectator leaves, the host leaves its own channel too.
+        if (host.SpectatorCount == 0)
+            LeaveSpectatorChannel(host, host);
+    }
+
+    /// <summary>Adds <paramref name="member"/> to the host's #spectator channel and opens the client tab.</summary>
+    private static void JoinSpectatorChannel(OnlinePlayer host, OnlinePlayer member)
+    {
+        host.SpectatorChannel.Join(member);
+        member.JoinChannel(SpectatorChannelName);
+        member.Enqueue(SpectatorChannelJoin);
+    }
+
+    /// <summary>Removes <paramref name="member"/> from the host's #spectator channel and closes the client tab.</summary>
+    private static void LeaveSpectatorChannel(OnlinePlayer host, OnlinePlayer member)
+    {
+        host.SpectatorChannel.Leave(member.UserId);
+        member.LeaveChannel(SpectatorChannelName);
+        member.Enqueue(SpectatorChannelKick);
     }
 
     /// <summary>

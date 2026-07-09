@@ -42,6 +42,16 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             if (matchForChannel is null) return;
             channel = matchForChannel.Channel;
         }
+        else if (target == "#spectator")
+        {
+            // The instance is owned by the host: the player is either watching someone (route to
+            // that host's channel) or is itself the host (its own channel). Membership is checked below.
+            var host = context.Player.SpectatingUserId is int hostId
+                ? context.Registry.GetByUserId(hostId)
+                : context.Player;
+            if (host is null) return;
+            channel = host.SpectatorChannel;
+        }
         else
         {
             channel = context.Channels.Get(target);

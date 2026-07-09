@@ -26,6 +26,22 @@ the host and all spectators (the client uses it to show a "downloading…" state
 
 The host stops streaming automatically when its last spectator leaves.
 
+## The `#spectator` chat channel
+
+While a player is being watched, the server opens an ephemeral **`#spectator`** channel shared by the
+host and everyone watching them — the same tab osu!stable shows during spectating. It behaves like the
+per-match `#multiplayer` channel: it isn't a permanent, server-wide room, and it never shows up in your
+channel list on login. Each host has its own instance.
+
+- The **host** is auto-joined to its own `#spectator` channel when its **first** spectator arrives, and
+  is kicked out (the tab closes) when its **last** spectator leaves.
+- Every **spectator** joins `#spectator` when they start watching and is kicked when they stop (or log
+  out). Switching to a new host moves you from the old host's channel to the new one.
+- Anyone in the channel — host or spectator — can chat, and the message fans out to all the other
+  members. `!`commands work here too.
+
+You never join or leave `#spectator` by hand; it's driven entirely by who you're spectating.
+
 ## Packet map
 
 | You do | Client → server | Server → recipients |
@@ -47,10 +63,9 @@ teardown path today; when a reaper lands it will share the same teardown.)
 
 ## Current limitations
 
-- **No `#spectator` chat channel yet.** Stable normally opens a `#spectator` tab so watchers can chat.
-  This slice implements the core watch-and-relay flow; the ephemeral per-host chat channel is a
-  follow-up. Watching, frames, and the join/leave notifications all work without it.
 - Single-node only — like the rest of online state, spectating lives in one process for now
   (cross-node fan-out over Redis is a later slice, ADR-0003).
+- Closing the `#spectator` tab by hand (without stopping spectating) isn't specially handled — the
+  channel is managed by the spectate flow, not by manual channel join/part, exactly like `#multiplayer`.
 
 See also: `memories/features/spectating.md` (internals), `memories/protocols/` (packet ground truth).
