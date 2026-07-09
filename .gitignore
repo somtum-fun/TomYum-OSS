@@ -31,6 +31,11 @@ secrets.json
 .data/
 data/local-storage/
 data/replays/
+## Runtime data written under a project's working dir when run in place (e.g. the replay store).
+**/data/replays/
+**/data/local-storage/
+
+## Ephemeral agent worktrees created by the harness — embedded repos, never commit.
 
 ## Local datastore (Podman MySQL bind-mount) — dev-only, never commit DB files
 .localdb/
