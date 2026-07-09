@@ -145,13 +145,42 @@ public sealed class BanchoBotCommands
 
         // Build identity + the runtime/host the process is actually running on (staff diagnostics).
         var build = $"TomYum {_version.Display} @{_version.Commit}";
-        var host = $"{RuntimeInformation.FrameworkDescription} | host {Environment.MachineName} " +
-                   $"({RuntimeInformation.OSArchitecture}, {Environment.ProcessorCount} cpu) up {ProcessUptime()}";
+        var host = $"{RuntimeInformation.FrameworkDescription} | host {Environment.MachineName} | " +
+                   $"{OsSummary()} {UnameArch(RuntimeInformation.OSArchitecture)} ({Environment.ProcessorCount} cpu) up {ProcessUptime()}";
 
         return string.Create(
             CultureInfo.InvariantCulture,
             $"{build} | {host} | Players: {players.Count} | Queued: {queuedBytes / 1024.0:F1} KB | Channels: {_channels.All.Count} | Beatmaps cached: {_beatmaps.CachedCount} | Heap: {heapMb:F1} MB");
     }
+
+    /// <summary>
+    /// The OS product plus its kernel/build release: <c>RuntimeInformation.OSDescription</c> (the distro
+    /// or Windows product) with the kernel release from <c>Environment.OSVersion</c> appended when it
+    /// isn't already part of the description (Linux reports the distro but not the kernel; Windows
+    /// already embeds the build). E.g. <c>Debian GNU/Linux 13 (trixie) (kernel 6.12.94)</c> or
+    /// <c>Microsoft Windows 10.0.26100</c>.
+    /// </summary>
+    private static string OsSummary()
+    {
+        var description = RuntimeInformation.OSDescription.Trim();
+        var version = Environment.OSVersion.Version;
+        var release = string.Create(CultureInfo.InvariantCulture, $"{version.Major}.{version.Minor}.{version.Build}");
+        var label = Environment.OSVersion.Platform == PlatformID.Win32NT ? "NT" : "kernel";
+
+        return description.Contains(release, StringComparison.Ordinal)
+            ? description
+            : $"{description} ({label} {release})";
+    }
+
+    /// <summary>Maps the runtime architecture to its conventional uname spelling (<c>X64</c> → <c>x86_64</c>).</summary>
+    private static string UnameArch(Architecture arch) => arch switch
+    {
+        Architecture.X64 => "x86_64",
+        Architecture.X86 => "x86",
+        Architecture.Arm64 => "aarch64",
+        Architecture.Arm => "arm",
+        _ => arch.ToString().ToLowerInvariant(),
+    };
 
     /// <summary>How long the server process has been running, as a compact <c>1d2h3m</c>/<c>2h3m</c>/<c>3m4s</c> string.</summary>
     private static string ProcessUptime()

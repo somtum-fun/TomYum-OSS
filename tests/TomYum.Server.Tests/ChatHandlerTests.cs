@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TomYum.Bancho;
@@ -250,8 +251,10 @@ public class ChatHandlerTests
         Assert.Contains("TomYum", reply);
         Assert.Contains("@", reply);                        // version @commit
         Assert.Contains(".NET", reply);                     // RuntimeInformation.FrameworkDescription
-        Assert.Contains(Environment.MachineName, reply);    // running host
-        Assert.Contains(" up ", reply);                     // process uptime
+        Assert.Contains(Environment.MachineName, reply);    // running host (hostname)
+        Assert.Contains(RuntimeInformation.OSDescription.Trim(), reply); // OS distro/product
+        Assert.Contains(" cpu) up ", reply);                // cpu count + process uptime
+        Assert.DoesNotContain("X64", reply);                // arch shown uname-style (x86_64), not the enum name
         Assert.Contains("Players:", reply);
         Assert.Contains("Heap:", reply);
     }
