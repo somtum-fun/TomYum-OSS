@@ -72,6 +72,7 @@ else
     builder.Services.AddSingleton<IUserRepository, InMemoryUserRepository>();
     builder.Services.AddSingleton<IScoreRepository, InMemoryScoreRepository>();
     builder.Services.AddSingleton<IUserStatsRepository, InMemoryUserStatsRepository>();
+    builder.Services.AddSingleton<IUserAchievementRepository, InMemoryUserAchievementRepository>();
 }
 builder.Services.AddScoped<BanchoLoginHandler>();
 builder.Services.AddScoped<RegistrationService>();
@@ -182,6 +183,9 @@ if (databaseOptions.Enabled)
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<TomYumDbContext>();
     await db.Database.EnsureCreatedAsync();
+    // Bridge tables added after the DB was first created (EnsureCreated won't add them). See SchemaGuard.
+    await db.EnsureRuntimeTablesAsync();
+
     app.Logger.LogInformation("Database schema ensured ({Host}/{Name}).", databaseOptions.Host, databaseOptions.Name);
 }
 

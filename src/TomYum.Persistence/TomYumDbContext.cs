@@ -27,6 +27,9 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Per-user per-mode statistics.</summary>
     public DbSet<UserStats> UserStats => Set<UserStats>();
 
+    /// <summary>Per-user unlocked achievements (medals).</summary>
+    public DbSet<UserAchievement> UserAchievements => Set<UserAchievement>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

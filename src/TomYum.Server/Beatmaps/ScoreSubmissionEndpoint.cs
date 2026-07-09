@@ -11,6 +11,7 @@ using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 using TomYum.Performance;
+using TomYum.Server.Achievements;
 using TomYum.Server.Bancho;
 
 namespace TomYum.Server.Beatmaps;
@@ -38,6 +39,7 @@ public static class ScoreSubmissionEndpoint
         IBeatmapRepository beatmapRepo,
         IScoreRepository scores,
         IUserStatsRepository userStats,
+        IUserAchievementRepository achievements,
         IPerformanceCalculator pp,
         IScoreQueue scoreQueue,
         CancellationToken cancellationToken)
@@ -340,10 +342,30 @@ public static class ScoreSubmissionEndpoint
             : (double?)null;
         var prevBestPp = prevBest is not null ? prevBest.Pp : (double?)null;
 
+        // Achievements (medals): unlock any newly-earned medal and hand them to the client via the
+        // overall chart's `achievements-new:` field, which drives the in-game unlock popups. Gate matches
+        // bancho.py: score passed + map awards ranked pp. (Restriction check lands with Phase 2 moderation.)
+        // Best-effort — a medal/DB hiccup must never fail the submission response.
+        IReadOnlyList<Medal> newMedals = [];
+        if (passed && beatmap.Status.AwardsRankedPp())
+        {
+            try
+            {
+                var check = new MedalCheck(mode, (Mods)mods, maxCombo, beatmap.StarRating, perfect);
+                newMedals = await MedalService.AwardAsync(achievements, user.Id, check, DateTime.UtcNow, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Achievement check failed for user {UserId} on beatmap {BeatmapId}; submission continues", user.Id, beatmap.Id);
+            }
+        }
+        var achievementsNew = MedalService.FormatAchievementsNew(newMedals);
+
         var response = string.Create(CultureInfo.InvariantCulture,
             $"beatmapId:{beatmap.Id}|beatmapSetId:{beatmap.SetId}|beatmapPlaycount:1|beatmapPasscount:1|approvedDate:\n\n" +
             $"chartId:beatmap|chartUrl:https://osu.ppy.sh/b/{beatmap.Id}|chartName:Beatmap Ranking|rankBefore:{prevBeatmapRank}|rankAfter:{scoreRank}|maxComboBefore:{prevBestCombo}|maxComboAfter:{maxCombo}|accuracyBefore:{prevBestAccPct:F2}|accuracyAfter:{accuracyPct:F2}|rankedScoreBefore:{prevBestScore}|rankedScoreAfter:{scoreValue}|totalScoreBefore:{prevBestScore}|totalScoreAfter:{scoreValue}|ppBefore:{prevBestPp:F2}|ppAfter:{ppValue:F2}|onlineScoreId:{score.Id}\n\n" +
-            $"chartId:overall|chartUrl:https://osu.ppy.sh/u/{user.Id}|chartName:Overall Ranking|rankBefore:{prevGlobalRank}|rankAfter:{globalRank}|accuracyBefore:{prevAccuracy * 100.0:F2}|accuracyAfter:{stats.Accuracy * 100.0:F2}|rankedScoreBefore:{prevRankedScore}|rankedScoreAfter:{stats.RankedScore}|totalScoreBefore:{prevTotalScore}|totalScoreAfter:{stats.TotalScore}|ppBefore:{prevPp:F0}|ppAfter:{stats.Pp:F0}|toNextRank:|toNextRankUser:\n");
+            $"chartId:overall|chartUrl:https://osu.ppy.sh/u/{user.Id}|chartName:Overall Ranking|rankBefore:{prevGlobalRank}|rankAfter:{globalRank}|accuracyBefore:{prevAccuracy * 100.0:F2}|accuracyAfter:{stats.Accuracy * 100.0:F2}|rankedScoreBefore:{prevRankedScore}|rankedScoreAfter:{stats.RankedScore}|totalScoreBefore:{prevTotalScore}|totalScoreAfter:{stats.TotalScore}|ppBefore:{prevPp:F0}|ppAfter:{stats.Pp:F0}|toNextRank:|toNextRankUser:|achievements-new:{achievementsNew}\n");
 
         return Results.Text(response, "text/plain");
     }

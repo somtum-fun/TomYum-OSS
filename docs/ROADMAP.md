@@ -143,6 +143,17 @@ shared-`#osu` / shared-BanchoBot model is **net-new design**. Client `client_id=
       TomYum needs a patched client build **or** DNS + trusted-TLS spoofing of `osu.ppy.sh` +
       `spectator.osu.ppy.sh`. Document in `docs/lazer-client.md`.
 
+## Achievements (medals) 🔒 (none) — done 2026-07-09
+_Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are a later Session slice._
+- [x] Catalog in code (`TomYum.Server/Achievements/`): 83 vanilla medals (std combo 500–2000, 11
+      mod-intro medals, per-mode skill pass/FC packs) with conditions ported verbatim.
+- [x] `user_achievements` table (unlocks only; definitions live in code) + EF/in-memory repos.
+      `SchemaGuard` idempotent `CREATE TABLE IF NOT EXISTS` bridges the EnsureCreated gap on existing DBs.
+- [x] Awarded in `ScoreSubmissionEndpoint` (gate: passed + ranked) → `achievements-new:` response field
+      (drives the popup). Icons from osu! CDN. 11 tests; verified live vs MySQL.
+- [ ] Deferred: restricted gate (Phase 2), mod-adjusted star rating, custom medals (Session plugin),
+      `!medals`/profile listing.
+
 ## Cross-cutting infra (interleave as needed)
 - [ ] Redis cross-node online state (multi-instance) — needed before scaling lazer realtime; ADR-0003.
 - [ ] Storage providers multi-target write / single read — needed for Phase 5 upload; ADR-0006.
