@@ -35,6 +35,14 @@ public static class BanchoHosts
     public static string[] Beatmap(string domain) =>
         [$"b.{domain}", "localhost", "127.0.0.1"];
 
+    /// <summary>
+    /// Host patterns that serve static assets (medal icons, etc.) for <paramref name="domain"/>. The
+    /// devserver-patched client rewrites <c>assets.ppy.sh</c> to <c>assets.&lt;domain&gt;</c>, so medal
+    /// popups fetch their icons from here.
+    /// </summary>
+    public static string[] Assets(string domain) =>
+        [$"assets.{domain}", "localhost", "127.0.0.1"];
+
     /// <summary>Reads the public domain from configuration, falling back to <see cref="DefaultDomain"/>.</summary>
     public static string ResolveDomain(IConfiguration configuration)
     {

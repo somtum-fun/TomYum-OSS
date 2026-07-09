@@ -112,6 +112,14 @@ builder.Services.AddHttpClient(DirectEndpoints.HttpClientName, http =>
     http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
 });
 
+// --- Static assets (medal icons) ---
+// Named HttpClient used to lazily fetch medal icons from ppy's CDN for the assets.<domain> proxy.
+builder.Services.AddHttpClient(AssetsEndpoints.HttpClientName, http =>
+{
+    http.Timeout = TimeSpan.FromSeconds(15);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
+});
+
 // Packet dispatch: one stateless handler per client packet id, discovered by the singleton
 // dispatcher into a frozen lookup. Register each handler so DI enumerates them.
 builder.Services.AddSingleton<IClientPacketHandler, PingHandler>();
@@ -243,6 +251,9 @@ app.MapDirect(BanchoHosts.Web(domain));
 
 // Beatmap assets (b. subdomain): cover thumbnails for osu!Direct.
 app.MapBeatmapAssets(BanchoHosts.Beatmap(domain));
+
+// Static assets (assets. subdomain): medal icons for achievement-unlock popups.
+app.MapAssets(BanchoHosts.Assets(domain));
 
 app.Run();
 

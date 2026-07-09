@@ -150,7 +150,10 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
 - [x] `user_achievements` table (unlocks only; definitions live in code) + EF/in-memory repos.
       `SchemaGuard` idempotent `CREATE TABLE IF NOT EXISTS` bridges the EnsureCreated gap on existing DBs.
 - [x] Awarded in `ScoreSubmissionEndpoint` (gate: passed + ranked) → `achievements-new:` response field
-      (drives the popup). Icons from osu! CDN. 11 tests; verified live vs MySQL.
+      (drives the popup). 11 tests; verified live vs MySQL.
+- [x] Medal icon proxy (`AssetsEndpoints`, `assets.<domain>`): devserver rewrites `assets.ppy.sh` →
+      `assets.<domain>`, so icons are cache-and-served from ppy's CDN → `data/assets/medals/client`.
+      Traversal-guarded; 13 tests; verified live (cold/cache-hit/@2x=200, unknown/traversal=404).
 - [ ] Deferred: restricted gate (Phase 2), mod-adjusted star rating, custom medals (Session plugin),
       `!medals`/profile listing.
 

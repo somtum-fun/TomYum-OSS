@@ -37,6 +37,11 @@ replays:
   # Directory where replay .osr files are stored (relative to the working directory).
   path: "data/replays"
 
+assets:
+  # Cache root for static assets served on assets.<domain> (medal icons are cached under
+  # <cachePath>/medals/client). Fetched from ppy's CDN on first request, then served from disk.
+  cachePath: "data/assets"
+
 # Pluggable pp engine (ADR-0010). Route each gamemode to a backend: the in-process official
 # ppy/lazer calculator, or an HTTP sidecar (rosu-pp / akatsuki-pp-rs / a fork). Omit this whole
 # section to compute everything in-process with `official` (the default).

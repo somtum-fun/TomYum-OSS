@@ -31,9 +31,12 @@ secrets.json
 .data/
 data/local-storage/
 data/replays/
-## Runtime data written under a project's working dir when run in place (e.g. the replay store).
+## Runtime data written under a project's working dir when run in place (e.g. the replay store,
+## the medal-icon asset cache).
 **/data/replays/
 **/data/local-storage/
+**/data/assets/
+data/assets/
 
 ## Ephemeral agent worktrees created by the harness — embedded repos, never commit.
 

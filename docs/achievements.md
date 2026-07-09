@@ -33,8 +33,21 @@ play satisfies is unlocked and returned in the submission response's `achievemen
 is what drives the in-game popup. Medals are only awarded for a **passed** score on a **ranked/approved**
 map (matching bancho.py's gate).
 
-Medal **icons** are the osu! official ones — the client loads them from
-`https://assets.ppy.sh/medals/client/{file}.png`, so no server-side art hosting is needed.
+## Medal icons (the `assets.` subdomain)
+
+The `achievements-new:` field only carries each medal's icon **name** (e.g. `osu-combo-500`); the client
+turns that into `https://assets.ppy.sh/medals/client/{name}.png` and fetches the image itself. The
+important part: the devserver-patched client rewrites **every** `*.ppy.sh` host to `*.<your-domain>`,
+so it actually requests the icon from **`assets.<your-domain>`** — i.e. from us. If we don't answer,
+the popup shows a blank medal.
+
+So TomYum serves them: `GET /medals/client/{file}.png` on the `assets.<domain>` host **cache-and-serves**
+the icon — on the first request it fetches the file from ppy's CDN, caches it under
+`data/assets/medals/client/` (configurable via `Assets:CachePath`), and serves every later request
+straight from disk. No manual asset download step. The same on-disk layout is where server-hosted
+**custom** medals will live later (those won't exist on ppy's CDN, so they'll have to be local anyway).
+
+You need DNS/routing for `assets.<domain>` to reach the server (same as `osu.`, `c.`, `b.`).
 
 ## A few faithful quirks (kept to match bancho.py / osu!)
 
