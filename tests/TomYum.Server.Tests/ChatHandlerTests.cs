@@ -246,8 +246,23 @@ public class ChatHandlerTests
         var reply = await NewBot().TryHandleCommandAsync(Caller("Admin"), "!stats", BanchoPrivileges.Owner);
         Assert.NotNull(reply);
         Assert.NotEqual("That command is staff-only.", reply);
-        // The stats line reports the player count — sanity-check the shape.
+        // Build identity, runtime/host details, and the live counters all appear.
+        Assert.Contains("TomYum", reply);
+        Assert.Contains("@", reply);                        // version @commit
+        Assert.Contains(".NET", reply);                     // RuntimeInformation.FrameworkDescription
+        Assert.Contains(Environment.MachineName, reply);    // running host
+        Assert.Contains(" up ", reply);                     // process uptime
         Assert.Contains("Players:", reply);
+        Assert.Contains("Heap:", reply);
+    }
+
+    [Fact]
+    public async Task Bot_Version_ReportsVersionAndCommit()
+    {
+        var reply = await NewBot().TryHandleCommandAsync(Caller("Player"), "!version", BanchoPrivileges.Player);
+        Assert.NotNull(reply);
+        Assert.StartsWith("TomYum ", reply);
+        Assert.Contains("@", reply); // includes the build commit (a sha or "unknown")
     }
 
     [Fact]

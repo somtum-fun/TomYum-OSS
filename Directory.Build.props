@@ -42,6 +42,28 @@
   </PropertyGroup>
 
   <!--
+    Bake the current git commit into AssemblyInformationalVersion. When SourceRevisionId is set, the
+    SDK appends "+<SourceRevisionId>" to the informational version; TomYumVersion reads it back for
+    !stats / !version / the status page. Degrades to no suffix when git is unavailable (e.g. a source
+    tarball or a build machine without git) — ContinueOnError keeps the build green either way.
+  -->
+  <Target Name="SetGitCommitId"
+          BeforeTargets="AddSourceRevisionToInformationalVersion;GetAssemblyVersion"
+          Condition="'$(SourceRevisionId)' == ''">
+    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory)&quot; rev-parse --short=12 HEAD"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low"
+          IgnoreExitCode="true"
+          ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommitId" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId Condition="'$(_GitExitCode)' == '0' and '$(_GitCommitId)' != ''">$(_GitCommitId)</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
+
+  <!--
     Solution-wide vulnerability overrides. These force-pin transitive packages that have known
     CVEs to safe versions. Placed here so every project inherits the fix without repetition.
     AutoMapper: GHSA-rvv3-g6hj-g44x — safe at 16.1.1+.

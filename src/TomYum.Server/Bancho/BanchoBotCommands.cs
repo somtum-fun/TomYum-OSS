@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.DependencyInjection;
 using TomYum.Bancho;
 using TomYum.Domain.Entities;
@@ -66,7 +68,7 @@ public sealed class BanchoBotCommands
         {
             "help"    => Help(privileges),
             "ping"    => "pong!",
-            "version" => string.Create(CultureInfo.InvariantCulture, $"TomYum {_version.Display}"),
+            "version" => string.Create(CultureInfo.InvariantCulture, $"TomYum {_version.Display} (@{_version.Commit})"),
             "roll"    => Roll(caller.Presence.Username, parts),
             "stats"   => IsStaff(privileges) ? Stats() : StaffOnly,
             "setpriv" => IsStaff(privileges)
@@ -141,9 +143,27 @@ public sealed class BanchoBotCommands
 
         var heapMb = GC.GetTotalMemory(forceFullCollection: false) / (1024.0 * 1024.0);
 
+        // Build identity + the runtime/host the process is actually running on (staff diagnostics).
+        var build = $"TomYum {_version.Display} @{_version.Commit}";
+        var host = $"{RuntimeInformation.FrameworkDescription} | host {Environment.MachineName} " +
+                   $"({RuntimeInformation.OSArchitecture}, {Environment.ProcessorCount} cpu) up {ProcessUptime()}";
+
         return string.Create(
             CultureInfo.InvariantCulture,
-            $"Players: {players.Count} | Queued: {queuedBytes / 1024.0:F1} KB | Channels: {_channels.All.Count} | Beatmaps cached: {_beatmaps.CachedCount} | Heap: {heapMb:F1} MB");
+            $"{build} | {host} | Players: {players.Count} | Queued: {queuedBytes / 1024.0:F1} KB | Channels: {_channels.All.Count} | Beatmaps cached: {_beatmaps.CachedCount} | Heap: {heapMb:F1} MB");
+    }
+
+    /// <summary>How long the server process has been running, as a compact <c>1d2h3m</c>/<c>2h3m</c>/<c>3m4s</c> string.</summary>
+    private static string ProcessUptime()
+    {
+        using var process = Process.GetCurrentProcess();
+        var up = DateTime.UtcNow - process.StartTime.ToUniversalTime();
+
+        return up.TotalDays >= 1
+            ? string.Create(CultureInfo.InvariantCulture, $"{(int)up.TotalDays}d{up.Hours}h{up.Minutes}m")
+            : up.TotalHours >= 1
+                ? string.Create(CultureInfo.InvariantCulture, $"{(int)up.TotalHours}h{up.Minutes}m")
+                : string.Create(CultureInfo.InvariantCulture, $"{up.Minutes}m{up.Seconds}s");
     }
 
     // ---- !mp subcommands ----
