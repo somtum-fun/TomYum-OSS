@@ -1,0 +1,38 @@
+# Overlay: run TomYum next to osu-web (https://github.com/ppy/osu-web) as its website frontend.
+#
+# osu-web runs from its own checkout with its own compose stack (bin/docker_dev.sh). That stack
+# already provides MySQL 8.4 (`db`), Redis (`redis`) and Elasticsearch, so TomYum joins its network
+# and uses those instead of starting its own `mysql`/`redis` (which would also clash on 3306/6379).
+#
+# Usage (see docs/osu-web.md for the full walkthrough):
+#   # in the osu-web checkout — move osu-web's nginx off 8080, which TomYum uses:
+#   NGINX_PORT=8180 bin/docker_dev.sh -d
+#   # in this repo:
+#   docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.osu-web.yml \
+#     up -d server pp-sidecar
+#
+# Until TomYum's persistence is moved onto osu-web's tables (docs/osu-web.md, "Phase B"), TomYum
+# keeps its own `tomyum` database on osu-web's MySQL server; EnsureCreated creates it on first start.
+services:
+  server:
+    # Don't pull in this stack's mysql/redis; osu-web's are used instead.
+    depends_on: !reset []
+    environment:
+      TOMYUM_DATABASE__ENABLED: "true"
+      TOMYUM_DATABASE__HOST: db
+      TOMYUM_DATABASE__PORT: "3306"
+      TOMYUM_DATABASE__NAME: ${TOMYUM_DB_NAME:-tomyum}
+      # osu-web's dev database user (docker/development/db_user.sql): osuweb, empty password.
+      # Development only — see docs/osu-web.md before exposing anything.
+      TOMYUM_DATABASE__USER: ${OSU_WEB_DB_USER:-osuweb}
+      TOMYUM_DATABASE__PASSWORD: ${OSU_WEB_DB_PASSWORD:-}
+      TOMYUM_REDIS__CONFIGURATION: redis:6379
+    networks:
+      - default
+      - osu-web
+
+networks:
+  osu-web:
+    external: true
+    # Compose names it <project>_default; the project is the checkout's directory name.
+    name: ${OSU_WEB_NETWORK:-osu-web_default}

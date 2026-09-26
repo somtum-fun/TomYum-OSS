@@ -143,6 +143,22 @@ shared-`#osu` / shared-BanchoBot model is **net-new design**. Client `client_id=
       TomYum needs a patched client build **or** DNS + trusted-TLS spoofing of `osu.ppy.sh` +
       `spectator.osu.ppy.sh`. Document in `docs/lazer-client.md`.
 
+## osu-web website 🔒 Phase A: none · Phase B: decisions below
+_osu-web (ppy's Laravel site) runs unmodified as the website; long-term it owns the schema and TomYum
+uses its tables. Human doc: `docs/osu-web.md`._
+
+- [x] **Phase A — side by side:** compose overlay (`deploy/docker/docker-compose.osu-web.yml`) puts
+      TomYum on osu-web's MySQL/Redis; Caddy splits `osu.<domain>` (stable `/web/*`, `/d/*`,
+      in-game `POST /users` → TomYum; rest → osu-web). Accounts/scores not shared yet.
+- [ ] ⚖️ Custom beatmap id floor — osu-web's `beatmap_id`/`beatmapset_id` are `MEDIUMINT UNSIGNED`
+      (max 16,777,215); `Beatmap.CustomIdFloor = 100_000_000` does not fit.
+- [ ] BanchoBot as a real `phpbb_users` row (id 1, `bot` group) + osu-web `BANCHO_BOT_USER_ID=1`.
+- [ ] **Phase B — one database:** users (`phpbb_users`; password format already identical) →
+      beatmaps (`osu_beatmaps`/`osu_beatmapsets`) → scores + stats (`solo_scores`,
+      `osu_user_stats*`, queue for `osu-elastic-indexer`) → achievements (`osu_user_achievements`)
+      → migrate existing `tomyum` data. Replaces the EF-migrations item in Phase 0 for these tables.
+- [ ] Phase 7 rescope: osu-web already serves `/api/v2` + `/oauth/token`; TomYum keeps the realtime hubs.
+
 ## Achievements (medals) 🔒 (none) — done 2026-07-09
 _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are a later Session slice._
 - [x] Catalog in code (`TomYum.Server/Achievements/`): 83 vanilla medals (std combo 500–2000, 11

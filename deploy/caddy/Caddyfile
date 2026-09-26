@@ -5,14 +5,15 @@
 #
 # Subdomains:
 #   c, ce, c4, cho  - Bancho binary protocol (login + packet polling)
-#   osu             - Web API (/web/*.php, in-game registration, osu!Direct)
+#   osu             - Web API (/web/*.php, in-game registration, osu!Direct) -> TomYum;
+#                     everything else -> osu-web (website), see docs/osu-web.md
 #   a               - Avatars (served from local files or storage)
 #   api             - REST API (future: osu!lazer)
 #   session         - Session frontend (future: plugin)
 #   b               - Beatmaps (future: custom beatmap hosting)
 
 # Bancho binary protocol + Web API
-c.example.com, ce.example.com, c4.example.com, cho.example.com, osu.example.com, api.example.com, session.example.com, b.example.com {
+c.example.com, ce.example.com, c4.example.com, cho.example.com, api.example.com, session.example.com, b.example.com {
   # TLS cert paths - adjust for your setup (Let's Encrypt, custom certs, etc.)
   # For Let's Encrypt: remove the tls line entirely and Caddy will auto-provision
   # tls /etc/caddy/certs/example.com.pem /etc/caddy/certs/example.com.key
@@ -31,6 +32,44 @@ c.example.com, ce.example.com, c4.example.com, cho.example.com, osu.example.com,
   }
 
   # Optional: enable compression for text responses
+  encode gzip zstd
+}
+
+# osu. is shared: the osu!stable client's endpoints go to TomYum, the rest is the osu-web site.
+# Upstreams are overridable via env: TOMYUM_UPSTREAM (default localhost:8080) and
+# OSU_WEB_UPSTREAM (default localhost:8180 — osu-web's nginx started with NGINX_PORT=8180).
+osu.example.com {
+  # tls /etc/caddy/certs/example.com.pem /etc/caddy/certs/example.com.key
+
+  request_body {
+    max_size 20MB
+  }
+
+  # osu!stable: /web/*.php (scores, leaderboards, replays, osu!direct search) and /d/ downloads.
+  @tomyum path /web/* /d/*
+  # osu!stable in-game registration. osu-web also serves POST /users, so match the client's
+  # User-Agent; TomYum owns account creation until persistence moves to osu-web's tables.
+  @stable_register {
+    method POST
+    path /users
+    header User-Agent osu!
+  }
+
+  handle @tomyum {
+    reverse_proxy {$TOMYUM_UPSTREAM:localhost:8080} {
+      header_up X-Real-IP {remote_host}
+    }
+  }
+  handle @stable_register {
+    reverse_proxy {$TOMYUM_UPSTREAM:localhost:8080} {
+      header_up X-Real-IP {remote_host}
+    }
+  }
+  # Everything else: the osu-web website (and its /api/v2 + /oauth for lazer, later).
+  handle {
+    reverse_proxy {$OSU_WEB_UPSTREAM:localhost:8180}
+  }
+
   encode gzip zstd
 }
 

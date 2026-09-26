@@ -115,6 +115,12 @@ in-memory fallback. Pass `DB=off scripts/dev-server.sh` to run without a databas
 TomYum routes by subdomain (`c`, `c4`, `cho` for bancho, `osu` for `/web/*.php`). Front it
 with Caddy and point the subdomain records at your host — see `deploy/caddy/Caddyfile`.
 
+### Website (osu-web)
+
+The website is [osu-web](https://github.com/ppy/osu-web), run alongside TomYum on the same MySQL and
+Redis, with Caddy splitting `osu.<domain>` between the two. See [docs/osu-web.md](docs/osu-web.md)
+for setup and the plan for sharing one database.
+
 ### Deployment
 
 Docker, k8s, k3s, and Caddy scaffolding lives under `deploy/`.
