@@ -108,10 +108,10 @@ Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_ba
 
 ### Decisions needed before Phase B
 
-1. **Custom beatmap id range.** `osu_beatmaps.beatmap_id` and `osu_beatmapsets.beatmapset_id` are
-   `MEDIUMINT UNSIGNED` (max **16,777,215**). TomYum's `Beatmap.CustomIdFloor` is **100,000,000**,
-   which does not fit. Either pick a floor inside the range above current ppy ids (e.g.
-   10,000,000), or widen the columns with an extra migration (which means modifying osu-web).
+1. ~~**Custom beatmap id range.**~~ **Decided:** `osu_beatmaps.beatmap_id` and
+   `osu_beatmapsets.beatmapset_id` are `MEDIUMINT UNSIGNED` (max **16,777,215**), so
+   `Beatmap.CustomIdFloor` moved from 100,000,000 to **10,000,000**. Custom ids are 10,000,000 –
+   16,777,215; official ids stay below that. osu-web is left unmodified.
 2. **User ids.** `phpbb_users` auto-increments from 2. TomYum reserves 1 for BanchoBot and its dev
    seed takes 2. Insert a real BanchoBot row with `user_id = 1` in osu-web's `bot` group
    (`phpbb_groups.identifier = 'bot'`), set osu-web's `BANCHO_BOT_USER_ID=1`, and drop the

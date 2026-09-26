@@ -109,7 +109,7 @@ _TomYum already **serves** status; it can't **accept uploads** yet. Split status
       set-vs-diff granularity; exclude custom maps from osu!api re-sync.
 - [ ] ⚖️ **osz2 codec** — the single biggest build item. Decide: clean-room C# vs a sidecar (like the
       pp sidecar) wrapping an existing lib. Then the 3 stable submit endpoints + download-side osz2 endpoints.
-- [ ] Local serving — route `/d/{setId}` + search + `b.*` assets to local storage when `setId >= 100_000_000`
+- [ ] Local serving — route `/d/{setId}` + search + `b.*` assets to local storage when `setId >= 10_000_000`
       (currently always 302s to an external mirror, so custom sets are undownloadable).
 
 ## Phase 6 — Command framework refactor (polish, optional)
@@ -150,8 +150,8 @@ uses its tables. Human doc: `docs/osu-web.md`._
 - [x] **Phase A — side by side:** compose overlay (`deploy/docker/docker-compose.osu-web.yml`) puts
       TomYum on osu-web's MySQL/Redis; Caddy splits `osu.<domain>` (stable `/web/*`, `/d/*`,
       in-game `POST /users` → TomYum; rest → osu-web). Accounts/scores not shared yet.
-- [ ] ⚖️ Custom beatmap id floor — osu-web's `beatmap_id`/`beatmapset_id` are `MEDIUMINT UNSIGNED`
-      (max 16,777,215); `Beatmap.CustomIdFloor = 100_000_000` does not fit.
+- [x] Custom beatmap id floor → **10,000,000** (`Beatmap.CustomIdFloor`), so custom ids fit osu-web's
+      `MEDIUMINT UNSIGNED` `beatmap_id`/`beatmapset_id` (max 16,777,215). Was 100,000,000.
 - [ ] BanchoBot as a real `phpbb_users` row (id 1, `bot` group) + osu-web `BANCHO_BOT_USER_ID=1`.
 - [ ] **Phase B — one database:** users (`phpbb_users`; password format already identical) →
       beatmaps (`osu_beatmaps`/`osu_beatmapsets`) → scores + stats (`solo_scores`,
