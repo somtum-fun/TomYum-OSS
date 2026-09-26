@@ -21,6 +21,16 @@ metadata:
   namespace: tomyum
 data:
   ASPNETCORE_ENVIRONMENT: "Production"
+  # Keys mirror the config sections the server binds (Database, Redis, Server); env vars are
+  # TOMYUM_<Section>__<Key>. Production loads no appsettings.Development.json, so everything the
+  # server needs must be set here — without Database__Enabled it silently runs in-memory.
+  TOMYUM_Server__Domain: "example.com"
+  TOMYUM_Database__Enabled: "true"
+  TOMYUM_Database__Host: "mysql"
+  TOMYUM_Database__Port: "3306"
+  TOMYUM_Database__Name: "tomyum"
+  TOMYUM_Database__User: "tomyum"
+  TOMYUM_Redis__Configuration: "redis:6379"
   TOMYUM_storage__Enabled: "true"
   TOMYUM_storage__DefaultProvider: "r2"
 ---
@@ -32,8 +42,8 @@ metadata:
 type: Opaque
 stringData:
   # Placeholders — inject real values via your secret manager / sealed-secrets. Never commit.
-  TOMYUM_ConnectionStrings__MySql: "Server=mysql;Database=tomyum;Uid=tomyum;Pwd=CHANGE_ME;"
-  TOMYUM_ConnectionStrings__Redis: "redis:6379"
+  TOMYUM_Database__Password: "CHANGE_ME"
+  TOMYUM_Osu__ApiKey: ""
   TOMYUM_storage__Providers__r2__AccessKey: "CHANGE_ME"
   TOMYUM_storage__Providers__r2__SecretKey: "CHANGE_ME"
 ---
@@ -43,9 +53,10 @@ metadata:
   name: tomyum-server
   namespace: tomyum
 spec:
-  # Stateless: scale horizontally to meet the 100–1000+ concurrent-player target.
-  # All cross-node state lives in Redis, so replicas need no affinity.
-  replicas: 2
+  # Keep at 1 for now: online players, channels, matches and spectators still live in each
+  # pod's memory (PlayerRegistry/ChannelRegistry/MatchRegistry), so two pods would split the
+  # player base. Scale out once online state moves to Redis (ADR-0003, ROADMAP cross-cutting).
+  replicas: 1
   selector:
     matchLabels:
       app: tomyum-server
