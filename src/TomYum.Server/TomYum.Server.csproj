@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!-- ASP.NET Core host: composes DI, stable endpoints, lazer endpoints/hubs, IRC, config. -->
+  <ItemGroup>
+    <!-- bcrypt for osu!stable password hashing: bcrypt(md5_hex(plaintext)). $2 prefix, cost 12. -->
+    <PackageReference Include="BCrypt.Net-Next" Version="4.0.3" />
+    <!-- Rijndael-256 CBC used by osu!stable score submission encryption. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.6.2" />
+    <PackageReference Include="DotNetEnv" Version="3.2.0" />
+    <PackageReference Include="NetEscapades.Configuration.Yaml" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- The animated osu!bancho-boat status page served at GET / on the bancho subdomain. -->
+    <EmbeddedResource Include="Bancho/BanchoBoat.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Lets the test project exercise internal plugin-host types (scoped facades, context). -->
+    <InternalsVisibleTo Include="TomYum.Server.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+    <ProjectReference Include="../TomYum.Bancho/TomYum.Bancho.csproj" />
+    <ProjectReference Include="../TomYum.Lazer/TomYum.Lazer.csproj" />
+    <ProjectReference Include="../TomYum.Persistence/TomYum.Persistence.csproj" />
+    <ProjectReference Include="../TomYum.Caching/TomYum.Caching.csproj" />
+    <ProjectReference Include="../TomYum.Storage/TomYum.Storage.csproj" />
+    <ProjectReference Include="../TomYum.Irc/TomYum.Irc.csproj" />
+    <ProjectReference Include="../TomYum.Performance/TomYum.Performance.csproj" />
+    <ProjectReference Include="../TomYum.Plugins.Abstractions/TomYum.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="../TomYum.Plugins.Loader/TomYum.Plugins.Loader.csproj" />
+  </ItemGroup>
+
+</Project>

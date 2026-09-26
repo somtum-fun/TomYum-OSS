@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Plugin contracts/interfaces ONLY. This is the single assembly a plugin author references
+    (Domain comes transitively for entity types). Keep this assembly small and stable —
+    it is the public ABI between the host and plugins. See decisions/0007-plugin-model.md.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

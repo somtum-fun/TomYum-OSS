@@ -1,0 +1,8 @@
+{
+  "id": "tomyum.example.hello-source",
+  "name": "Hello (loose source)",
+  "version": "0.1.0",
+  "authors": "Phapoom Saksri",
+  "description": "Minimal no-op loose-source example compiled at runtime by the Roslyn loader.",
+  "entryPoint": "HelloSourcePlugin"
+}

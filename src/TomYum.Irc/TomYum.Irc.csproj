@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- IRC server for external bots + chat bridge into the core chat/channel system. -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

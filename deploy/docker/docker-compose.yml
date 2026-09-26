@@ -1,0 +1,86 @@
+# TomYum local development stack. Brings up the datastores plus the server and the
+# independently-deployable services as placeholders. NOT a production topology — see
+# deploy/k8s for that. Secrets here are throwaway dev values only.
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: dev-root
+      MYSQL_DATABASE: tomyum
+      MYSQL_USER: tomyum
+      MYSQL_PASSWORD: tomyum
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pdev-root"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        PROJECT: src/TomYum.Server/TomYum.Server.csproj
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - ../../config/.env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "8080:8080"
+
+  # pp sidecar (relax/autopilot pp via akatsuki-pp-rs). The server routes relax/autopilot here
+  # and falls back to the in-process official calc if it is down (Performance:Backends fallback).
+  pp-sidecar:
+    build:
+      context: ../../sidecars/pp-sidecar
+    environment:
+      PORT: "9000"
+      OSU_CACHE_DIR: /osu-cache
+    ports:
+      - "9000:9000"
+    volumes:
+      - osu-cache:/osu-cache
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/health | grep -q ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --- Independently-deployable services (placeholders; uncomment as they come online) ---
+  # spectator:
+  #   build: { context: .., dockerfile: deploy/docker/Dockerfile, args: { PROJECT: services/TomYum.Spectator/TomYum.Spectator.csproj } }
+  #   depends_on: [redis]
+  # scorequeue:
+  #   build: { context: .., dockerfile: deploy/docker/Dockerfile, args: { PROJECT: services/TomYum.ScoreQueue/TomYum.ScoreQueue.csproj } }
+  #   depends_on: [mysql, redis]
+  # beatmap-submission:
+  #   build: { context: .., dockerfile: deploy/docker/Dockerfile, args: { PROJECT: services/TomYum.BeatmapSubmission/TomYum.BeatmapSubmission.csproj } }
+  # replay-store:
+  #   build: { context: .., dockerfile: deploy/docker/Dockerfile, args: { PROJECT: services/TomYum.ReplayStore/TomYum.ReplayStore.csproj } }
+
+volumes:
+  mysql-data:
+  redis-data:
+  osu-cache:

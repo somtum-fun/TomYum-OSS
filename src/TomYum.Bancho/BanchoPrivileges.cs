@@ -1,0 +1,41 @@
+namespace TomYum.Bancho;
+
+/// <summary>
+/// Client-facing privilege bitmask sent in PRIVILEGES (id 71) and the low bits of the
+/// USER_PRESENCE privilege/mode byte. These are the flags the osu!stable client itself
+/// understands (badge colours, supporter perks, tournament client) — distinct from the
+/// server's internal authorization model, which lives in <c>TomYum.Domain</c>.
+/// </summary>
+/// <remarks>
+/// Values match the ecosystem-standard <c>ClientPrivileges</c> bitmask (bancho.py,
+/// BanchoNET, Sunrise). See <c>memories/protocols/bancho-stable.md</c> §3/§5.
+/// </remarks>
+[Flags]
+public enum BanchoPrivileges
+{
+    /// <summary>No special privileges.</summary>
+    None = 0,
+
+    /// <summary>A normal, logged-in player.</summary>
+    Player = 1 << 0,
+
+    /// <summary>Moderator: access to moderation tooling.</summary>
+    Moderator = 1 << 1,
+
+    /// <summary>osu!supporter: cosmetic and feature perks.</summary>
+    Supporter = 1 << 2,
+
+    /// <summary>
+    /// The "owner" badge bit (bancho.py <c>ClientPrivileges.OWNER</c>). Note the stable client's
+    /// bit names do not line up with server roles: this bit is lit for a server <em>developer</em>,
+    /// and the <see cref="Developer"/> bit below is lit for a server <em>administrator</em> — the
+    /// server-layer privilege mapper performs that crossover.
+    /// </summary>
+    Owner = 1 << 3,
+
+    /// <summary>Developer badge bit (bancho.py <c>ClientPrivileges.DEVELOPER</c>).</summary>
+    Developer = 1 << 4,
+
+    /// <summary>Tournament staff client (referee).</summary>
+    Tournament = 1 << 5,
+}

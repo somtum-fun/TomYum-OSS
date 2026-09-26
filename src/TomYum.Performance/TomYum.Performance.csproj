@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    PP/difficulty engine. Behind IPerformanceCalculator so the impl (native ppy.osu.Game.Rulesets.*
+    vs rosu-pp sidecar) can be swapped. See memories/architecture/decisions/0005-pp-engine.md.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="ppy.osu.Game.Rulesets.Osu" Version="2026.702.1" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Taiko" Version="2026.702.1" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Catch" Version="2026.702.1" />
+    <PackageReference Include="ppy.osu.Game.Rulesets.Mania" Version="2026.702.1" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

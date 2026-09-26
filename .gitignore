@@ -1,0 +1,71 @@
+## .NET / build output
+bin/
+obj/
+out/
+*.user
+*.suo
+.vs/
+artifacts/
+
+## Rider / VS / VS Code
+.idea/
+*.DotSettings.user
+.vscode/
+
+## Test / coverage
+[Tt]est[Rr]esults/
+coverage/
+*.coverage
+*.trx
+
+## Secrets & local config
+.env
+*.env
+!*.env.example
+config/tomyum.yaml
+!config/tomyum.yaml.example
+appsettings.*.local.json
+secrets.json
+
+## Storage / runtime data (local provider, replays, beatmaps)
+.data/
+data/local-storage/
+data/replays/
+## Runtime data written under a project's working dir when run in place (e.g. the replay store,
+## the medal-icon asset cache).
+**/data/replays/
+**/data/local-storage/
+**/data/assets/
+data/assets/
+
+## Ephemeral agent worktrees created by the harness — embedded repos, never commit.
+
+## Local datastore (Podman MySQL bind-mount) — dev-only, never commit DB files
+.localdb/
+
+## Loaded plugin binaries (loose source + examples are tracked; built dlls are not)
+plugins/**/bin/
+plugins/**/obj/
+plugins/*.dll
+
+## Reference implementations — read-only external repos (often with their own .git).
+## Studied in memories/references/*.md; not part of this repo's history.
+reference/
+
+## Agent knowledge system — local working memory, not version-controlled (per project decision).
+AGENTS.md
+memories/
+
+## OS noise
+.DS_Store
+Thumbs.db
+*.log
+
+## Agent knowledge system — local-only for now (per maintainer request).
+## These hold working notes/onboarding and are not yet published with the repo.
+AGENTS.md
+memories/
+
+## Plugin template — example code only; it lives in its own repo
+## (github.com/somtum-fun/tomyum-plugin-template). Kept locally for reference, not tracked here.
+/templates/

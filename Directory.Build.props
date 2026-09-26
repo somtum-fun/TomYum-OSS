@@ -1,0 +1,79 @@
+<Project>
+
+  <!-- Shared build settings applied to every project in the solution. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <!-- Quality gates: analyzers on, warnings are errors. -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+
+    <!-- Deterministic, documented builds. -->
+    <Deterministic>true</Deterministic>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!--
+      Suppressed during the scaffolding phase:
+      CS1591  missing XML doc comment on a public member (stubs not fully documented yet).
+      CA1848  prefer LoggerMessage delegates (premature for scaffold log lines).
+      CA1716  identifier matches a reserved keyword (Get/Error/event read fine in C#).
+      CA1707  underscores in member names (placeholder test names use them by convention).
+      Revisit these as real implementation lands.
+    -->
+    <NoWarn>$(NoWarn);CS1591;CA1848;CA1873;CA1716;CA1707</NoWarn>
+
+    <Authors>blueskychan-dev &amp; production</Authors>
+    <Product>TomYum</Product>
+    <Copyright>Copyright (c) 2026 blueskychan-dev &amp; production</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+
+    <!--
+      Product version. VersionSuffix marks pre-release builds (e.g. 0.0.1-dev); the SDK folds
+      prefix+suffix into AssemblyInformationalVersion, which TomYumVersion reads at startup.
+    -->
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>dev</VersionSuffix>
+  </PropertyGroup>
+
+  <!--
+    Bake the current git commit into AssemblyInformationalVersion. When SourceRevisionId is set, the
+    SDK appends "+<SourceRevisionId>" to the informational version; TomYumVersion reads it back for
+    !stats / !version / the status page. Degrades to no suffix when git is unavailable (e.g. a source
+    tarball or a build machine without git) — ContinueOnError keeps the build green either way.
+  -->
+  <Target Name="SetGitCommitId"
+          BeforeTargets="AddSourceRevisionToInformationalVersion;GetAssemblyVersion"
+          Condition="'$(SourceRevisionId)' == ''">
+    <Exec Command="git -C &quot;$(MSBuildThisFileDirectory)&quot; rev-parse --short=12 HEAD"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="Low"
+          IgnoreExitCode="true"
+          ContinueOnError="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommitId" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitExitCode" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId Condition="'$(_GitExitCode)' == '0' and '$(_GitCommitId)' != ''">$(_GitCommitId)</SourceRevisionId>
+    </PropertyGroup>
+  </Target>
+
+  <!--
+    Solution-wide vulnerability overrides. These force-pin transitive packages that have known
+    CVEs to safe versions. Placed here so every project inherits the fix without repetition.
+    AutoMapper: GHSA-rvv3-g6hj-g44x — safe at 16.1.1+.
+    MessagePack: GHSA-382j-8mxh-c7x2 et al — safe at 3.1.7+.
+  -->
+  <ItemGroup>
+    <PackageReference Include="AutoMapper" Version="16.1.1" />
+    <PackageReference Include="MessagePack" Version="3.1.7" />
+    <!-- Microsoft.AspNetCore.SignalR.Protocols.MessagePack: GHSA-f8h2-vmm9-qhj6 — safe at 10.0.9+. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.9" />
+  </ItemGroup>
+
+</Project>

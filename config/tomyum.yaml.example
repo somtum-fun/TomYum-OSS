@@ -1,0 +1,211 @@
+# TomYum optional configuration overlay (tomyum.yaml.example).
+#
+# Copy this file to `tomyum.yaml` and edit it for your deployment.
+# `tomyum.yaml` is gitignored — it holds your local/deployment-specific settings.
+#
+# This file is an OPTIONAL overlay on top of appsettings.json + appsettings.{Env}.json
+# + environment variables. See memories/architecture/decisions/0008-config-strategy.md.
+#
+# Precedence (lowest to highest):
+#   appsettings.json  <  appsettings.{Environment}.json  <  tomyum.yaml  <  TOMYUM_* env vars
+#
+# Secrets (DB passwords, S3 keys, OAuth signing keys) MUST NOT live here.
+# Inject them via environment variables / k8s secrets. Keys below are placeholders.
+
+server:
+  # Public domain the osu! client connects to (c.<domain>, osu.<domain>, etc.).
+  domain: "tomyum.example"
+  # Bind address for the ASP.NET host inside the pod.
+  bind: "http://0.0.0.0:8080"
+
+database:
+  # Enable MySQL persistence. false = in-memory only (for quick local dev without a DB).
+  enabled: true
+  # MySQL host. Password comes from TOMYUM_DATABASE__PASSWORD env var.
+  host: "mysql"
+  port: 3306
+  name: "tomyum"
+  user: "tomyum"
+
+osu:
+  # osu! v1 API key for beatmap metadata lookup.
+  # Leave empty to use the keyless osu.direct mirror (works without a key).
+  # Get a key at https://old.ppy.sh/p/api
+  apiKey: ""
+
+replays:
+  # Directory where replay .osr files are stored (relative to the working directory).
+  path: "data/replays"
+
+assets:
+  # Cache root for static assets served on assets.<domain> (medal icons are cached under
+  # <cachePath>/medals/client). Fetched from ppy's CDN on first request, then served from disk.
+  cachePath: "data/assets"
+
+# Pluggable pp engine (ADR-0010). Route each gamemode to a backend: the in-process official
+# ppy/lazer calculator, or an HTTP sidecar (rosu-pp / akatsuki-pp-rs / a fork). Omit this whole
+# section to compute everything in-process with `official` (the default).
+performance:
+  # Backend used when no route matches. Must be a key under `backends`.
+  default: official
+  # Ordered rules; the first whose `modes` matches wins. Mode tokens: a variant group
+  # (vanilla | relax | autopilot | all), a short name (vn!std, rx!catch, ...), or a number (0..11).
+  routes: []
+  # Example — send relax/autopilot to an akatsuki-pp-rs sidecar, keep vanilla in-process:
+  #   routes:
+  #     - { modes: [vanilla], backend: official }
+  #     - { modes: [relax, autopilot], backend: akatsuki }
+  backends:
+    official:
+      type: inprocess-lazer          # official ppy.osu.Game.Rulesets.* in this process
+    # akatsuki:
+    #   type: http                    # POSTs the score to a sidecar (see sidecars/pp-sidecar/)
+    #   url: "http://localhost:9000/pp"
+    #   timeoutMs: 2000
+    #   fallback: official            # used if the sidecar errors/times out (else 0 pp)
+
+# osu!Direct in-game beatmap browser. Proxies search and set-info to a mino.pw-compatible
+# beatmap mirror and redirects .osz downloads to that mirror.
+direct:
+  # Base URL of the beatmap mirror (no trailing slash).
+  # catboy.best is the recommended default — free, no key required.
+  mirrorBaseUrl: "https://catboy.best"
+  # API path for search requests. Appended to mirrorBaseUrl with query string.
+  searchPath: "/api/search"
+  # Path template for single-set lookup by id. {0} = set id.
+  setPath: "/api/s/{0}"
+  # Path template for .osz download redirect. {0} = set id.
+  downloadPath: "/d/{0}"
+
+redis:
+  # Online state, pub/sub fan-out, leaderboard caches. See ADR-0003.
+  configuration: "redis:6379"
+
+irc:
+  # IRC bridge for external bots. See memories/protocols/irc.md.
+  enabled: true
+  port: 6667
+
+performance:
+  # PP/difficulty engine. native = in-process ppy.osu.Game.Rulesets (ADR-0005 default).
+  # sidecar = call out to a rosu-pp service if throughput demands it later.
+  engine: "native"
+  sidecarUrl: ""
+
+# --------------------------------------------------------------------------
+# Storage: object storage for avatars, screenshots, replays, beatmaps, sets.
+# Model (ADR-0006 / memories/features/storage.md):
+#   - storage.enabled: master switch. false => ALL asset storage disabled.
+#   - storage.providers: named provider instances; each has its own enabled flag.
+#   - storage.defaultProviders: write-fan-out + read source for asset types with
+#     no explicit route. First entry serves reads; all entries receive writes.
+#   - storage.routes: per-asset-type routing. Each route has:
+#       enabled  - per-asset-type on/off switch
+#       writeTo  - list of providers an upload is replicated to (one, some, or ALL)
+#       readFrom - the single provider used to serve reads (defaults to writeTo[0])
+#
+# This is the "choose where each asset lives" model: host an asset on R2 only,
+# on OVH only, on local only, on several at once, or on all of them — per asset
+# type — by editing writeTo/readFrom. No code change required.
+# --------------------------------------------------------------------------
+storage:
+  enabled: true
+  # Asset types without an explicit route below are written to all of these and
+  # read from the first. Set to a single provider for a simple single-target setup.
+  defaultProviders: ["local"]
+
+  providers:
+    local:
+      enabled: true
+      kind: "Local"
+      bucket: "/var/lib/tomyum/storage"      # root folder for local static files
+
+    r2:
+      enabled: false
+      kind: "CloudflareR2"
+      bucket: "tomyum-public"
+      endpoint: "https://<accountid>.r2.cloudflarestorage.com"
+      region: "auto"
+      publicBaseUrl: "https://cdn.tomyum.example"
+      # accessKey / secretKey: inject via TOMYUM_STORAGE__PROVIDERS__R2__ACCESSKEY etc.
+
+    ovh-s3:
+      enabled: false
+      kind: "OvhS3"
+      bucket: "tomyum-bulk"
+      endpoint: "https://s3.<region>.io.cloud.ovh.net"
+      region: "gra"
+
+    aws-s3:
+      enabled: false
+      kind: "AwsS3"
+      bucket: "tomyum-aws"
+      region: "us-east-1"
+
+    azure-blob:
+      enabled: false
+      kind: "AzureBlob"
+      bucket: "tomyum"                        # container name
+      endpoint: "https://<account>.blob.core.windows.net"
+
+  # Per-asset-type routing. Asset type names mirror TomYum.Storage.AssetType:
+  # Avatar, Screenshot, Replay, Beatmap, BeatmapSet, BeatmapMedia.
+  # Examples below show single-target, multi-target, and replicate-to-all.
+  routes:
+    # Served from R2 (CDN), but also replicated to OVH for durability.
+    Avatar:
+      enabled: true
+      writeTo: ["r2", "ovh-s3"]
+      readFrom: "r2"
+    # Single provider only.
+    Screenshot:
+      enabled: true
+      writeTo: ["r2"]
+    # Cold/bulk on OVH only.
+    Replay:
+      enabled: true
+      writeTo: ["ovh-s3"]
+    # Hosted on ALL configured providers; reads come from R2.
+    BeatmapSet:
+      enabled: true
+      writeTo: ["r2", "ovh-s3", "aws-s3", "azure-blob", "local"]
+      readFrom: "r2"
+    # Beatmap (.osu) and BeatmapMedia fall back to defaultProviders (local) here.
+
+# --------------------------------------------------------------------------
+# Plugins: runtime drop-ins from the plugins/ directory. DAN Mode and Session
+# ship as plugins (ADR-0007). Each plugin's own config lives under plugins.<id>.
+# --------------------------------------------------------------------------
+plugins:
+  directory: "plugins"
+  # Whether to compile loose folder/code.cs plugins at runtime (Roslyn) in addition
+  # to loading compiled .dll plugins.
+  allowLooseSource: true
+
+  # Ids granted raw DB access (IPluginContext.Data). Only list plugins you trust to
+  # own their own tables and run ad-hoc SQL against the shared database (ADR-0007).
+  trusted:
+    - "tomyum.session"
+
+  # Per-plugin config blocks go here: plugins.<plugin-id> with whatever settings
+  # that plugin reads. See each plugin's README for its config schema.
+  # Example:
+  #   "your.plugin.name":
+  #     enabled: true
+  #     someOption: value
+
+  # Session (web auth) plugin — plugins/tomyum-session. See its README.md for all keys.
+  "tomyum.session":
+    ttlHours: 720               # session lifetime (default 720h = 30 days)
+    bindClient: false           # enforce IP-prefix (/24,/64) + UA-hash binding
+    allowBodyToken: true        # accept a session_token field in the JSON body
+    passwordIsMd5: false        # true if the frontend md5s the password client-side
+    requireNormalPrivilege: true # block restricted/banned accounts (Normal bit cleared)
+    cookieSecure: true          # set false only for local http cookie round-trips
+    cookieSameSite: "Lax"
+    cookieDomain: ""            # optional "; Domain=" (empty = host-only)
+    frontendProxyToken: ""      # shared secret to trust X-TomYum-Client-IP behind a proxy
+    rateLimitWindowSeconds: 300
+    rateLimitMaxAttempts: 10
+    reaperIntervalMinutes: 60
+

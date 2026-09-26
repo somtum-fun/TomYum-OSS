@@ -1,0 +1,33 @@
+namespace TomYum.Domain.Entities;
+
+/// <summary>Status values stored in <see cref="Score.Status"/>.</summary>
+public static class ScoreStatus
+{
+    public const int Failed    = 0;
+    public const int Submitted = 1; // saved but not the player's best on this map
+    public const int Best      = 2; // the player's current best on this map
+}
+
+public sealed class Score
+{
+    public long Id { get; init; }
+    public int UserId { get; init; }
+    public int BeatmapId { get; init; }
+    public string BeatmapMd5 { get; init; } = string.Empty;
+    public int Mode { get; init; }
+    public long ScoreValue { get; init; }
+    public int MaxCombo { get; init; }
+    public int Count300 { get; init; }
+    public int Count100 { get; init; }
+    public int Count50 { get; init; }
+    public int CountMiss { get; init; }
+    public int CountGeki { get; init; }
+    public int CountKatu { get; init; }
+    public string Grade { get; init; } = "F";
+    public int Mods { get; init; }
+    public bool Perfect { get; init; }
+    public double Pp { get; set; }
+    public bool Passed { get; init; }
+    public int Status { get; set; } = ScoreStatus.Failed;
+    public DateTimeOffset SubmittedAt { get; init; }
+}

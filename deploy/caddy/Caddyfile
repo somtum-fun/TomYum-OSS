@@ -1,0 +1,56 @@
+# TomYum reverse proxy configuration (Caddy).
+#
+# Replace example.com with your actual domain. This configuration matches the subdomain
+# patterns that osu!stable expects (see memories/protocols/bancho-stable.md).
+#
+# Subdomains:
+#   c, ce, c4, cho  - Bancho binary protocol (login + packet polling)
+#   osu             - Web API (/web/*.php, in-game registration, osu!Direct)
+#   a               - Avatars (served from local files or storage)
+#   api             - REST API (future: osu!lazer)
+#   session         - Session frontend (future: plugin)
+#   b               - Beatmaps (future: custom beatmap hosting)
+
+# Bancho binary protocol + Web API
+c.example.com, ce.example.com, c4.example.com, cho.example.com, osu.example.com, api.example.com, session.example.com, b.example.com {
+  # TLS cert paths - adjust for your setup (Let's Encrypt, custom certs, etc.)
+  # For Let's Encrypt: remove the tls line entirely and Caddy will auto-provision
+  # tls /etc/caddy/certs/example.com.pem /etc/caddy/certs/example.com.key
+
+  # Allow large request bodies (replays, beatmap uploads)
+  request_body {
+    max_size 20MB
+  }
+
+  # Proxy to TomYum.Server
+  reverse_proxy localhost:8080 {
+    header_up Host {host}
+    header_up X-Real-IP {remote_host}
+    header_up X-Forwarded-For {remote_host}
+    header_up X-Forwarded-Proto {scheme}
+  }
+
+  # Optional: enable compression for text responses
+  encode gzip zstd
+}
+
+# Avatars - serve from local filesystem with caching headers
+# Adjust root path to match your storage.providers.local.bucket or object storage
+a.example.com {
+  # tls /etc/caddy/certs/example.com.pem /etc/caddy/certs/example.com.key
+
+  root * /var/lib/tomyum/storage/avatars
+
+  # Aggressive no-cache so avatar changes are visible immediately
+  header {
+    Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Pragma "no-cache"
+    Expires "0"
+  }
+
+  # Try requested path with common image extensions, fallback to default.png
+  try_files {path} {path}.png {path}.jpg {path}.gif {path}.jpeg {path}.jfif /default.png
+
+  file_server
+  encode gzip
+}
