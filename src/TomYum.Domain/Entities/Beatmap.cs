@@ -16,8 +16,10 @@ public sealed class Beatmap
     /// <summary>
     /// Inclusive lower bound for server-local beatmap and set ids. Ids at or above this
     /// value are owned by this server; ids below it mirror official osu! content.
+    /// Must stay within osu-web's <c>MEDIUMINT UNSIGNED</c> id columns (max 16,777,215), which
+    /// TomYum shares (docs/osu-web.md); official ids are well below 10M, leaving headroom.
     /// </summary>
-    public const int CustomIdFloor = 100_000_000;
+    public const int CustomIdFloor = 10_000_000;
 
     /// <summary>Beatmap (difficulty) id.</summary>
     public int Id { get; set; }

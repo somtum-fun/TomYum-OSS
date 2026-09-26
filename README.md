@@ -60,7 +60,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - [ ] IRC server for external bots (auth via osu! API key)
 - [ ] Plugin system (`.dll` + runtime-compiled loose `.cs`); DAN Mode & Session as plugins
 - [ ] Configurable multi-target storage (R2 / AWS S3 / OVH S3 / Azure Blob / local)
-- [ ] Custom beatmap submission (reserved ID range `100000000+`)
+- [ ] Custom beatmap submission (reserved ID range `10000000+`)
 - [ ] Geolocation for presence (lon/lat/country from client IP)
 - [ ] Docker / k8s deployment
 
