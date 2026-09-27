@@ -57,6 +57,13 @@ public sealed class Beatmap
     /// </summary>
     public bool StatusFrozen { get; set; }
 
+    /// <summary>
+    /// The raw osu! API <c>approved</c> value (-2 graveyard … 4 loved) when the map came from the
+    /// API, else <c>null</c>. <see cref="Status"/> folds graveyard/WIP into Pending; this keeps the
+    /// distinction for osu-web, which stores the API value. Not persisted in TomYum's own table.
+    /// </summary>
+    public int? OsuApiStatus { get; set; }
+
     /// <summary>Game mode (0 = osu!, 1 = taiko, 2 = catch, 3 = mania).</summary>
     public int Mode { get; set; }
 

@@ -1,5 +1,3 @@
-using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Persistence.OsuWeb;
@@ -9,60 +7,10 @@ using Xunit;
 namespace TomYum.Server.Tests.OsuWeb;
 
 /// <summary>
-/// Runs only when <c>TOMYUM_TEST_MYSQL</c> holds a MySQL connection string (no database name)
-/// for a user that may create databases, e.g. <c>Server=127.0.0.1;User=root;Password=;</c>.
-/// CI sets it; locally the tests are skipped without it.
+/// <see cref="OsuWebUserRepository"/> against osu-web's real account tables. Each test gets a fresh database.
 /// </summary>
-public sealed class MySqlFactAttribute : FactAttribute
+public sealed class OsuWebUserRepositoryTests : OsuWebDatabaseTest
 {
-    public const string EnvVar = "TOMYUM_TEST_MYSQL";
-
-    public MySqlFactAttribute()
-    {
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(EnvVar)))
-            Skip = $"Set {EnvVar} to a MySQL connection string to run osu-web integration tests.";
-    }
-}
-
-/// <summary>
-/// <see cref="OsuWebUserRepository"/> against osu-web's real account tables
-/// (<c>osu-web-accounts.sql</c>, translated from osu-web's migrations). Each test gets a fresh database.
-/// </summary>
-public sealed class OsuWebUserRepositoryTests : IAsyncLifetime
-{
-    private readonly string _database = $"tomyum_osuweb_test_{Guid.NewGuid():N}";
-    private string _connectionString = string.Empty;
-
-    public async Task InitializeAsync()
-    {
-        var server = Environment.GetEnvironmentVariable(MySqlFactAttribute.EnvVar);
-        if (string.IsNullOrWhiteSpace(server))
-            return;
-
-        await using (var admin = new MySqlConnection(server))
-        {
-            await admin.OpenAsync();
-            await using var create = new MySqlCommand($"CREATE DATABASE `{_database}`", admin);
-            await create.ExecuteNonQueryAsync();
-        }
-
-        _connectionString = new MySqlConnectionStringBuilder(server) { Database = _database }.ConnectionString;
-        var ddl = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "OsuWeb", "osu-web-accounts.sql"));
-        await ExecuteAsync(ddl);
-    }
-
-    public async Task DisposeAsync()
-    {
-        var server = Environment.GetEnvironmentVariable(MySqlFactAttribute.EnvVar);
-        if (string.IsNullOrWhiteSpace(server))
-            return;
-
-        await using var admin = new MySqlConnection(server);
-        await admin.OpenAsync();
-        await using var drop = new MySqlCommand($"DROP DATABASE IF EXISTS `{_database}`", admin);
-        await drop.ExecuteNonQueryAsync();
-    }
-
     [MySqlFact]
     public async Task AddAsync_WritesAnAccountOsuWebAccepts()
     {
@@ -185,13 +133,7 @@ public sealed class OsuWebUserRepositoryTests : IAsyncLifetime
         Assert.Contains("GroupSeeder", error.Message, StringComparison.Ordinal);
     }
 
-    private OsuWebUserRepository NewRepository()
-    {
-        var options = new DbContextOptionsBuilder<OsuWebDbContext>()
-            .UseMySql(_connectionString, new MySqlServerVersion(new Version(8, 0, 0)))
-            .Options;
-        return new OsuWebUserRepository(new OsuWebDbContext(options));
-    }
+    private OsuWebUserRepository NewRepository() => new(NewOsuWebContext());
 
     private static User NewUser(string name) => new()
     {
@@ -214,20 +156,4 @@ public sealed class OsuWebUserRepositoryTests : IAsyncLifetime
         LatestActivity = user.LatestActivity,
         Privileges = privileges,
     };
-
-    private async Task ExecuteAsync(string sql)
-    {
-        await using var connection = new MySqlConnection(_connectionString);
-        await connection.OpenAsync();
-        await using var command = new MySqlCommand(sql, connection);
-        await command.ExecuteNonQueryAsync();
-    }
-
-    private async Task<T> ScalarAsync<T>(string sql)
-    {
-        await using var connection = new MySqlConnection(_connectionString);
-        await connection.OpenAsync();
-        await using var command = new MySqlCommand(sql, connection);
-        return (T)Convert.ChangeType((await command.ExecuteScalarAsync())!, typeof(T), System.Globalization.CultureInfo.InvariantCulture);
-    }
 }

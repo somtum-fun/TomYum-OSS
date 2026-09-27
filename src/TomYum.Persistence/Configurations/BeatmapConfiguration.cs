@@ -38,6 +38,8 @@ public sealed class BeatmapConfiguration : IEntityTypeConfiguration<Beatmap>
         // Stored as the internal RankedStatus integer (wire-significant; see the enum).
         builder.Property(b => b.Status).HasConversion<int>().IsRequired();
         builder.Property(b => b.StatusFrozen).IsRequired();
+        // Only carried in memory to osu-web (docs/osu-web.md); no column here.
+        builder.Ignore(b => b.OsuApiStatus);
 
         builder.Property(b => b.Mode).IsRequired();
         builder.Property(b => b.StarRating).IsRequired();

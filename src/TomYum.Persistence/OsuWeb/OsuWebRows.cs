@@ -83,3 +83,51 @@ public sealed class OsuWebUserGroup
     /// <summary>osu-web writes <c>0</c> when adding a member; it doesn't filter on it when reading.</summary>
     public bool UserPending { get; set; }
 }
+
+/// <summary>A row of osu-web's <c>osu_beatmapsets</c> (only what TomYum writes; the rest have defaults).</summary>
+public sealed class OsuWebBeatmapset
+{
+    public uint BeatmapsetId { get; set; }
+
+    public string Artist { get; set; } = string.Empty;
+
+    public string Title { get; set; } = string.Empty;
+
+    public string Creator { get; set; } = string.Empty;
+
+    /// <summary>osu! API state: -2 graveyard, -1 WIP, 0 pending, 1 ranked, 2 approved, 3 qualified, 4 loved.</summary>
+    public sbyte Approved { get; set; }
+
+    public DateTime? ApprovedDate { get; set; }
+
+    public DateTime? SubmitDate { get; set; }
+
+    public DateTime LastUpdate { get; set; }
+}
+
+/// <summary>A row of osu-web's <c>osu_beatmaps</c> (only what TomYum writes; the rest have defaults).</summary>
+public sealed class OsuWebBeatmap
+{
+    public uint BeatmapId { get; set; }
+
+    public uint? BeatmapsetId { get; set; }
+
+    /// <summary>MD5 of the .osu file.</summary>
+    public string? Checksum { get; set; }
+
+    public string Version { get; set; } = string.Empty;
+
+    public uint TotalLength { get; set; }
+
+    public uint HitLength { get; set; }
+
+    public byte Playmode { get; set; }
+
+    public sbyte Approved { get; set; }
+
+    public DateTime LastUpdate { get; set; }
+
+    public float Difficultyrating { get; set; }
+
+    public uint MaxCombo { get; set; }
+}
