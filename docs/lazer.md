@@ -1,6 +1,39 @@
-# osu!(lazer) support: research
+# osu!(lazer) support
 
-Status: research only (no code yet). Checked 2026-09-27 against ppy's current sources:
+## Status
+
+Done (2026-09-27):
+- **Login**: `php artisan tomyum:setup` adds lazer's built-in OAuth client (id 5). This needs
+  Passport keys (`php artisan passport:keys`) and `CLIENT_CHECK_VERSION=false` in osu-web's `.env`.
+- **Merged pp (option A below)**: osu-web's compose runs ppy's processor (`score-processor`), and
+  TomYum runs with `OsuWeb:ScoreProcessor=true` (the osu-web compose overlay sets it). Stable and
+  lazer scores share one pool.
+  - For an existing server, turn it on once: zero the grade counts in `osu_user_stats*`
+    (TomYum wrote them before; the processor recounts them), then run
+    `docker compose run --rm score-processor queue pump-all` in osu-web.
+  - TomYum's pp library matches the processor's (ppy rulesets 2026.730.0). Scores from before the
+    upgrade keep their old in-game pp until recalculated (`tools/RecalcPp`); the website already
+    has the new values.
+
+Not yet: the spectator server (multiplayer, spectating, online presence, lazer replays) and
+custom-map pp (the processor downloads `.osu` files from osu.ppy.sh).
+
+## Connecting a lazer client
+
+Use **LazerAuthlibInjection** (below). Before installing it, **sign out of your osu.ppy.sh account
+in lazer**: using it against the official servers gets accounts banned. Remove the DLL to go back.
+
+1. In lazer: Settings → "Open osu! folder" (Windows: `%AppData%\osu!`).
+2. Copy `osu.Game.Rulesets.EnhancedAuth.dll` from the
+   [latest release](https://github.com/MingxuanGame/LazerAuthlibInjection/releases) into `rulesets`.
+3. Restart lazer. Settings → Rulesets → set **API Url** and **Website Url** to
+   `https://osu.localtest.me`. Keep the default client ID/secret. Turn off the g0v0-server features
+   (the `--non-g0v0-server` option).
+4. Sign in with your normal account from the website.
+
+## Research
+
+Checked 2026-09-27 against ppy's current sources:
 `ppy/osu` (lazer 2026.921.0), `ppy/osu-server-spectator`, `ppy/osu-queue-score-statistics`, the
 osu-web fork, and the osu! wiki/news.
 
