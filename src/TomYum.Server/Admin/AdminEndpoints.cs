@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
 using System.Globalization;
 using TomYum.Domain.Enums;
@@ -72,6 +73,8 @@ public static class AdminEndpoints
             Results.Ok(await scores.ListAsync(userId, mode, best ?? false, limit ?? 50, cancellationToken).ConfigureAwait(false)));
         admin.MapPost("/users/{userId:int}/wipe-scores", async (int userId, WipeScoresRequest request, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken) =>
             Results.Ok(await scores.WipeAsync(userId, request.Mode, ActorId(context), request.Reason, cancellationToken).ConfigureAwait(false)));
+        // Every score's pp again (after a pp algorithm update): same as a status change does per map.
+        admin.MapPost("/scores/recalculate", RecalculateAllScoresAsync);
         admin.MapDelete("/scores/{scoreId:long}", async (long scoreId, string? reason, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken) =>
             await scores.RemoveAsync(scoreId, ActorId(context), reason, cancellationToken).ConfigureAwait(false) is { } result ? Results.Ok(result) : Results.NotFound());
         // Replay of a website score (osu-web's replay download fetches it from here).
@@ -164,6 +167,34 @@ public static class AdminEndpoints
 
         var result = await importer.ImportAsync(set, ActorId(context), cancellationToken: cancellationToken).ConfigureAwait(false);
         return result.Found ? Results.Ok(result) : Results.NotFound(result);
+    }
+
+    /// <summary>Recalculates the pp of every passed score, map by map, and logs it.</summary>
+    private static async Task<IResult> RecalculateAllScoresAsync(
+        TomYum.Persistence.TomYumDbContext db, ScoreRecalculation recalculation, IStaffLogRepository log, TimeProvider time,
+        HttpContext context, CancellationToken cancellationToken)
+    {
+        var md5s = await db.Scores.AsNoTracking().Where(s => s.Passed).Select(s => s.BeatmapMd5).Distinct()
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var beatmaps = await db.Beatmaps.AsNoTracking().Where(b => md5s.Contains(b.Md5))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        var total = new ScoreRecalculationResult(0, 0, 0);
+        foreach (var chunk in beatmaps.Chunk(50))
+        {
+            var result = await recalculation.RecalculateAsync(chunk, cancellationToken).ConfigureAwait(false);
+            total = new ScoreRecalculationResult(total.Scores + result.Scores, total.Changed + result.Changed, total.Players + result.Players);
+        }
+
+        await log.AddAsync(new TomYum.Domain.Entities.StaffLogEntry
+        {
+            CreatedAt = time.GetUtcNow().UtcDateTime,
+            ActorId = ActorId(context),
+            Action = "scores.recalculate",
+            Summary = string.Create(CultureInfo.InvariantCulture,
+                $"Recalculated pp on {beatmaps.Count} map(s): {total.Changed} of {total.Scores} score(s) changed"),
+        }, cancellationToken).ConfigureAwait(false);
+        return Results.Ok(new { Maps = beatmaps.Count, total.Scores, total.Changed });
     }
 
     private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, HttpContext context, CancellationToken cancellationToken)
