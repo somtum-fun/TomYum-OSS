@@ -47,6 +47,33 @@ public sealed class DatabaseOptions
     public string? ConnectionString { get; set; }
 
     /// <summary>
+    /// Name of osu-web's database on the same MySQL server (typically <c>osu</c>). When set, player
+    /// accounts live in osu-web's <c>phpbb_users</c> instead of TomYum's own <c>users</c> table, so
+    /// one account works on the website and in-game. Empty keeps TomYum's own table. See
+    /// <c>docs/osu-web.md</c>.
+    /// </summary>
+    public string? OsuWebName { get; set; }
+
+    /// <summary>
+    /// osu-web's Elasticsearch index prefix (its <c>ES_INDEX_PREFIX</c>, empty by default). New
+    /// scores are queued for osu-web's score indexer under this prefix.
+    /// </summary>
+    public string OsuWebIndexPrefix { get; set; } = string.Empty;
+
+    /// <summary>Whether accounts are stored in osu-web's database (database enabled and <see cref="OsuWebName"/> set).</summary>
+    public bool UseOsuWebAccounts => Enabled && !string.IsNullOrWhiteSpace(OsuWebName);
+
+    /// <summary>
+    /// The effective connection string pointed at osu-web's database: same server and credentials
+    /// as <see cref="BuildConnectionString"/>, with the database swapped for <see cref="OsuWebName"/>.
+    /// </summary>
+    public string BuildOsuWebConnectionString() =>
+        new MySqlConnector.MySqlConnectionStringBuilder(BuildConnectionString())
+        {
+            Database = OsuWebName,
+        }.ConnectionString;
+
+    /// <summary>
     /// Returns the effective connection string: <see cref="ConnectionString"/> when supplied,
     /// otherwise one composed from the discrete fields.
     /// </summary>

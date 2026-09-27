@@ -3,6 +3,7 @@ using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
+using TomYum.Persistence;
 
 namespace TomYum.Server.Bancho;
 
@@ -18,16 +19,22 @@ public sealed partial class RegistrationService
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _passwordHasher;
     private readonly ILogger<RegistrationService> _logger;
+    private readonly bool _autoGrantOwner;
 
     /// <summary>Creates the service over the user repository and password hasher.</summary>
     public RegistrationService(
         IUserRepository users,
         IPasswordHasher passwordHasher,
-        ILogger<RegistrationService> logger)
+        ILogger<RegistrationService> logger,
+        DatabaseOptions? databaseOptions = null)
     {
         _users = users;
         _passwordHasher = passwordHasher;
         _logger = logger;
+        // With osu-web accounts, ids are shared with website sign-ups (so id 3 is not "the first
+        // player"), and Owner maps to osu-web's admin group — full website admin. Staff is granted
+        // explicitly there instead (docs/osu-web.md).
+        _autoGrantOwner = databaseOptions is not { UseOsuWebAccounts: true };
     }
 
     // Username: 2-15 chars of word chars, space, square brackets, or hyphen. (bancho.py regexes.py)
@@ -101,7 +108,7 @@ public sealed partial class RegistrationService
         // owner and is granted Owner privileges automatically, mirroring bancho.py granting the
         // first account staff. The id is only known after AddAsync, so update the just-created row
         // with the elevated privileges (UpdateAsync, not a second insert — that would duplicate PK).
-        if (created.Id == OwnerUserId && created.Privileges != UserPrivileges.Owner)
+        if (_autoGrantOwner && created.Id == OwnerUserId && created.Privileges != UserPrivileges.Owner)
         {
             created = await _users.UpdateAsync(CloneWith(created, UserPrivileges.Owner), cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("Granted Owner privileges to first registration {Username} (id {UserId}).", created.Username, created.Id);

@@ -1,7 +1,7 @@
 # Multi-stage build, parameterized by PROJECT so one Dockerfile builds every TomYum
 # host/service. Pass --build-arg PROJECT=src/TomYum.Server/TomYum.Server.csproj (etc.).
-# Scaffold: builds and runs, but the hosts only expose a health endpoint so far.
-ARG DOTNET_VERSION=8.0
+# Must match the SDK pinned in global.json (net10.0 in Directory.Build.props).
+ARG DOTNET_VERSION=10.0
 
 FROM mcr.microsoft.com/dotnet/sdk:${DOTNET_VERSION} AS build
 ARG PROJECT

@@ -1,0 +1,70 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    # MySQL + Redis for the osu-web integration tests (skipped when TOMYUM_TEST_MYSQL/REDIS are unset).
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TOMYUM_TEST_MYSQL: Server=127.0.0.1;Port=3306;User=root;Password=ci;AllowPublicKeyRetrieval=true;
+      TOMYUM_TEST_REDIS: 127.0.0.1:6379
+    steps:
+      - uses: actions/checkout@v4
+
+      # SDK version comes from global.json so CI and local builds always agree.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore TomYum.sln
+
+      # Warnings are errors (Directory.Build.props), so a clean build is the lint gate.
+      - name: Build
+        run: dotnet build TomYum.sln --no-restore -c Release
+
+      - name: Test
+        run: dotnet test TomYum.sln --no-build -c Release
+
+  docker:
+    name: Docker image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Catches Dockerfile drift (e.g. base image vs. target framework) before deploy does.
+      - name: Build server image
+        run: >
+          docker build
+          -f deploy/docker/Dockerfile
+          --build-arg PROJECT=src/TomYum.Server/TomYum.Server.csproj
+          -t tomyum/server:ci .

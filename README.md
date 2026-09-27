@@ -60,7 +60,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - [ ] IRC server for external bots (auth via osu! API key)
 - [ ] Plugin system (`.dll` + runtime-compiled loose `.cs`); DAN Mode & Session as plugins
 - [ ] Configurable multi-target storage (R2 / AWS S3 / OVH S3 / Azure Blob / local)
-- [ ] Custom beatmap submission (reserved ID range `100000000+`)
+- [ ] Custom beatmap submission (reserved ID range `10000000+`)
 - [ ] Geolocation for presence (lon/lat/country from client IP)
 - [ ] Docker / k8s deployment
 
@@ -76,7 +76,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 
 1. Clone the repository to your local machine.
 ```bash
-git clone https://github.com/somtum-fun/TomYum-OSS.git
+git clone https://github.com/sundeiii/TomYum.git
 ```
 2. Navigate to the project directory.
 ```bash
@@ -114,6 +114,14 @@ in-memory fallback. Pass `DB=off scripts/dev-server.sh` to run without a databas
 
 TomYum routes by subdomain (`c`, `c4`, `cho` for bancho, `osu` for `/web/*.php`). Front it
 with Caddy and point the subdomain records at your host — see `deploy/caddy/Caddyfile`.
+
+### Website (osu-web)
+
+The website is [osu-web](https://github.com/ppy/osu-web), run alongside TomYum on the same MySQL and
+Redis, with Caddy splitting `osu.<domain>` between the two. See [docs/osu-web.md](docs/osu-web.md)
+for setup and the plan for sharing one database. Moving an existing server with players:
+[tools/MigrateToOsuWeb](tools/MigrateToOsuWeb/README.md). Running the whole stack on one machine to
+try it: [docs/local-testing.md](docs/local-testing.md).
 
 ### Deployment
 

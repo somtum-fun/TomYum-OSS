@@ -109,7 +109,7 @@ _TomYum already **serves** status; it can't **accept uploads** yet. Split status
       set-vs-diff granularity; exclude custom maps from osu!api re-sync.
 - [ ] ⚖️ **osz2 codec** — the single biggest build item. Decide: clean-room C# vs a sidecar (like the
       pp sidecar) wrapping an existing lib. Then the 3 stable submit endpoints + download-side osz2 endpoints.
-- [ ] Local serving — route `/d/{setId}` + search + `b.*` assets to local storage when `setId >= 100_000_000`
+- [ ] Local serving — route `/d/{setId}` + search + `b.*` assets to local storage when `setId >= 10_000_000`
       (currently always 302s to an external mirror, so custom sets are undownloadable).
 
 ## Phase 6 — Command framework refactor (polish, optional)
@@ -142,6 +142,32 @@ shared-`#osu` / shared-BanchoBot model is **net-new design**. Client `client_id=
 - [ ] **Deployment prereq (not server code):** lazer only ships Production/Development endpoints → reaching
       TomYum needs a patched client build **or** DNS + trusted-TLS spoofing of `osu.ppy.sh` +
       `spectator.osu.ppy.sh`. Document in `docs/lazer-client.md`.
+
+## osu-web website 🔒 Phase A: none · Phase B: decisions below
+_osu-web (ppy's Laravel site) runs unmodified as the website; long-term it owns the schema and TomYum
+uses its tables. Human doc: `docs/osu-web.md`._
+
+- [x] **Phase A — side by side:** compose overlay (`deploy/docker/docker-compose.osu-web.yml`) puts
+      TomYum on osu-web's MySQL/Redis; Caddy splits `osu.<domain>` (stable `/web/*`, `/d/*`,
+      in-game `POST /users` → TomYum; rest → osu-web). Accounts/scores not shared yet.
+- [x] Custom beatmap id floor → **10,000,000** (`Beatmap.CustomIdFloor`), so custom ids fit osu-web's
+      `MEDIUMINT UNSIGNED` `beatmap_id`/`beatmapset_id` (max 16,777,215). Was 100,000,000.
+- [x] BanchoBot as a real `phpbb_users` row (id 1, `bot` group) + osu-web `BANCHO_BOT_USER_ID=1`.
+- [x] **Phase B, accounts:** `OsuWebUserRepository` over `phpbb_users` + groups (`Database:OsuWebName`);
+      website and in-game accounts are the same. No auto-Owner in this mode (staff via osu-web `admin`).
+- [x] **Phase B, beatmaps (mirror):** every map written to TomYum's table and osu-web's
+      `osu_beatmapsets`/`osu_beatmaps`; startup copies missing ones. Raw osu! API status kept.
+- [x] **Phase B, scores + stats (mirror):** vanilla scores → osu-web `scores` (legacy format, `CL`),
+      `osu_user_stats*` rebuilt per play, `rank_score_index` recomputed, scores queued for
+      `osu-elastic-indexer`. Relax/autopilot stay TomYum-only.
+- [x] **Phase B, migration:** `tools/MigrateToOsuWeb` moves an existing server's players to osu-web
+      accounts, renumbers TomYum's data and copies the history (maps, scores, stats, ranks).
+- [x] **Phase B, medals:** TomYum's catalog added to osu-web's `osu_achievements`; unlocks sent through
+      osu-web's InterOp API (activity entry + notification), direct insert as fallback; in-game sign-ups
+      pushed to the website search via InterOp. Local end-to-end guide: `docs/local-testing.md`.
+- [ ] **Phase B, rest:** TomYum reads scores (and medals) from osu-web → beatmaps become osu-web-only
+      (RecalcPp follows). Replaces the EF-migrations item in Phase 0 for these tables.
+- [ ] Phase 7 rescope: osu-web already serves `/api/v2` + `/oauth/token`; TomYum keeps the realtime hubs.
 
 ## Achievements (medals) 🔒 (none) — done 2026-07-09
 _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are a later Session slice._

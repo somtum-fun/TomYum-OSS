@@ -16,8 +16,10 @@ public sealed class Beatmap
     /// <summary>
     /// Inclusive lower bound for server-local beatmap and set ids. Ids at or above this
     /// value are owned by this server; ids below it mirror official osu! content.
+    /// Must stay within osu-web's <c>MEDIUMINT UNSIGNED</c> id columns (max 16,777,215), which
+    /// TomYum shares (docs/osu-web.md); official ids are well below 10M, leaving headroom.
     /// </summary>
-    public const int CustomIdFloor = 100_000_000;
+    public const int CustomIdFloor = 10_000_000;
 
     /// <summary>Beatmap (difficulty) id.</summary>
     public int Id { get; set; }
@@ -54,6 +56,13 @@ public sealed class Beatmap
     /// updated; only the status is held.
     /// </summary>
     public bool StatusFrozen { get; set; }
+
+    /// <summary>
+    /// The raw osu! API <c>approved</c> value (-2 graveyard … 4 loved) when the map came from the
+    /// API, else <c>null</c>. <see cref="Status"/> folds graveyard/WIP into Pending; this keeps the
+    /// distinction for osu-web, which stores the API value. Not persisted in TomYum's own table.
+    /// </summary>
+    public int? OsuApiStatus { get; set; }
 
     /// <summary>Game mode (0 = osu!, 1 = taiko, 2 = catch, 3 = mania).</summary>
     public int Mode { get; set; }
