@@ -419,4 +419,43 @@ public sealed class OsuWebScoreMirror
             await _osuWeb.Scores.Where(s => chunk.Contains(s.Id)).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
         return linked;
     }
+
+    /// <summary>
+    /// Brings the website copies of <paramref name="scores"/> in line after their pp or their map's
+    /// status changed: <c>ranked</c> follows the map's current <c>approved</c>, pp the TomYum score.
+    /// Scores not on the website yet are copied. Returns the osu-web ids written, to queue for the
+    /// search index.
+    /// </summary>
+    public async Task<IReadOnlyList<ulong>> RefreshScoresAsync(IReadOnlyCollection<Score> scores, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scores);
+
+        var written = new List<ulong>();
+        foreach (var score in scores.Where(s => OsuWebScores.IsMirrored(s.Mode)))
+        {
+            var linked = await _tomyum.Database
+                .SqlQuery<ulong>($"SELECT OsuWebScoreId AS Value FROM osu_web_score_links WHERE ScoreId = {score.Id}")
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+            if (linked.Count == 0)
+            {
+                if (await WriteScoreAsync(score, cancellationToken).ConfigureAwait(false) is { } id)
+                    written.Add(id);
+                continue;
+            }
+
+            var row = await _osuWeb.Scores.FirstOrDefaultAsync(s => s.Id == linked[0], cancellationToken).ConfigureAwait(false);
+            var approved = await _osuWeb.Beatmaps.AsNoTracking().Where(b => b.BeatmapId == (uint)score.BeatmapId)
+                .Select(b => (sbyte?)b.Approved).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+            if (row is null || approved is null)
+                continue;
+
+            row.Ranked = score.Passed && approved > 0;
+            row.Pp = row.Ranked && score.Pp > 0 ? (float)score.Pp : null;
+            written.Add(row.Id);
+        }
+
+        await _osuWeb.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _osuWeb.ChangeTracker.Clear();
+        return written;
+    }
 }

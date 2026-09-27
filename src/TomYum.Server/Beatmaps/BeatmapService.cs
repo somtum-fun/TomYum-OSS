@@ -47,6 +47,20 @@ public sealed class BeatmapService
     public RankedStatus? GetStatusOverride(int beatmapId) =>
         _statusOverrides.TryGetValue(beatmapId, out var status) ? status : null;
 
+    /// <summary>
+    /// Drops the staff override for <paramref name="beatmapId"/>. Cached lookups of it are forgotten,
+    /// so the next one (or a <see cref="FetchSetAsync"/>) takes the osu! API's status again.
+    /// </summary>
+    public void ClearStatusOverride(int beatmapId)
+    {
+        _statusOverrides.TryRemove(beatmapId, out _);
+        foreach (var (md5, beatmap) in _byMd5)
+        {
+            if (beatmap?.Id == beatmapId)
+                _byMd5.TryRemove(md5, out _);
+        }
+    }
+
     private Beatmap? ApplyOverride(Beatmap? beatmap)
     {
         if (beatmap is not null && _statusOverrides.TryGetValue(beatmap.Id, out var status))

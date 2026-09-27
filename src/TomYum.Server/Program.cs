@@ -100,6 +100,7 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.TryAddSingleton(TimeProvider.System);
     builder.Services.AddSingleton<AdminAuthFilter>();
     builder.Services.AddScoped<BeatmapSetImporter>();
+    builder.Services.AddScoped<ScoreRecalculation>();
     builder.Services.AddScoped<BeatmapStatusChanger>();
     builder.Services.AddScoped<UserModerationSync>();
     // Website chat ↔ in-game chat.

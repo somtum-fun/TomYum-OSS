@@ -51,6 +51,12 @@ public sealed class BeatmapRepository : IBeatmapRepository
     }
 
     /// <inheritdoc />
+    public async Task<bool> UnfreezeStatusAsync(int beatmapId, CancellationToken cancellationToken = default) =>
+        await _db.Beatmaps.Where(b => b.Id == beatmapId)
+            .ExecuteUpdateAsync(b => b.SetProperty(x => x.StatusFrozen, false), cancellationToken)
+            .ConfigureAwait(false) > 0;
+
+    /// <inheritdoc />
     public async Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
     {
         var existing = await _db.Beatmaps
