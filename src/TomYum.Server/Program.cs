@@ -102,6 +102,9 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddScoped<BeatmapSetImporter>();
     builder.Services.AddScoped<BeatmapStatusChanger>();
     builder.Services.AddScoped<UserModerationSync>();
+    // Website chat ↔ in-game chat.
+    builder.Services.AddSingleton<OsuWebChatBridge>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<OsuWebChatBridge>());
     builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<BeatmapImportRunner>());

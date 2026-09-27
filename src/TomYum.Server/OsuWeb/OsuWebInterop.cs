@@ -90,6 +90,37 @@ public sealed class OsuWebInterop
             response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Posts an in-game message to website chat (the fork's <c>/_lio/tomyum/chat-message</c>): to the
+    /// public channel <paramref name="channel"/>, or as a PM to <paramref name="targetId"/>. False when
+    /// the channel doesn't exist on the website.
+    /// </summary>
+    public async Task<bool> SendChatMessageAsync(int senderId, string? channel, int? targetId, string message, bool isAction, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostJsonAsync("/_lio/tomyum/chat-message", new
+        {
+            sender_id = senderId,
+            channel,
+            target_id = targetId,
+            message,
+            is_action = isAction,
+        }, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <summary>Creates the game's public channels in website chat (the fork's <c>/_lio/tomyum/chat-channels</c>).</summary>
+    public async Task EnsureChatChannelsAsync(IEnumerable<(string Name, string Description, bool Moderated)> channels, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostJsonAsync("/_lio/tomyum/chat-channels", new
+        {
+            channels = channels.Select(c => new { name = c.Name, description = c.Description, moderated = c.Moderated }).ToList(),
+        }, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>The signed URL for <paramref name="path"/> at the current time.</summary>
     public (Uri Url, string Signature) Sign(string path)
     {
@@ -110,6 +141,19 @@ public sealed class OsuWebInterop
         var (url, signature) = Sign(path);
         using var request = new HttpRequestMessage(HttpMethod.Post, url);
         request.Headers.Add("X-LIO-Signature", signature);
+        return await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>A signed POST with a JSON body (osu-web's InterOp signs only the URL).</summary>
+    private async Task<HttpResponseMessage> PostJsonAsync(string path, object body, CancellationToken cancellationToken)
+    {
+        var (url, signature) = Sign(path);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
+        {
+            Content = System.Net.Http.Json.JsonContent.Create(body),
+        };
+        request.Headers.Add("X-LIO-Signature", signature);
+        request.Headers.Accept.ParseAdd("application/json");
         return await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
     }
 }
