@@ -95,6 +95,7 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.TryAddSingleton(TimeProvider.System);
     builder.Services.AddSingleton<AdminAuthFilter>();
     builder.Services.AddScoped<BeatmapSetImporter>();
+    builder.Services.AddScoped<BeatmapStatusChanger>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<BeatmapImportRunner>());
 }
@@ -223,6 +224,11 @@ if (databaseOptions.Enabled)
     await db.EnsureRuntimeTablesAsync();
 
     app.Logger.LogInformation("Database schema ensured ({Host}/{Name}).", databaseOptions.Host, databaseOptions.Name);
+
+    // Staff-set (frozen) statuses override the osu! API in-game.
+    var beatmapService = app.Services.GetRequiredService<BeatmapService>();
+    foreach (var frozen in await db.Beatmaps.AsNoTracking().Where(b => b.StatusFrozen).Select(b => new { b.Id, b.Status }).ToListAsync())
+        beatmapService.SetStatusOverride(frozen.Id, frozen.Status);
 
     // Accounts live in osu-web (docs/osu-web.md): its migrations own that schema, so nothing is
     // created there except BanchoBot's account row. Fails fast if osu-web's groups aren't seeded.

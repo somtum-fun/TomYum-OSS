@@ -53,14 +53,26 @@ public sealed class OsuWebInterop
     }
 
     /// <summary>
-    /// Re-indexes a beatmap set in osu-web's search (<c>POST /_lio/index-beatmapset/{set}</c>), so
-    /// the beatmap listing shows it — the database mirror alone doesn't reach Elasticsearch.
+    /// Re-indexes a beatmap set in osu-web's search, so the beatmap listing shows it — the database
+    /// mirror alone doesn't reach Elasticsearch. Uses the fork's
+    /// <c>/_lio/tomyum/index-beatmapset-document/{set}</c>: upstream's <c>/_lio/index-beatmapset</c>
+    /// first regenerates covers by downloading the .osz through the download mirror, which fails
+    /// (500) whenever osu-web can't reach it, and then never indexes. Falls back to upstream's on 404.
     /// </summary>
     public async Task IndexBeatmapsetAsync(int beatmapsetId, CancellationToken cancellationToken = default)
     {
-        using var response = await PostAsync(string.Create(CultureInfo.InvariantCulture, $"/_lio/index-beatmapset/{beatmapsetId}"), cancellationToken)
+        using var response = await PostAsync(
+            string.Create(CultureInfo.InvariantCulture, $"/_lio/tomyum/index-beatmapset-document/{beatmapsetId}"), cancellationToken)
             .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        if (response.StatusCode != HttpStatusCode.NotFound)
+        {
+            response.EnsureSuccessStatusCode();
+            return;
+        }
+
+        using var fallback = await PostAsync(string.Create(CultureInfo.InvariantCulture, $"/_lio/index-beatmapset/{beatmapsetId}"), cancellationToken)
+            .ConfigureAwait(false);
+        fallback.EnsureSuccessStatusCode();
     }
 
     /// <summary>The signed URL for <paramref name="path"/> at the current time.</summary>

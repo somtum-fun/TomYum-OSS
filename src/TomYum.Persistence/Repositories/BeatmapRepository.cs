@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 
 namespace TomYum.Persistence.Repositories;
@@ -24,6 +25,30 @@ public sealed class BeatmapRepository : IBeatmapRepository
     /// <inheritdoc />
     public Task<Beatmap?> GetByIdAsync(int id, CancellationToken cancellationToken = default) =>
         _db.Beatmaps.AsNoTracking().FirstOrDefaultAsync(b => b.Id == id, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Beatmap>> GetBySetAsync(int setId, CancellationToken cancellationToken = default) =>
+        await _db.Beatmaps.AsNoTracking()
+            .Where(b => b.SetId == setId)
+            .OrderBy(b => b.Mode).ThenBy(b => b.StarRating)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<bool> SetStatusAsync(int beatmapId, RankedStatus status, CancellationToken cancellationToken = default)
+    {
+        var existing = await _db.Beatmaps
+            .FirstOrDefaultAsync(b => b.Id == beatmapId, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is null)
+            return false;
+
+        existing.Status = status;
+        existing.StatusFrozen = true;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.Entry(existing).State = EntityState.Detached;
+        return true;
+    }
 
     /// <inheritdoc />
     public async Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default)

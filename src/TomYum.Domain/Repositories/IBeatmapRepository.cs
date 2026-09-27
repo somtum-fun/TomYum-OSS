@@ -1,4 +1,5 @@
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 
 namespace TomYum.Domain.Repositories;
 
@@ -13,6 +14,16 @@ public interface IBeatmapRepository
 
     /// <summary>Loads a beatmap by id, or <c>null</c>.</summary>
     Task<Beatmap?> GetByIdAsync(int id, CancellationToken cancellationToken = default);
+
+    /// <summary>Every stored difficulty of set <paramref name="setId"/>.</summary>
+    Task<IReadOnlyList<Beatmap>> GetBySetAsync(int setId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sets a staff-chosen <paramref name="status"/> on an existing beatmap and freezes it
+    /// (<see cref="Beatmap.StatusFrozen"/>), so later osu! API refreshes keep it. False when the
+    /// beatmap isn't stored.
+    /// </summary>
+    Task<bool> SetStatusAsync(int beatmapId, RankedStatus status, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Inserts the beatmap if it doesn't exist; updates all metadata fields if it does.

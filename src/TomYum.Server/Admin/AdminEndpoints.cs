@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Globalization;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Server.Bancho;
+using TomYum.Server.Beatmaps;
 
 namespace TomYum.Server.Admin;
 
@@ -10,6 +12,9 @@ namespace TomYum.Server.Admin;
 /// request (<see cref="AdminAuthFilter"/>) and is bound to internal host names only, so the public
 /// subdomains Caddy forwards never reach it.
 /// </summary>
+/// <summary>Body of <c>POST /_admin/beatmapsets/{id}/status</c>; no beatmap ids = the whole set.</summary>
+public sealed record StatusChangeRequest(string? Status, IReadOnlyList<int>? BeatmapIds);
+
 public static class AdminEndpoints
 {
     /// <summary>Host names the admin API answers on by default (compose service name + local).</summary>
@@ -38,6 +43,8 @@ public static class AdminEndpoints
             .AddEndpointFilter<AdminAuthFilter>();
 
         admin.MapPost("/beatmapsets/{setId:int}/import", ImportSetAsync);
+        admin.MapGet("/beatmapsets/{setId:int}", GetSetAsync);
+        admin.MapPost("/beatmapsets/{setId:int}/status", ChangeStatusAsync);
         admin.MapPost("/beatmapsets/import-bulk", StartBulkImport);
         admin.MapGet("/beatmapsets/import-jobs", (BeatmapImportRunner runner) => Results.Ok(runner.Recent));
         admin.MapGet("/beatmapsets/import-jobs/{id}", (string id, BeatmapImportRunner runner) =>
@@ -83,6 +90,40 @@ public static class AdminEndpoints
         var result = await importer.ImportAsync(setId, ActorId(context), cancellationToken: cancellationToken).ConfigureAwait(false);
         return result.Found ? Results.Ok(result) : Results.NotFound(result);
     }
+
+    /// <summary>The set's difficulties as the game server sees them (status, and whether staff set it).</summary>
+    private static async Task<IResult> GetSetAsync(int setId, IBeatmapRepository beatmaps, BeatmapService service, CancellationToken cancellationToken)
+    {
+        var set = await beatmaps.GetBySetAsync(setId, cancellationToken).ConfigureAwait(false);
+        return Results.Ok(set.Select(b => new
+        {
+            b.Id,
+            b.Version,
+            b.Mode,
+            b.StarRating,
+            Status = StatusName(service.GetStatusOverride(b.Id) ?? b.Status),
+            StaffSet = b.StatusFrozen,
+        }));
+    }
+
+    private static async Task<IResult> ChangeStatusAsync(int setId, StatusChangeRequest request, BeatmapStatusChanger changer, HttpContext context, CancellationToken cancellationToken)
+    {
+        if (!BeatmapStatusChanger.Statuses.TryGetValue(request.Status ?? string.Empty, out var status))
+            return Results.BadRequest(new { error = "Unknown status; use ranked, approved, qualified, loved or pending." });
+
+        var result = await changer.ChangeAsync(setId, status, request.BeatmapIds, ActorId(context), cancellationToken).ConfigureAwait(false);
+        return result is null ? Results.NotFound(new { error = "That set isn't on the server or on osu!." }) : Results.Ok(result);
+    }
+
+    private static string StatusName(RankedStatus status) => status switch
+    {
+        RankedStatus.Ranked => "ranked",
+        RankedStatus.Approved => "approved",
+        RankedStatus.Qualified => "qualified",
+        RankedStatus.Loved => "loved",
+        RankedStatus.NotSubmitted => "not_submitted",
+        _ => "pending",
+    };
 
     private static IResult StartBulkImport(BulkImportRequest request, BeatmapImportRunner runner, HttpContext context)
     {

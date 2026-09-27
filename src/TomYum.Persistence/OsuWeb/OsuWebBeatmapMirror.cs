@@ -66,6 +66,34 @@ public sealed class OsuWebBeatmapMirror
         return added;
     }
 
+    /// <summary>
+    /// Sets a set's <c>approved</c> from its difficulties after they were changed one by one (staff
+    /// status changes): the "best" status any difficulty has, in osu!'s order ranked, approved,
+    /// loved, qualified, pending, WIP, graveyard. Gives it a ranked date when it gets one.
+    /// </summary>
+    public async Task SyncSetStatusAsync(int setId, CancellationToken cancellationToken = default)
+    {
+        var set = await _db.Beatmapsets.FirstOrDefaultAsync(s => s.BeatmapsetId == (uint)setId, cancellationToken).ConfigureAwait(false);
+        if (set is null)
+            return;
+
+        var statuses = await _db.Beatmaps.AsNoTracking()
+            .Where(b => b.BeatmapsetId == (uint)setId)
+            .Select(b => b.Approved)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (statuses.Count == 0)
+            return;
+
+        var best = OsuWebBeatmaps.SetStatusFor(statuses);
+        if (best != set.Approved)
+        {
+            set.Approved = best;
+            set.ApprovedDate = OsuWebBeatmaps.HasApprovedDate(best) ? set.ApprovedDate ?? DateTime.UtcNow : null;
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        _db.ChangeTracker.Clear();
+    }
+
     private async Task<OsuWebBeatmapset?> LoadSetAsync(Beatmap beatmap, CancellationToken cancellationToken)
     {
         var setId = (uint)beatmap.SetId;

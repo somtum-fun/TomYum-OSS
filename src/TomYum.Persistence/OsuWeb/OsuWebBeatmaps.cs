@@ -43,6 +43,23 @@ public static class OsuWebBeatmaps
         };
     }
 
+    /// <summary>osu!'s precedence of <c>approved</c> values for a whole set: ranked, approved, loved, qualified, pending, WIP, graveyard.</summary>
+    private static readonly sbyte[] SetStatusPrecedence = [1, 2, 4, 3, 0, -1, -2];
+
+    /// <summary>A set's <c>approved</c> from its difficulties' values: the one that comes first in osu!'s precedence.</summary>
+    public static sbyte SetStatusFor(IEnumerable<sbyte> difficultyStatuses)
+    {
+        ArgumentNullException.ThrowIfNull(difficultyStatuses);
+
+        var present = difficultyStatuses.ToHashSet();
+        foreach (var status in SetStatusPrecedence)
+        {
+            if (present.Contains(status))
+                return status;
+        }
+        return 0;
+    }
+
     /// <summary>Whether an <c>approved</c> value has a ranking date on osu-web (ranked, approved, qualified, loved).</summary>
     public static bool HasApprovedDate(sbyte approved) => approved > 0;
 

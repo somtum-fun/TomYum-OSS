@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Persistence.Repositories;
 
@@ -28,6 +29,23 @@ public sealed class OsuWebMirroringBeatmapRepository : IBeatmapRepository
 
     public Task<Beatmap?> GetByIdAsync(int id, CancellationToken cancellationToken = default) =>
         _inner.GetByIdAsync(id, cancellationToken);
+
+    public Task<IReadOnlyList<Beatmap>> GetBySetAsync(int setId, CancellationToken cancellationToken = default) =>
+        _inner.GetBySetAsync(setId, cancellationToken);
+
+    public async Task<bool> SetStatusAsync(int beatmapId, RankedStatus status, CancellationToken cancellationToken = default)
+    {
+        if (!await _inner.SetStatusAsync(beatmapId, status, cancellationToken).ConfigureAwait(false))
+            return false;
+
+        var effective = await _inner.GetByIdAsync(beatmapId, cancellationToken).ConfigureAwait(false);
+        if (effective is not null)
+        {
+            await _mirror.WriteAsync(effective, cancellationToken).ConfigureAwait(false);
+            await _mirror.SyncSetStatusAsync(effective.SetId, cancellationToken).ConfigureAwait(false);
+        }
+        return true;
+    }
 
     public async Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
     {

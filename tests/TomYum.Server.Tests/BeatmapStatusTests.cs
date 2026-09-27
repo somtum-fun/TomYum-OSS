@@ -77,6 +77,23 @@ public class BeatmapStatusTests
     }
 
     [Fact]
+    public async Task StatusOverride_WinsOverTheApi_ForCachedAndNewLookups()
+    {
+        var api = new CountingApiClient(new Beatmap { Md5 = "abc", Id = 42, Status = RankedStatus.Pending, OsuApiStatus = -2 });
+        var service = new BeatmapService(api);
+        var cached = await service.GetByMd5Async("abc");
+
+        service.SetStatusOverride(42, RankedStatus.Loved);
+
+        Assert.Equal(RankedStatus.Loved, cached!.Status);                            // already cached
+        Assert.True(cached.StatusFrozen);
+        Assert.Null(cached.OsuApiStatus);                                             // graveyard no longer applies
+        var fresh = new BeatmapService(api);
+        fresh.SetStatusOverride(42, RankedStatus.Ranked);
+        Assert.Equal(RankedStatus.Ranked, (await fresh.GetByMd5Async("abc"))!.Status); // looked up afterwards
+    }
+
+    [Fact]
     public async Task FetchSetOnce_ReturnsTheSetOnlyTheFirstTime_AndCachesItsMaps()
     {
         var api = new CountingApiClient(null, set:
