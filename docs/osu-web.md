@@ -11,9 +11,10 @@ done in two phases:
 - **Phase A — side by side (works today).** Both run on osu-web's MySQL/Redis behind one Caddy.
 - **Phase B — one database (in progress, below).** TomYum's repositories are pointed at osu-web's
   tables. **Accounts are done:** an account made on the website logs into the game and an in-game
-  registration shows up on the website. **Beatmaps are mirrored:** every map played is copied to
-  osu-web's beatmap tables. Scores and stats still live in TomYum's own `tomyum` database, so plays
-  don't show on the site yet.
+  registration shows up on the website. **Beatmaps, scores and stats are mirrored:** every map
+  played, every vanilla score submitted and the player's per-mode stats are copied to osu-web, so
+  profiles, rankings and beatmap leaderboards on the site fill up as people play. TomYum's own
+  tables stay the source of truth the game reads.
 
 ---
 
@@ -80,6 +81,30 @@ docker compose run --rm php artisan es:index-documents --types=beatmapsets,users
 ```
 
 Run it on a schedule (e.g. every few minutes from cron) until TomYum queues index updates itself.
+
+**Scores** are different: TomYum queues each new score for osu-web's own score indexer (the
+`score-indexer` service in osu-web's compose), exactly as osu-web does, so leaderboards and profile
+"best performance" lists update by themselves as long as that service runs. This needs TomYum on
+osu-web's Redis (the compose overlay does that). If osu-web uses an `ES_INDEX_PREFIX`, set the same
+value as `TOMYUM_DATABASE__OSUWEBINDEXPREFIX`.
+
+### How plays look on the website
+
+- **Only vanilla plays.** osu-web has no relax/autopilot rulesets, so those scores stay in TomYum.
+- **Score numbers are stable's.** Scores are stored as osu-web "legacy" scores (with the `CL` mod,
+  like imported stable scores on osu.ppy.sh), and the stable score is used both as the legacy score
+  and as the score osu-web sorts and shows by default. So boards order exactly as in-game, and a
+  play shows e.g. `12,345,678` rather than a lazer-style ~1,000,000 value. osu-web's optional
+  "classic scoring" display assumes lazer numbers and will look odd.
+- **pp** is TomYum's pp (ranked/approved maps only); **global rank** is recomputed for the mode
+  after every play (osu-web reads it, but doesn't compute it), leaving out restricted/banned
+  accounts. Country rank is computed live by osu-web.
+- **Profile stats** (pp, accuracy, play count, ranked/total score, level, SS/S/A counts, max combo,
+  hit counts, play time) are rebuilt from TomYum's data on every play, so they never drift.
+- **Replays** aren't served by the site (TomYum keeps them); scores are marked as having none.
+- **Only new plays.** Scores from before accounts moved to osu-web aren't copied: they belong to
+  TomYum's old user ids, which in osu-web may be different people. Moving history needs a user-id
+  migration first (Phase B step 5).
 
 ### Making yourself staff
 
@@ -187,7 +212,13 @@ Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_ba
    WIP aren't folded into pending; a staff-frozen status wins. Names are cut to osu-web's 80
    characters. Only played difficulties are known, so a set lists those; bpm, AR/OD/CS/HP and
    object counts keep osu-web's defaults, and drain time is filled with total length.
-3. Scores + stats: write `solo_scores` and `osu_user_stats*`; queue scores for the indexer.
+3. ~~Scores + stats~~ **Done (mirror):** `OsuWebScoreMirror` + the server's `OsuWebSync` write each
+   vanilla score to osu-web's `scores` (legacy format, see "How plays look on the website"),
+   rebuild the player's `osu_user_stats*` row, recompute `rank_score_index` for the ruleset, and
+   queue the score for `osu-elastic-indexer` (`LPUSH osu-queue:{schema}`, like osu-web's
+   `ScoreSearch::queueForIndex`). TomYum's `osu_web_score_links` table records which TomYum score
+   became which osu-web score. Best-effort: a failure is logged and never fails the submission.
+   Beatmaps can become osu-web-only (and `RecalcPp` follow) once TomYum *reads* scores from osu-web.
 4. Achievements: `osu_user_achievements`, with TomYum's catalog mapped to osu-web achievement ids.
 5. Data migration: copy existing `tomyum` rows into osu-web's tables (then `RecalcPp --force`).
 6. Lazer: osu-web already serves `/api/v2` and `/oauth/token`, which covers most of roadmap

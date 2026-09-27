@@ -11,6 +11,7 @@ using TomYum.Server.Bancho.Packets;
 using TomYum.Server.Bancho.Packets.Match;
 using TomYum.Server.Bancho.Packets.Spectate;
 using TomYum.Server.Beatmaps;
+using TomYum.Server.OsuWeb;
 using TomYum.Server.Plugins;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -75,6 +76,16 @@ else
     builder.Services.AddSingleton<IScoreRepository, InMemoryScoreRepository>();
     builder.Services.AddSingleton<IUserStatsRepository, InMemoryUserStatsRepository>();
     builder.Services.AddSingleton<IUserAchievementRepository, InMemoryUserAchievementRepository>();
+}
+// Website sync (docs/osu-web.md): mirrors scores/stats to osu-web when accounts live there.
+if (databaseOptions.UseOsuWebAccounts)
+{
+    builder.Services.AddSingleton<OsuWebScoreIndexing>();
+    builder.Services.AddScoped<IOsuWebSync, OsuWebSync>();
+}
+else
+{
+    builder.Services.AddSingleton<IOsuWebSync, NoOsuWebSync>();
 }
 builder.Services.AddScoped<BanchoLoginHandler>();
 builder.Services.AddScoped<RegistrationService>();
@@ -211,6 +222,9 @@ if (databaseOptions.Enabled)
         var mirrored = await scope.ServiceProvider.GetRequiredService<OsuWebBeatmapMirror>().BackfillAsync(knownBeatmaps);
         if (mirrored > 0)
             app.Logger.LogInformation("Copied {Count} beatmap(s) to osu-web.", mirrored);
+
+        // Records which TomYum score became which osu-web score (lives in TomYum's database).
+        await scope.ServiceProvider.GetRequiredService<OsuWebScoreMirror>().EnsureLinkTableAsync();
     }
 }
 

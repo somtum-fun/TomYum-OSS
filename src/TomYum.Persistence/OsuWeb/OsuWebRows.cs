@@ -131,3 +131,49 @@ public sealed class OsuWebBeatmap
 
     public uint MaxCombo { get; set; }
 }
+
+/// <summary>
+/// A row of osu-web's <c>scores</c> table (formerly <c>solo_scores</c>). Stable scores are "legacy"
+/// scores: <c>legacy_score_id</c> non-null, the stable score in <c>legacy_total_score</c>.
+/// </summary>
+public sealed class OsuWebScore
+{
+    public ulong Id { get; set; }
+
+    public uint UserId { get; set; }
+
+    public ushort RulesetId { get; set; }
+
+    public uint BeatmapId { get; set; }
+
+    public bool HasReplay { get; set; }
+
+    /// <summary>Kept long-term (osu-web: <c>preserve = passed</c>).</summary>
+    public bool Preserve { get; set; }
+
+    /// <summary>Counts for leaderboards/pp (osu-web: passed on a map with <c>approved &gt; 0</c>).</summary>
+    public bool Ranked { get; set; }
+
+    /// <summary>Grade: XH, X, SH, S, A, B, C, D (F for fails).</summary>
+    public string Rank { get; set; } = string.Empty;
+
+    public bool Passed { get; set; }
+
+    /// <summary>0–1.</summary>
+    public float Accuracy { get; set; }
+
+    public uint MaxCombo { get; set; }
+
+    public uint TotalScore { get; set; }
+
+    /// <summary>JSON: mods, statistics, maximum_statistics.</summary>
+    public string Data { get; set; } = "{}";
+
+    public float? Pp { get; set; }
+
+    public ulong? LegacyScoreId { get; set; }
+
+    public uint LegacyTotalScore { get; set; }
+
+    public DateTime EndedAt { get; set; }
+}

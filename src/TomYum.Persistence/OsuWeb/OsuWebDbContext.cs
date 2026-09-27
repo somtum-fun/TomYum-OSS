@@ -22,6 +22,8 @@ public sealed class OsuWebDbContext : DbContext
 
     public DbSet<OsuWebBeatmap> Beatmaps => Set<OsuWebBeatmap>();
 
+    public DbSet<OsuWebScore> Scores => Set<OsuWebScore>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
@@ -103,6 +105,31 @@ public sealed class OsuWebDbContext : DbContext
             map.Property(b => b.LastUpdate).HasColumnName("last_update");
             map.Property(b => b.Difficultyrating).HasColumnName("difficultyrating");
             map.Property(b => b.MaxCombo).HasColumnName("max_combo");
+        });
+
+        modelBuilder.Entity<OsuWebScore>(score =>
+        {
+            score.ToTable("scores");
+            // The table's primary key is (id, preserve, unix_updated_at); id alone is unique and
+            // auto-increments. unix_updated_at is left to its database default.
+            score.HasKey(s => s.Id);
+            score.Property(s => s.Id).HasColumnName("id").ValueGeneratedOnAdd();
+            score.Property(s => s.UserId).HasColumnName("user_id");
+            score.Property(s => s.RulesetId).HasColumnName("ruleset_id");
+            score.Property(s => s.BeatmapId).HasColumnName("beatmap_id");
+            score.Property(s => s.HasReplay).HasColumnName("has_replay");
+            score.Property(s => s.Preserve).HasColumnName("preserve");
+            score.Property(s => s.Ranked).HasColumnName("ranked");
+            score.Property(s => s.Rank).HasColumnName("rank");
+            score.Property(s => s.Passed).HasColumnName("passed");
+            score.Property(s => s.Accuracy).HasColumnName("accuracy");
+            score.Property(s => s.MaxCombo).HasColumnName("max_combo");
+            score.Property(s => s.TotalScore).HasColumnName("total_score");
+            score.Property(s => s.Data).HasColumnName("data").HasColumnType("json");
+            score.Property(s => s.Pp).HasColumnName("pp");
+            score.Property(s => s.LegacyScoreId).HasColumnName("legacy_score_id");
+            score.Property(s => s.LegacyTotalScore).HasColumnName("legacy_total_score");
+            score.Property(s => s.EndedAt).HasColumnName("ended_at");
         });
 
         base.OnModelCreating(modelBuilder);

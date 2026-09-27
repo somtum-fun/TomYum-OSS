@@ -22,6 +22,21 @@ public sealed class MySqlFactAttribute : FactAttribute
     }
 }
 
+/// <summary>Like <see cref="MySqlFactAttribute"/>, and also needs Redis in <c>TOMYUM_TEST_REDIS</c> (e.g. <c>127.0.0.1:6379</c>).</summary>
+public sealed class MySqlAndRedisFactAttribute : FactAttribute
+{
+    public const string RedisEnvVar = "TOMYUM_TEST_REDIS";
+
+    public MySqlAndRedisFactAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(MySqlFactAttribute.EnvVar))
+            || string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(RedisEnvVar)))
+        {
+            Skip = $"Set {MySqlFactAttribute.EnvVar} and {RedisEnvVar} to run osu-web integration tests that use Redis.";
+        }
+    }
+}
+
 /// <summary>
 /// Gives each test a fresh osu-web database built from <c>osu-web-schema.sql</c> (translated from
 /// osu-web's migrations) and, for tests that need it, a fresh TomYum database (EnsureCreated).

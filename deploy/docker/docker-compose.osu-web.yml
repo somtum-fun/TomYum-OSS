@@ -12,8 +12,9 @@
 #     up -d server pp-sidecar
 #
 # Accounts are shared: TomYum reads/writes osu-web's phpbb_users (TOMYUM_DATABASE__OSUWEBNAME).
-# Scores, stats and beatmaps still live in TomYum's own `tomyum` database on the same server
-# (EnsureCreated creates it on first start) until they move too (docs/osu-web.md, "Phase B").
+# Beatmaps, scores and stats are mirrored to osu-web; TomYum's own `tomyum` database on the same
+# server (EnsureCreated creates it on first start) stays the source of truth (docs/osu-web.md).
+# TomYum must use osu-web's Redis so new scores reach osu-web's score indexer.
 services:
   server:
     # Don't pull in this stack's mysql/redis; osu-web's are used instead.
