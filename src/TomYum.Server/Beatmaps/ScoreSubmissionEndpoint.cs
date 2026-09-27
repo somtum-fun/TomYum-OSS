@@ -309,15 +309,10 @@ public static class ScoreSubmissionEndpoint
 
             // Weighted PP and accuracy across all best scores (standard osu! formula).
             var bestPerfs = await scores.GetBestPerformancesAsync(user.Id, gameMode, cancellationToken).ConfigureAwait(false);
-            if (bestPerfs.Count > 0)
+            if (PerformanceTotals.Compute(bestPerfs) is { } totals)
             {
-                var weightedPp = bestPerfs.Select((p, i) => p.Pp * Math.Pow(0.95, i)).Sum();
-                var bonusPp = 416.6667 * (1 - Math.Pow(0.9994, bestPerfs.Count));
-                stats.Pp = weightedPp + bonusPp;
-
-                var weightedAcc = bestPerfs.Select((p, i) => p.Accuracy * Math.Pow(0.95, i)).Sum();
-                var bonusAcc = 100.0 / (20.0 * (1 - Math.Pow(0.95, bestPerfs.Count)));
-                stats.Accuracy = (float)(weightedAcc * bonusAcc / 100.0);
+                stats.Pp = totals.Pp;
+                stats.Accuracy = totals.Accuracy;
             }
         }
 
@@ -350,7 +345,7 @@ public static class ScoreSubmissionEndpoint
 
                 var writer = new BanchoPacketWriter(128);
                 LoginResponseBuilder.WriteStats(writer, presence);
-                registry.EnqueueToAll(writer.ToArray(), exceptUserId: 0);
+                registry.EnqueueAbout(player, writer.ToArray());
             }
         }
 

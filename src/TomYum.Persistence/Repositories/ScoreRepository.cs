@@ -9,8 +9,13 @@ namespace TomYum.Persistence.Repositories;
 public sealed class ScoreRepository : IScoreRepository
 {
     private readonly TomYumDbContext _db;
+    private readonly RestrictedUsers? _restricted;
 
-    public ScoreRepository(TomYumDbContext db) => _db = db;
+    public ScoreRepository(TomYumDbContext db, RestrictedUsers? restricted = null)
+    {
+        _db = db;
+        _restricted = restricted;
+    }
 
     public async Task<Score> AddAsync(Score score, CancellationToken cancellationToken = default)
     {
@@ -30,6 +35,11 @@ public sealed class ScoreRepository : IScoreRepository
     {
         var query = _db.Scores.AsNoTracking()
             .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best);
+
+        // Restricted players stay off leaderboards (their scores are kept for if they're unrestricted).
+        var restricted = _restricted?.Ids;
+        if (restricted is { Count: > 0 })
+            query = query.Where(s => !restricted.Contains(s.UserId));
 
         // Relax/Autopilot leaderboards rank by pp; vanilla ranks by score (bancho.py's rule).
         query = GameMode.UsesPpLeaderboard(mode)

@@ -16,9 +16,14 @@ namespace TomYum.Server.Bancho.Packets;
 public sealed class SendPublicMessageHandler : IClientPacketHandler
 {
     private readonly BanchoBot _bot;
+    private readonly ChatLog? _chatLog;
 
-    /// <summary>Creates the handler over the resident <see cref="BanchoBot"/> (for <c>!</c>commands).</summary>
-    public SendPublicMessageHandler(BanchoBot bot) => _bot = bot;
+    /// <summary>Creates the handler over the resident <see cref="BanchoBot"/> (for <c>!</c>commands) and the chat log.</summary>
+    public SendPublicMessageHandler(BanchoBot bot, ChatLog? chatLog = null)
+    {
+        _bot = bot;
+        _chatLog = chatLog;
+    }
 
     /// <inheritdoc />
     public ClientPacketId PacketId => ClientPacketId.SendPublicMessage;
@@ -62,8 +67,23 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             return;
         }
 
+        // Silenced and restricted players can't talk in channels; tell them why instead of dropping silently.
+        var now = DateTimeOffset.UtcNow;
+        if (context.Player.IsSilenced(now) || context.Player.IsRestricted)
+        {
+            var secondsLeft = context.Player.SilenceSecondsLeft(now);
+            var notice = context.Player.IsRestricted
+                ? "Your account is restricted, so you can't talk in public channels."
+                : ModerationPackets.SilencedReply(secondsLeft);
+            ChatEncoder.WriteMessage(context.Response, new BanchoMessage(BanchoBot.Name, notice, target, BanchoBot.UserId));
+            if (!context.Player.IsRestricted)
+                ModerationPackets.WriteSilenceEnd(context.Response, secondsLeft);
+            return;
+        }
+
         var sender = context.Player.Presence.Username;
         var message = new BanchoMessage(sender, text, target, context.Player.UserId);
+        _chatLog?.Record(context.Player.UserId, sender, target, text);
 
         // Fan the message out to every other member of the channel.
         var writer = new BanchoPacketWriter(128);

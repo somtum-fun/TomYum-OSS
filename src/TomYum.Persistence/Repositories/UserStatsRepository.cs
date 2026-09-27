@@ -1,14 +1,20 @@
 using Microsoft.EntityFrameworkCore;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
+using TomYum.Domain.Services;
 
 namespace TomYum.Persistence.Repositories;
 
 public sealed class UserStatsRepository : IUserStatsRepository
 {
     private readonly TomYumDbContext _db;
+    private readonly RestrictedUsers? _restricted;
 
-    public UserStatsRepository(TomYumDbContext db) => _db = db;
+    public UserStatsRepository(TomYumDbContext db, RestrictedUsers? restricted = null)
+    {
+        _db = db;
+        _restricted = restricted;
+    }
 
     public Task<UserStats?> GetAsync(int userId, int mode, CancellationToken cancellationToken = default) =>
         _db.UserStats.AsNoTracking()
@@ -38,9 +44,16 @@ public sealed class UserStatsRepository : IUserStatsRepository
         return stats;
     }
 
-    public Task<int> GetGlobalRankAsync(int userId, int mode, CancellationToken cancellationToken = default) =>
-        _db.UserStats.AsNoTracking()
-            .Where(s => s.Mode == mode)
+    public Task<int> GetGlobalRankAsync(int userId, int mode, CancellationToken cancellationToken = default)
+    {
+        // Restricted players have no rank and don't count towards anyone else's.
+        var restricted = _restricted?.Ids ?? [];
+        if (restricted.Contains(userId))
+            return Task.FromResult(0);
+
+        return _db.UserStats.AsNoTracking()
+            .Where(s => s.Mode == mode && !restricted.Contains(s.UserId))
             .CountAsync(s => s.Pp > _db.UserStats.Where(x => x.UserId == userId && x.Mode == mode).Select(x => x.Pp).FirstOrDefault(), cancellationToken)
             .ContinueWith(t => t.Result + 1, TaskContinuationOptions.ExecuteSynchronously);
+    }
 }

@@ -24,7 +24,8 @@ public sealed class UserPresenceRequestAllHandler : IClientPacketHandler
 
         foreach (var player in context.Registry.All)
         {
-            LoginResponseBuilder.WritePresence(context.Response, player.Presence);
+            if (PlayerRegistry.IsVisibleTo(player, context.Player.UserId))
+                LoginResponseBuilder.WritePresence(context.Response, player.Presence);
         }
 
         return Task.CompletedTask;

@@ -15,9 +15,14 @@ namespace TomYum.Server.Bancho.Packets;
 public sealed class SendPrivateMessageHandler : IClientPacketHandler
 {
     private readonly BanchoBot _bot;
+    private readonly ChatLog? _chatLog;
 
-    /// <summary>Creates the handler over the resident <see cref="BanchoBot"/> (DM command target).</summary>
-    public SendPrivateMessageHandler(BanchoBot bot) => _bot = bot;
+    /// <summary>Creates the handler over the resident <see cref="BanchoBot"/> (DM command target) and the chat log.</summary>
+    public SendPrivateMessageHandler(BanchoBot bot, ChatLog? chatLog = null)
+    {
+        _bot = bot;
+        _chatLog = chatLog;
+    }
 
     /// <inheritdoc />
     public ClientPacketId PacketId => ClientPacketId.SendPrivateMessage;
@@ -37,14 +42,29 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         var sender = context.Player.Presence.Username;
 
         // A DM to BanchoBot: answer back to the sender rather than routing to a real session.
+        // Always allowed, also for silenced/restricted players (commands like !help keep working).
         if (string.Equals(target, BanchoBot.Name, StringComparison.OrdinalIgnoreCase))
         {
+            _chatLog?.Record(context.Player.UserId, sender, BanchoBot.Name, text, BanchoBot.UserId);
             var reply = await _bot.TryHandleCommandAsync(
                     context.Player, text, context.Player.Presence.Privileges, cancellationToken).ConfigureAwait(false)
                 ?? "Hi! I only respond to commands — try !help.";
             ChatEncoder.WriteMessage(
                 context.Response,
                 new BanchoMessage(BanchoBot.Name, reply, sender, BanchoBot.UserId));
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (context.Player.IsSilenced(now) || context.Player.IsRestricted)
+        {
+            var secondsLeft = context.Player.SilenceSecondsLeft(now);
+            var notice = context.Player.IsRestricted
+                ? "Your account is restricted, so you can only message BanchoBot."
+                : ModerationPackets.SilencedReply(secondsLeft);
+            ChatEncoder.WriteMessage(context.Response, new BanchoMessage(BanchoBot.Name, notice, sender, BanchoBot.UserId));
+            if (!context.Player.IsRestricted)
+                ModerationPackets.WriteSilenceEnd(context.Response, secondsLeft);
             return;
         }
 
@@ -55,6 +75,7 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
             return;
         }
 
+        _chatLog?.Record(context.Player.UserId, sender, recipient.Presence.Username, text, recipient.UserId);
         var writer = new BanchoPacketWriter(128);
         ChatEncoder.WriteMessage(writer, new BanchoMessage(sender, text, target, context.Player.UserId));
         recipient.Enqueue(writer.ToArray());

@@ -24,9 +24,22 @@ public sealed class OsuWebDbContext : DbContext
 
     public DbSet<OsuWebScore> Scores => Set<OsuWebScore>();
 
+    public DbSet<OsuWebAccountHistory> AccountHistory => Set<OsuWebAccountHistory>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
+
+        modelBuilder.Entity<OsuWebAccountHistory>(history =>
+        {
+            history.ToTable("osu_user_banhistory");
+            history.HasKey(h => h.BanId);
+            history.Property(h => h.BanId).HasColumnName("ban_id");
+            history.Property(h => h.UserId).HasColumnName("user_id");
+            history.Property(h => h.BanStatus).HasColumnName("ban_status");
+            history.Property(h => h.Period).HasColumnName("period");
+            history.Property(h => h.Timestamp).HasColumnName("timestamp");
+        });
 
         modelBuilder.Entity<OsuWebUser>(user =>
         {

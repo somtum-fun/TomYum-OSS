@@ -14,6 +14,26 @@ public static class OsuWebAccounts
     /// <summary>osu-web group for bot accounts (BanchoBot).</summary>
     public const string BotGroup = "bot";
 
+    /// <summary><c>phpbb_users.user_type</c> of a banned account (osu-web <c>User::isBanned</c>).</summary>
+    public const sbyte BannedUserType = 1;
+
+    /// <summary>osu-web's <c>User::isRestricted</c>: banned, or any warning.</summary>
+    public static bool IsRestricted(sbyte userType, bool userWarnings) => userType == BannedUserType || userWarnings;
+
+    /// <summary>
+    /// End of a silence that started at <paramref name="start"/> for <paramref name="periodSeconds"/>,
+    /// or null when there's none, it was lifted (period 0) or it's over by <paramref name="now"/>.
+    /// osu-web stores the start as a UTC timestamp.
+    /// </summary>
+    public static DateTimeOffset? SilenceEnd(DateTime? start, uint periodSeconds, DateTimeOffset now)
+    {
+        if (start is not { } started || periodSeconds == 0)
+            return null;
+
+        var end = new DateTimeOffset(DateTime.SpecifyKind(started, DateTimeKind.Utc)).AddSeconds(periodSeconds);
+        return end > now ? end : null;
+    }
+
     /// <summary>
     /// Staff privileges and the osu-web group each maps to. Supporter is not a group in osu-web
     /// (it is <c>phpbb_users.osu_subscriber</c>). Only these groups are ever added or removed by

@@ -23,7 +23,7 @@ public sealed class UserStatsRequestHandler : IClientPacketHandler
         foreach (var id in ids)
         {
             var target = context.Registry.GetByUserId(id);
-            if (target is not null)
+            if (target is not null && PlayerRegistry.IsVisibleTo(target, context.Player.UserId))
             {
                 LoginResponseBuilder.WriteStats(context.Response, target.Presence);
             }

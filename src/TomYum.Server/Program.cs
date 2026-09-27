@@ -61,6 +61,11 @@ builder.Services.AddSingleton<TomYumVersion>();
 builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+builder.Services.TryAddSingleton(TimeProvider.System);
+// Restricted players (kept off leaderboards/ranks) and the in-game chat log for staff.
+builder.Services.AddSingleton<RestrictedUsers>();
+builder.Services.AddSingleton<ChatLog>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ChatLog>());
 
 // User/beatmap persistence: MySQL (EF Core) when a Database section is configured and enabled,
 // otherwise the throwaway in-memory repositories so the server still runs without a database
@@ -96,6 +101,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddSingleton<AdminAuthFilter>();
     builder.Services.AddScoped<BeatmapSetImporter>();
     builder.Services.AddScoped<BeatmapStatusChanger>();
+    builder.Services.AddScoped<UserModerationSync>();
+    builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<BeatmapImportRunner>());
 }
@@ -234,9 +241,14 @@ if (databaseOptions.Enabled)
     // created there except BanchoBot's account row. Fails fast if osu-web's groups aren't seeded.
     if (databaseOptions.UseOsuWebAccounts)
     {
-        await scope.ServiceProvider.GetRequiredService<OsuWebUserRepository>()
-            .EnsureBotAsync(BanchoBot.UserId, BanchoBot.Name);
+        var osuWebUsers = scope.ServiceProvider.GetRequiredService<OsuWebUserRepository>();
+        await osuWebUsers.EnsureBotAsync(BanchoBot.UserId, BanchoBot.Name);
         app.Logger.LogInformation("Accounts stored in osu-web database {OsuWebName}.", databaseOptions.OsuWebName);
+
+        var restrictedIds = await osuWebUsers.GetRestrictedIdsAsync();
+        app.Services.GetRequiredService<RestrictedUsers>().Load(restrictedIds);
+        if (restrictedIds.Count > 0)
+            app.Logger.LogInformation("{Count} restricted player(s) kept off leaderboards.", restrictedIds.Count);
 
         // Maps played before the osu-web link existed: copy the ones the website doesn't have yet.
         var knownBeatmaps = await db.Beatmaps.AsNoTracking().ToListAsync();

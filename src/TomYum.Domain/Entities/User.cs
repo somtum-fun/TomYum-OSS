@@ -64,7 +64,20 @@ public sealed class User
     /// </summary>
     public UserPrivileges Privileges { get; init; } = UserPrivileges.Normal;
 
-    // TODO: silence/donor end, clan, preferred mode, play style.
+    /// <summary>
+    /// Restricted by staff: can still log in and play, but is hidden from other players,
+    /// leaderboards and rankings, and can't chat in public channels. Only known in osu-web mode
+    /// (osu-web's <c>user_warnings</c>/banned account type); not persisted in TomYum's own table.
+    /// </summary>
+    public bool IsRestricted { get; init; }
+
+    /// <summary>
+    /// When the player's chat silence ends (UTC), or <c>null</c> when not silenced. Only known in
+    /// osu-web mode (its account history); not persisted in TomYum's own table.
+    /// </summary>
+    public DateTimeOffset? SilenceEndUtc { get; init; }
+
+    // TODO: donor end, clan, preferred mode, play style.
 
     /// <summary>
     /// Produces the canonical <see cref="SafeName"/> for a username: lowercase, spaces

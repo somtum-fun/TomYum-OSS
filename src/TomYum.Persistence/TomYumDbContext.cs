@@ -33,6 +33,9 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Actions taken from the staff panels.</summary>
     public DbSet<StaffLogEntry> StaffLog => Set<StaffLogEntry>();
 
+    /// <summary>In-game chat, for staff.</summary>
+    public DbSet<ChatLogEntry> ChatLog => Set<ChatLogEntry>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
