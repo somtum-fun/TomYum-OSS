@@ -48,7 +48,14 @@ public sealed class OsuWebScoreMirror
     /// <c>null</c> when the score isn't mirrored (relax/autopilot, or its map isn't on osu-web).
     /// Writing the same score again returns the existing id.
     /// </summary>
-    public async Task<ulong?> WriteScoreAsync(Score score, CancellationToken cancellationToken = default)
+    public async Task<ulong?> WriteScoreAsync(Score score, CancellationToken cancellationToken = default) =>
+        await WriteScoreAsync(score, hasReplay: false, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Like <see cref="WriteScoreAsync(Score, CancellationToken)"/>; <paramref name="hasReplay"/> marks
+    /// the website copy as having a replay (osu-web fetches it from TomYum when downloaded).
+    /// </summary>
+    public async Task<ulong?> WriteScoreAsync(Score score, bool hasReplay, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(score);
 
@@ -76,6 +83,7 @@ public sealed class OsuWebScoreMirror
             BeatmapId = beatmapId,
             Preserve = score.Passed,
             Ranked = ranked,
+            HasReplay = hasReplay,
             Rank = score.Passed ? score.Grade : "F",
             Passed = score.Passed,
             Accuracy = (float)AccuracyCalculator.Compute(
@@ -334,6 +342,40 @@ public sealed class OsuWebScoreMirror
 
         return plays.Count;
     }
+
+    /// <summary>The TomYum score an osu-web score is a copy of (for replay downloads), or null.</summary>
+    public async Task<long?> GetTomYumScoreIdAsync(ulong osuWebScoreId, CancellationToken cancellationToken = default)
+    {
+        var ids = await _tomyum.Database
+            .SqlQuery<long>($"SELECT ScoreId AS Value FROM osu_web_score_links WHERE OsuWebScoreId = {osuWebScoreId}")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return ids.Count > 0 ? ids[0] : null;
+    }
+
+    /// <summary>
+    /// Marks the website copies of scores that have a replay (<paramref name="hasReplay"/> gets the
+    /// TomYum score id). For scores copied before replays were linked; returns how many were marked.
+    /// </summary>
+    public async Task<int> MarkReplaysAsync(Func<long, bool> hasReplay, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(hasReplay);
+
+        var links = await _tomyum.Database
+            .SqlQuery<ScoreLink>($"SELECT ScoreId, OsuWebScoreId FROM osu_web_score_links")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var withReplay = links.Where(l => hasReplay(l.ScoreId)).Select(l => l.OsuWebScoreId).ToList();
+
+        var marked = 0;
+        foreach (var chunk in withReplay.Chunk(500))
+        {
+            marked += await _osuWeb.Scores.Where(s => chunk.Contains(s.Id) && !s.HasReplay)
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.HasReplay, true), cancellationToken).ConfigureAwait(false);
+        }
+        return marked;
+    }
+
+    /// <summary>A row of <c>osu_web_score_links</c>.</summary>
+    public sealed record ScoreLink(long ScoreId, ulong OsuWebScoreId);
 
     /// <summary>The player's osu-web country code (e.g. <c>TH</c>), or null when it's not an osu-web account.</summary>
     public Task<string?> GetCountryAsync(int userId, CancellationToken cancellationToken = default)

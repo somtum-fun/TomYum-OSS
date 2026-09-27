@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
+using TomYum.Persistence.OsuWeb;
 using TomYum.Server.Bancho;
 using TomYum.Server.Beatmaps;
 
@@ -69,7 +70,13 @@ public static class AdminEndpoints
             Results.Ok(await scores.WipeAsync(userId, request.Mode, ActorId(context), request.Reason, cancellationToken).ConfigureAwait(false)));
         admin.MapDelete("/scores/{scoreId:long}", async (long scoreId, string? reason, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken) =>
             await scores.RemoveAsync(scoreId, ActorId(context), reason, cancellationToken).ConfigureAwait(false) is { } result ? Results.Ok(result) : Results.NotFound());
-        admin.MapGet("/chat", async (int? userId, string? target, long? before, int? limit, IChatLogRepository chat, CancellationToken cancellationToken) =>
+        // Replay of a website score (osu-web's replay download fetches it from here).
+        admin.MapGet("/replays/website-score/{osuWebScoreId:long}", async (long osuWebScoreId, OsuWebScoreMirror mirror, IConfiguration configuration, CancellationToken cancellationToken) =>
+            await mirror.GetTomYumScoreIdAsync((ulong)osuWebScoreId, cancellationToken).ConfigureAwait(false) is { } scoreId
+                && ReplayFiles.Exists(configuration, scoreId)
+                ? Results.File(ReplayFiles.PathFor(configuration, scoreId), "application/octet-stream")
+                : Results.NotFound());
+        admin.MapGet("/chat",async (int? userId, string? target, long? before, int? limit, IChatLogRepository chat, CancellationToken cancellationToken) =>
             Results.Ok(await chat.ListAsync(new ChatLogQuery(userId, target, before, limit ?? 100), cancellationToken).ConfigureAwait(false)));
 
         admin.MapGet("/online", (PlayerRegistry players) => Results.Ok(

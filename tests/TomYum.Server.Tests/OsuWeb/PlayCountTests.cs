@@ -45,6 +45,31 @@ public sealed class PlayCountTests : OsuWebDatabaseTest
         Assert.Equal(4, await ScalarAsync<int>("SELECT play_count FROM osu_beatmapsets WHERE beatmapset_id = 10"));
     }
 
+    [MySqlFact]
+    public async Task Replays_AreMarked_AndMappedBackToTheGameScore()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        await AddMapsAsync();
+        var users = new OsuWebUserRepository(NewOsuWebContext());
+        var player = await users.AddAsync(new User { Username = "Replayer", SafeName = "replayer", Email = "r@x.dev", PasswordBcrypt = "x", Country = "th" });
+        var withReplay = Play(player.Id, 100, true);
+        var without = Play(player.Id, 101, true);
+        tomyum.Scores.AddRange(withReplay, without);
+        await tomyum.SaveChangesAsync();
+        var mirror = new OsuWebScoreMirror(tomyum, NewOsuWebContext());
+        await mirror.EnsureLinkTableAsync();
+        var webWith = await mirror.WriteScoreAsync(withReplay);
+        var webWithout = await mirror.WriteScoreAsync(without);
+
+        Assert.Equal(1, await mirror.MarkReplaysAsync(id => id == withReplay.Id));
+        Assert.Equal(0, await mirror.MarkReplaysAsync(id => id == withReplay.Id)); // already marked
+
+        Assert.True(await ScalarAsync<bool>($"SELECT has_replay FROM scores WHERE id = {webWith}"));
+        Assert.False(await ScalarAsync<bool>($"SELECT has_replay FROM scores WHERE id = {webWithout}"));
+        Assert.Equal(withReplay.Id, await mirror.GetTomYumScoreIdAsync(webWith!.Value));
+        Assert.Null(await mirror.GetTomYumScoreIdAsync(999_999));
+    }
+
     private async Task AddMapsAsync()
     {
         var beatmaps = new OsuWebBeatmapMirror(NewOsuWebContext());

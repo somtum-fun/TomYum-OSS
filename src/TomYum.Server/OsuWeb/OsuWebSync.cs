@@ -2,6 +2,7 @@ using TomYum.Caching;
 using TomYum.Domain.Entities;
 using TomYum.Persistence.OsuWeb;
 using TomYum.Server.Achievements;
+using TomYum.Server.Beatmaps;
 
 namespace TomYum.Server.OsuWeb;
 
@@ -17,6 +18,7 @@ public sealed class OsuWebSync : IOsuWebSync
     private readonly OsuWebScoreIndexing _indexQueue;
     private readonly OsuWebMedals _medals;
     private readonly OsuWebInterop _interop;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<OsuWebSync> _logger;
 
     public OsuWebSync(
@@ -24,12 +26,14 @@ public sealed class OsuWebSync : IOsuWebSync
         OsuWebScoreIndexing indexQueue,
         OsuWebMedals medals,
         OsuWebInterop interop,
+        IConfiguration configuration,
         ILogger<OsuWebSync> logger)
     {
         _mirror = mirror;
         _indexQueue = indexQueue;
         _medals = medals;
         _interop = interop;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -40,7 +44,8 @@ public sealed class OsuWebSync : IOsuWebSync
         if (!OsuWebScores.IsMirrored(score.Mode))
             return;
 
-        var osuWebScoreId = await _mirror.WriteScoreAsync(score, cancellationToken).ConfigureAwait(false);
+        // The replay is saved before this runs; the website downloads it from TomYum.
+        var osuWebScoreId = await _mirror.WriteScoreAsync(score, ReplayFiles.Exists(_configuration, score.Id), cancellationToken).ConfigureAwait(false);
         await _mirror.RecordPlayAsync(score, cancellationToken).ConfigureAwait(false);
         await _mirror.WriteStatsAsync(score.UserId, score.Mode, cancellationToken).ConfigureAwait(false);
         await _mirror.RecomputeGlobalRanksAsync(score.Mode, cancellationToken).ConfigureAwait(false);
