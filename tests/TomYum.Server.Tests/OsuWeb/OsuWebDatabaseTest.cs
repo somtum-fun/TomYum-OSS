@@ -46,7 +46,8 @@ public abstract class OsuWebDatabaseTest : IAsyncLifetime
 {
     private static readonly MySqlServerVersion ServerVersion = new(new Version(8, 0, 0));
 
-    private readonly string _suffix = Guid.NewGuid().ToString("N");
+    // Short: EF's migration lock is named after the database, and MySQL caps lock names at 64 characters.
+    private readonly string _suffix = Guid.NewGuid().ToString("N")[..16];
     private string? _server;
 
     /// <summary>Connection string for the osu-web database.</summary>
@@ -93,14 +94,17 @@ public abstract class OsuWebDatabaseTest : IAsyncLifetime
     protected OsuWebDbContext NewOsuWebContext() => new(
         new DbContextOptionsBuilder<OsuWebDbContext>().UseMySql(OsuWebConnectionString, ServerVersion).Options);
 
-    /// <summary>A context over a TomYum database with its schema created (as the server's EnsureCreated does).</summary>
+    /// <summary>A context over a TomYum database with its schema created by the migrations (as the server does).</summary>
     protected async Task<TomYumDbContext> NewTomYumContextAsync()
     {
-        var context = new TomYumDbContext(
-            new DbContextOptionsBuilder<TomYumDbContext>().UseMySql(TomYumConnectionString, ServerVersion).Options);
-        await context.Database.EnsureCreatedAsync();
+        var context = NewTomYumContext();
+        await context.MigrateAsync();
         return context;
     }
+
+    /// <summary>A context over the TomYum database, schema untouched.</summary>
+    protected TomYumDbContext NewTomYumContext() => new(
+        new DbContextOptionsBuilder<TomYumDbContext>().UseMySql(TomYumConnectionString, ServerVersion).Options);
 
     /// <summary>Runs SQL against the osu-web database.</summary>
     protected async Task ExecuteAsync(string sql)

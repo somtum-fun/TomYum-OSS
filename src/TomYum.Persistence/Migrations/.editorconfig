@@ -1,0 +1,3 @@
+# EF Core generates everything in this folder (dotnet ef migrations add): analyzers skip it.
+[*.cs]
+generated_code = true
