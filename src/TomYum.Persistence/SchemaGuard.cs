@@ -5,9 +5,9 @@ namespace TomYum.Persistence;
 /// <summary>
 /// Bridges the gap left by <see cref="Microsoft.EntityFrameworkCore.Infrastructure.DatabaseFacade"/>'s
 /// <c>EnsureCreated</c>, which is all-or-nothing: on an <em>already-created</em> database it will not add
-/// tables introduced after the DB was first created. Until versioned migrations land, this applies
-/// idempotent <c>CREATE TABLE IF NOT EXISTS</c> DDL for tables added later, so new features work on
-/// existing dev/prod databases without a recreate. The DDL types match the EF model, so each statement
+/// tables introduced after the DB was first created. Before EF migrations (see DatabaseMigrator), this applied
+/// idempotent <c>CREATE TABLE IF NOT EXISTS</c> DDL for tables added later; now it only tops up
+/// pre-migrations databases before they are baselined. The DDL types match the EF model, so each statement
 /// is a no-op on a fresh database that <c>EnsureCreated</c> already populated.
 /// </summary>
 public static class SchemaGuard

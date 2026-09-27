@@ -242,18 +242,16 @@ foreach (var channel in app.Services.GetRequiredService<ChannelRegistry>().All)
     botPlayer.JoinChannel(channel.Name);
 }
 
-// When MySQL is enabled, ensure the schema exists before serving traffic. EnsureCreated is
-// enough for the current single-version schema; switch to db.Database.MigrateAsync() once
-// versioned migrations land so existing data survives schema changes.
+// When MySQL is enabled, bring the schema up to date before serving traffic: EF Core migrations
+// (databases from before migrations are baselined first, see DatabaseMigrator).
 if (databaseOptions.Enabled)
 {
     using var scope = app.Services.CreateScope();
     var db = scope.ServiceProvider.GetRequiredService<TomYumDbContext>();
-    await db.Database.EnsureCreatedAsync();
-    // Bridge tables added after the DB was first created (EnsureCreated won't add them). See SchemaGuard.
-    await db.EnsureRuntimeTablesAsync();
+    var applied = await db.MigrateAsync();
 
-    app.Logger.LogInformation("Database schema ensured ({Host}/{Name}).", databaseOptions.Host, databaseOptions.Name);
+    app.Logger.LogInformation("Database schema up to date ({Host}/{Name}); applied {Migrations}.",
+        databaseOptions.Host, databaseOptions.Name, applied.Count == 0 ? "nothing" : string.Join(", ", applied));
 
     // Staff-set (frozen) statuses override the osu! API in-game.
     var beatmapService = app.Services.GetRequiredService<BeatmapService>();
