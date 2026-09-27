@@ -9,9 +9,10 @@ namespace TomYum.Persistence.OsuWeb;
 /// read; this is a one-way mirror (docs/osu-web.md).
 /// </summary>
 /// <remarks>
-/// TomYum only knows the difficulties that were played, so a set on the site lists those. Columns
-/// TomYum has no data for keep osu-web's defaults (bpm, AR/OD/CS/HP, object counts, tags, …);
-/// <c>hit_length</c> is filled with the total length.
+/// The server imports a whole set the first time one of its maps is played. Maps that came from the
+/// osu! API carry <see cref="Beatmap.Details"/> (AR/OD/CS/HP, BPM, tags, …), which fill the matching
+/// columns; without them those columns keep osu-web's defaults and <c>hit_length</c> is the total
+/// length.
 /// </remarks>
 public sealed class OsuWebBeatmapMirror
 {
@@ -101,6 +102,9 @@ public sealed class OsuWebBeatmapMirror
         set.ApprovedDate = OsuWebBeatmaps.HasApprovedDate(approved) ? set.ApprovedDate ?? lastUpdate : null;
         if (lastUpdate > set.LastUpdate)
             set.LastUpdate = lastUpdate;
+        // Official sets have a cover on ppy's asset server; custom ones only once one is uploaded.
+        if (!beatmap.IsCustom)
+            set.CoverUpdatedAt ??= set.LastUpdate;
 
         var map = existingMap;
         if (map is null)
@@ -118,6 +122,43 @@ public sealed class OsuWebBeatmapMirror
         map.LastUpdate = lastUpdate;
         map.Difficultyrating = (float)beatmap.StarRating;
         map.MaxCombo = (uint)Math.Max(0, beatmap.MaxCombo);
+
+        if (beatmap.Details is { } details)
+            ApplyDetails(details, set, map);
         return true;
+    }
+
+    /// <summary>
+    /// Copies the website-only metadata. Only values the API actually gave overwrite a column, so a
+    /// later source with less data (the keyless mirror has no object counts) never blanks one.
+    /// </summary>
+    private static void ApplyDetails(BeatmapDetails details, OsuWebBeatmapset set, OsuWebBeatmap map)
+    {
+        map.DiffSize = Math.Max(0, details.CircleSize ?? map.DiffSize);
+        map.DiffApproach = Math.Max(0, details.ApproachRate ?? map.DiffApproach);
+        map.DiffOverall = Math.Max(0, details.OverallDifficulty ?? map.DiffOverall);
+        map.DiffDrain = Math.Max(0, details.DrainRate ?? map.DiffDrain);
+        map.Bpm = details.Bpm ?? map.Bpm;
+        if (details.HitLength is { } hitLength)
+            map.HitLength = (uint)Math.Max(0, hitLength);
+        if (details is { CountCircles: { } circles, CountSliders: { } sliders, CountSpinners: { } spinners })
+        {
+            map.CountNormal = (uint)Math.Max(0, circles);
+            map.CountSlider = (uint)Math.Max(0, sliders);
+            map.CountSpinner = (uint)Math.Max(0, spinners);
+            map.CountTotal = map.CountNormal + map.CountSlider + map.CountSpinner;
+        }
+
+        set.Bpm = details.Bpm ?? set.Bpm;
+        set.GenreId = (ushort)Math.Clamp(details.GenreId ?? set.GenreId, 1, ushort.MaxValue);
+        set.LanguageId = (ushort)Math.Clamp(details.LanguageId ?? set.LanguageId, 1, ushort.MaxValue);
+        if (details.Source is { } source)
+            set.Source = OsuWebBeatmaps.Truncate(source, 200);
+        if (details.Tags is { } tags)
+            set.Tags = OsuWebBeatmaps.Truncate(tags, 1000);
+        set.Video = details.Video ?? set.Video;
+        set.Storyboard = details.Storyboard ?? set.Storyboard;
+        if (details.ApprovedDate is { } approvedDate && set.ApprovedDate is not null)
+            set.ApprovedDate = OsuWebBeatmaps.ToTimestamp(approvedDate, set.ApprovedDate.Value);
     }
 }

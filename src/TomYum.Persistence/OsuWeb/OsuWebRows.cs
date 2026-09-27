@@ -103,6 +103,26 @@ public sealed class OsuWebBeatmapset
     public DateTime? SubmitDate { get; set; }
 
     public DateTime LastUpdate { get; set; }
+
+    /// <summary>
+    /// The site only shows a set's cover when this is set (it's the cover URL's cache-buster;
+    /// null renders as <c>?0</c>, meaning "no cover").
+    /// </summary>
+    public DateTime? CoverUpdatedAt { get; set; }
+
+    public float Bpm { get; set; }
+
+    public ushort GenreId { get; set; } = 1;
+
+    public ushort LanguageId { get; set; } = 1;
+
+    public string Source { get; set; } = string.Empty;
+
+    public string Tags { get; set; } = string.Empty;
+
+    public bool Video { get; set; }
+
+    public bool Storyboard { get; set; }
 }
 
 /// <summary>A row of osu-web's <c>osu_beatmaps</c> (only what TomYum writes; the rest have defaults).</summary>
@@ -130,6 +150,25 @@ public sealed class OsuWebBeatmap
     public float Difficultyrating { get; set; }
 
     public uint MaxCombo { get; set; }
+
+    public float DiffSize { get; set; }
+
+    public float DiffApproach { get; set; }
+
+    public float DiffOverall { get; set; }
+
+    public float DiffDrain { get; set; }
+
+    /// <summary>osu-web's column default is 60.</summary>
+    public float Bpm { get; set; } = 60;
+
+    public uint CountNormal { get; set; }
+
+    public uint CountSlider { get; set; }
+
+    public uint CountSpinner { get; set; }
+
+    public uint CountTotal { get; set; }
 }
 
 /// <summary>

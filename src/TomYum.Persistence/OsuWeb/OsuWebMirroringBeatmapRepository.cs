@@ -39,6 +39,7 @@ public sealed class OsuWebMirroringBeatmapRepository : IBeatmapRepository
         var effective = await _inner.GetByIdAsync(beatmap.Id, cancellationToken).ConfigureAwait(false) ?? beatmap;
         if (effective.Status == beatmap.Status)
             effective.OsuApiStatus = beatmap.OsuApiStatus;
+        effective.Details = beatmap.Details;
 
         await _mirror.WriteAsync(effective, cancellationToken).ConfigureAwait(false);
     }

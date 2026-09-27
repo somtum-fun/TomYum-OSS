@@ -20,6 +20,12 @@ public interface IOsuApiClient
     /// an unresolved map as not-submitted rather than throwing on the login/getscores hot path.
     /// </summary>
     Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches every difficulty of a beatmap set. Empty when the set is unknown or the request
+    /// fails — like <see cref="GetByMd5Async"/>, failures are logged rather than thrown.
+    /// </summary>
+    Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -58,14 +64,9 @@ public sealed class OsuApiClient : IOsuApiClient
             return null;
         }
 
-        // old.ppy.sh requires a key; osu.direct does not. Only append k= when we have one.
-        var query = string.IsNullOrEmpty(_options.ApiKey)
-            ? $"get_beatmaps?h={WebUtility.UrlEncode(md5)}"
-            : $"get_beatmaps?k={WebUtility.UrlEncode(_options.ApiKey)}&h={WebUtility.UrlEncode(md5)}";
-
         try
         {
-            var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(query, JsonOptions, cancellationToken).ConfigureAwait(false);
+            var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(Query($"h={WebUtility.UrlEncode(md5)}"), JsonOptions, cancellationToken).ConfigureAwait(false);
 
             // The keyless osu.direct mirror ignores the `h=` filter and returns EVERY difficulty in
             // the set — each with its own file_md5 — whereas keyed old.ppy.sh returns only the exact
@@ -86,6 +87,39 @@ public sealed class OsuApiClient : IOsuApiClient
         }
     }
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default)
+    {
+        if (setId <= 0)
+        {
+            return [];
+        }
+
+        try
+        {
+            var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(Query($"s={setId}"), JsonOptions, cancellationToken).ConfigureAwait(false);
+
+            // Keep only this set's difficulties, in case a mirror answers with more than asked for.
+            return beatmaps?
+                .Select(Map)
+                .Where(b => b.SetId == setId && b.Id > 0 && !string.IsNullOrEmpty(b.Md5))
+                .ToList() ?? [];
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
+        {
+            _logger.LogWarning(ex, "osu! API lookup failed for beatmap set {SetId}.", setId);
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Builds a <c>get_beatmaps</c> query. old.ppy.sh requires a key; osu.direct does not, so
+    /// <c>k=</c> is only appended when one is configured.
+    /// </summary>
+    private string Query(string filter) => string.IsNullOrEmpty(_options.ApiKey)
+        ? $"get_beatmaps?{filter}"
+        : $"get_beatmaps?k={WebUtility.UrlEncode(_options.ApiKey)}&{filter}";
+
     /// <summary>Projects an osu! v1 API element onto a domain <see cref="Beatmap"/>.</summary>
     private static Beatmap Map(OsuApiBeatmap api) => new()
     {
@@ -103,13 +137,39 @@ public sealed class OsuApiClient : IOsuApiClient
         TotalLength = ParseInt(api.TotalLength),
         MaxCombo = ParseInt(api.MaxCombo),
         LastUpdate = ParseDate(api.LastUpdate),
+        Details = new BeatmapDetails
+        {
+            CircleSize = ParseFloatOrNull(api.DiffSize),
+            ApproachRate = ParseFloatOrNull(api.DiffApproach),
+            OverallDifficulty = ParseFloatOrNull(api.DiffOverall),
+            DrainRate = ParseFloatOrNull(api.DiffDrain),
+            Bpm = ParseFloatOrNull(api.Bpm),
+            HitLength = ParseIntOrNull(api.HitLength),
+            CountCircles = ParseIntOrNull(api.CountNormal),
+            CountSliders = ParseIntOrNull(api.CountSlider),
+            CountSpinners = ParseIntOrNull(api.CountSpinner),
+            // 0 isn't a real genre/language (osu.direct reports it for every map): leave unknown.
+            GenreId = ParseIntOrNull(api.GenreId) is > 0 and var genre ? genre : null,
+            LanguageId = ParseIntOrNull(api.LanguageId) is > 0 and var language ? language : null,
+            Source = api.Source,
+            Tags = api.Tags,
+            Video = ParseIntOrNull(api.Video) is { } video ? video != 0 : null,
+            Storyboard = ParseIntOrNull(api.Storyboard) is { } storyboard ? storyboard != 0 : null,
+            ApprovedDate = string.IsNullOrEmpty(api.ApprovedDate) ? null : ParseDate(api.ApprovedDate),
+        },
     };
 
     private static int ParseInt(string? value) =>
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? result : 0;
 
+    private static int? ParseIntOrNull(string? value) =>
+        int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? result : null;
+
     private static double ParseDouble(string? value) =>
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) ? result : 0.0;
+
+    private static float? ParseFloatOrNull(string? value) =>
+        float.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var result) ? result : null;
 
     private static DateTimeOffset ParseDate(string? value) =>
         DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var result)

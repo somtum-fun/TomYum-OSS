@@ -67,4 +67,70 @@ public sealed class OsuApiBeatmap
     /// <summary>Star difficulty rating.</summary>
     [JsonPropertyName("difficultyrating")]
     public string? DifficultyRating { get; set; }
+
+    // --- Website-only metadata (projected onto BeatmapDetails for the osu-web mirror) ---
+
+    /// <summary>Circle size.</summary>
+    [JsonPropertyName("diff_size")]
+    public string? DiffSize { get; set; }
+
+    /// <summary>Approach rate.</summary>
+    [JsonPropertyName("diff_approach")]
+    public string? DiffApproach { get; set; }
+
+    /// <summary>Overall difficulty.</summary>
+    [JsonPropertyName("diff_overall")]
+    public string? DiffOverall { get; set; }
+
+    /// <summary>HP drain rate.</summary>
+    [JsonPropertyName("diff_drain")]
+    public string? DiffDrain { get; set; }
+
+    /// <summary>Beats per minute.</summary>
+    [JsonPropertyName("bpm")]
+    public string? Bpm { get; set; }
+
+    /// <summary>Drain time in seconds.</summary>
+    [JsonPropertyName("hit_length")]
+    public string? HitLength { get; set; }
+
+    /// <summary>Circle count (old.ppy.sh only).</summary>
+    [JsonPropertyName("count_normal")]
+    public string? CountNormal { get; set; }
+
+    /// <summary>Slider count (old.ppy.sh only).</summary>
+    [JsonPropertyName("count_slider")]
+    public string? CountSlider { get; set; }
+
+    /// <summary>Spinner count (old.ppy.sh only).</summary>
+    [JsonPropertyName("count_spinner")]
+    public string? CountSpinner { get; set; }
+
+    /// <summary>Genre id (osu.direct reports 0).</summary>
+    [JsonPropertyName("genre_id")]
+    public string? GenreId { get; set; }
+
+    /// <summary>Language id (osu.direct reports 0).</summary>
+    [JsonPropertyName("language_id")]
+    public string? LanguageId { get; set; }
+
+    /// <summary>Song source.</summary>
+    [JsonPropertyName("source")]
+    public string? Source { get; set; }
+
+    /// <summary>Space-separated tags.</summary>
+    [JsonPropertyName("tags")]
+    public string? Tags { get; set; }
+
+    /// <summary>1 when the set has a video.</summary>
+    [JsonPropertyName("video")]
+    public string? Video { get; set; }
+
+    /// <summary>1 when the set has a storyboard.</summary>
+    [JsonPropertyName("storyboard")]
+    public string? Storyboard { get; set; }
+
+    /// <summary>Ranked/approved/loved date.</summary>
+    [JsonPropertyName("approved_date")]
+    public string? ApprovedDate { get; set; }
 }

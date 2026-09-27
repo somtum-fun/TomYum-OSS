@@ -179,6 +179,21 @@ public static class ScoreSubmissionEndpoint
             logger.LogWarning(ex, "Beatmap upsert failed for {BeatmapId}; submission continues", beatmap.Id);
         }
 
+        // First play of a set this run: store its other difficulties too, so the website shows the
+        // whole set (with CS/AR/OD/HP etc.). Best-effort like the upsert above.
+        try
+        {
+            foreach (var difficulty in await beatmaps.FetchSetOnceAsync(beatmap.SetId, cancellationToken).ConfigureAwait(false))
+            {
+                if (difficulty.Id != beatmap.Id)
+                    await beatmapRepo.UpsertAsync(difficulty, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Importing beatmap set {SetId} failed; submission continues", beatmap.SetId);
+        }
+
         // Fetch before insert so the Status==Best filter returns the genuine prior best, not this score
         var prevBest = await scores.GetPersonalBestAsync(user.Id, bmk, gameMode, cancellationToken).ConfigureAwait(false);
 

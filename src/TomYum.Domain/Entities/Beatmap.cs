@@ -64,6 +64,12 @@ public sealed class Beatmap
     /// </summary>
     public int? OsuApiStatus { get; set; }
 
+    /// <summary>
+    /// Extra osu! API metadata for the website (CS/AR/OD/HP, BPM, …) when the map came from the
+    /// API, else <c>null</c>. Not persisted in TomYum's own table.
+    /// </summary>
+    public BeatmapDetails? Details { get; set; }
+
     /// <summary>Game mode (0 = osu!, 1 = taiko, 2 = catch, 3 = mania).</summary>
     public int Mode { get; set; }
 
