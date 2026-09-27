@@ -500,3 +500,11 @@ CREATE TABLE osu_user_banhistory (
   KEY user_id (user_id, `timestamp`),
   KEY `timestamp` (`timestamp`)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Per-player beatmap play counts ("Most Played Beatmaps"): as on a current osu-web database.
+CREATE TABLE osu_user_beatmap_playcount (
+  user_id int unsigned NOT NULL DEFAULT 0,
+  beatmap_id mediumint unsigned NOT NULL,
+  playcount smallint unsigned NOT NULL,
+  PRIMARY KEY (user_id, beatmap_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
