@@ -26,6 +26,12 @@ public interface IBeatmapRepository
     Task<bool> SetStatusAsync(int beatmapId, RankedStatus status, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Drops a staff-chosen status (clears <see cref="Beatmap.StatusFrozen"/>), so the next
+    /// <see cref="UpsertAsync"/> takes the osu! API's status again. False when the beatmap isn't stored.
+    /// </summary>
+    Task<bool> UnfreezeStatusAsync(int beatmapId, CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Inserts the beatmap if it doesn't exist; updates all metadata fields if it does.
     /// Respects <see cref="Beatmap.StatusFrozen"/>: when the existing row is frozen,
     /// the <see cref="Beatmap.Status"/> field is left unchanged.

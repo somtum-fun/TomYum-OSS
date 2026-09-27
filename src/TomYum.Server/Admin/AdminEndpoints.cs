@@ -152,8 +152,14 @@ public static class AdminEndpoints
 
     private static async Task<IResult> ChangeStatusAsync(int setId, StatusChangeRequest request, BeatmapStatusChanger changer, HttpContext context, CancellationToken cancellationToken)
     {
+        if (string.Equals(request.Status, BeatmapStatusChanger.UnlockName, StringComparison.OrdinalIgnoreCase))
+        {
+            var unlocked = await changer.UnlockAsync(setId, request.BeatmapIds, ActorId(context), cancellationToken).ConfigureAwait(false);
+            return unlocked is null ? Results.NotFound(new { error = "That set isn't on the server." }) : Results.Ok(unlocked);
+        }
+
         if (!BeatmapStatusChanger.Statuses.TryGetValue(request.Status ?? string.Empty, out var status))
-            return Results.BadRequest(new { error = "Unknown status; use ranked, approved, qualified, loved or pending." });
+            return Results.BadRequest(new { error = "Unknown status; use ranked, approved, qualified, loved, pending or bancho." });
 
         var result = await changer.ChangeAsync(setId, status, request.BeatmapIds, ActorId(context), cancellationToken).ConfigureAwait(false);
         return result is null ? Results.NotFound(new { error = "That set isn't on the server or on osu!." }) : Results.Ok(result);

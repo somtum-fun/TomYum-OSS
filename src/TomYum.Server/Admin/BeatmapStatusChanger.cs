@@ -11,7 +11,8 @@ namespace TomYum.Server.Admin;
 /// <param name="SetId">The beatmap set.</param>
 /// <param name="Status">The new status (API name, e.g. <c>ranked</c>).</param>
 /// <param name="Changed">Difficulty names that changed.</param>
-public sealed record BeatmapStatusChangeResult(int SetId, string Status, IReadOnlyList<string> Changed);
+/// <param name="Scores">What recalculating the scores on the changed difficulties did.</param>
+public sealed record BeatmapStatusChangeResult(int SetId, string Status, IReadOnlyList<string> Changed, ScoreRecalculationResult? Scores = null);
 
 /// <summary>
 /// Staff status changes (BN panel): sets a whole set or some of its difficulties to ranked, approved,
@@ -38,6 +39,7 @@ public sealed class BeatmapStatusChanger
     private readonly IStaffLogRepository _log;
     private readonly TimeProvider _time;
     private readonly ILogger<BeatmapStatusChanger> _logger;
+    private readonly ScoreRecalculation? _recalculation;
     private readonly OsuWebInterop? _interop;
 
     public BeatmapStatusChanger(
@@ -46,6 +48,7 @@ public sealed class BeatmapStatusChanger
         IStaffLogRepository log,
         TimeProvider time,
         ILogger<BeatmapStatusChanger> logger,
+        ScoreRecalculation? recalculation = null,
         OsuWebInterop? interop = null)
     {
         _beatmaps = beatmaps;
@@ -53,6 +56,7 @@ public sealed class BeatmapStatusChanger
         _log = log;
         _time = time;
         _logger = logger;
+        _recalculation = recalculation;
         _interop = interop;
     }
 
@@ -67,36 +71,92 @@ public sealed class BeatmapStatusChanger
         if (set.Count == 0)
             return null;
 
-        var targets = beatmapIds is { Count: > 0 } ? set.Where(b => beatmapIds.Contains(b.Id)).ToList() : set.ToList();
-        var changed = new List<string>();
-        foreach (var beatmap in targets)
+        var changed = new List<Beatmap>();
+        foreach (var beatmap in Targets(set, beatmapIds))
         {
             if (await _repository.SetStatusAsync(beatmap.Id, status, cancellationToken).ConfigureAwait(false))
             {
                 _beatmaps.SetStatusOverride(beatmap.Id, status);
-                changed.Add(beatmap.Version);
+                beatmap.Status = status;
+                changed.Add(beatmap);
             }
         }
 
-        var name = Statuses.First(s => s.Value == status).Key;
-        if (changed.Count > 0)
-        {
-            await ReindexAsync(setId, cancellationToken).ConfigureAwait(false);
+        return await FinishAsync(set, changed, Statuses.First(s => s.Value == status).Key, actorId, cancellationToken).ConfigureAwait(false);
+    }
 
-            var which = changed.Count == set.Count ? "all difficulties" : string.Join(", ", changed.Select(v => $"[{v}]"));
-            var summary = string.Create(CultureInfo.InvariantCulture, $"{set[0].Artist} - {set[0].Title}: {which} → {name}");
-            await _log.AddAsync(new StaffLogEntry
-            {
-                CreatedAt = _time.GetUtcNow().UtcDateTime,
-                ActorId = actorId,
-                Action = LogAction,
-                TargetId = setId,
-                Summary = summary.Length > 512 ? summary[..512] : summary,
-                Result = name,
-            }, cancellationToken).ConfigureAwait(false);
+    /// <summary>
+    /// Gives the difficulties <paramref name="beatmapIds"/> of set <paramref name="setId"/> (all of
+    /// them when null or empty) the osu! API's status back, undoing staff changes. Null when the set
+    /// isn't on the server; an empty change list when osu! doesn't know it (custom sets stay as they are).
+    /// </summary>
+    public async Task<BeatmapStatusChangeResult?> UnlockAsync(int setId, IReadOnlyCollection<int>? beatmapIds, int actorId, CancellationToken cancellationToken = default)
+    {
+        var set = await _repository.GetBySetAsync(setId, cancellationToken).ConfigureAwait(false);
+        if (set.Count == 0)
+            return null;
+
+        var targets = Targets(set, beatmapIds).Where(b => b.StatusFrozen).ToList();
+        if (targets.Count == 0)
+            return new BeatmapStatusChangeResult(setId, UnlockName, []);
+
+        // Overrides go first: the fetch would otherwise hand back the staff status.
+        var overrides = targets.Select(b => (b.Id, Status: _beatmaps.GetStatusOverride(b.Id))).ToList();
+        foreach (var beatmap in targets)
+            _beatmaps.ClearStatusOverride(beatmap.Id);
+
+        var fromApi = (await _beatmaps.FetchSetAsync(setId, cancellationToken).ConfigureAwait(false)).ToDictionary(b => b.Id);
+        var changed = new List<Beatmap>();
+        foreach (var beatmap in targets)
+        {
+            if (!fromApi.TryGetValue(beatmap.Id, out var api))
+                continue;
+            await _repository.UnfreezeStatusAsync(beatmap.Id, cancellationToken).ConfigureAwait(false);
+            await _repository.UpsertAsync(api, cancellationToken).ConfigureAwait(false);
+            changed.Add(api);
         }
 
-        return new BeatmapStatusChangeResult(setId, name, changed);
+        // Difficulties osu! no longer has keep their staff status.
+        foreach (var (id, status) in overrides.Where(o => !fromApi.ContainsKey(o.Id) && o.Status is not null))
+            _beatmaps.SetStatusOverride(id, status!.Value);
+
+        return await FinishAsync(set, changed, UnlockName, actorId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The name the panel sends (and the log shows) for giving difficulties bancho's status back.</summary>
+    public const string UnlockName = "bancho";
+
+    private static List<Beatmap> Targets(IReadOnlyList<Beatmap> set, IReadOnlyCollection<int>? beatmapIds) =>
+        beatmapIds is { Count: > 0 } ? set.Where(b => beatmapIds.Contains(b.Id)).ToList() : set.ToList();
+
+    /// <summary>After a change: recalculate scores, re-index the set on the website and log it.</summary>
+    private async Task<BeatmapStatusChangeResult> FinishAsync(IReadOnlyList<Beatmap> set, List<Beatmap> changed, string name, int actorId, CancellationToken cancellationToken)
+    {
+        var setId = set[0].SetId;
+        if (changed.Count == 0)
+            return new BeatmapStatusChangeResult(setId, name, []);
+
+        ScoreRecalculationResult? scores = null;
+        if (_recalculation is not null)
+            scores = await _recalculation.RecalculateAsync(changed, cancellationToken).ConfigureAwait(false);
+        await ReindexAsync(setId, cancellationToken).ConfigureAwait(false);
+
+        var which = changed.Count == set.Count ? "all difficulties" : string.Join(", ", changed.Select(b => $"[{b.Version}]"));
+        var target = name == UnlockName ? "bancho's status" : name;
+        var summary = string.Create(CultureInfo.InvariantCulture, $"{set[0].Artist} - {set[0].Title}: {which} → {target}");
+        if (scores is { Changed: > 0 })
+            summary += string.Create(CultureInfo.InvariantCulture, $" ({scores.Changed} score(s) recalculated, {scores.Players} player(s))");
+        await _log.AddAsync(new StaffLogEntry
+        {
+            CreatedAt = _time.GetUtcNow().UtcDateTime,
+            ActorId = actorId,
+            Action = LogAction,
+            TargetId = setId,
+            Summary = summary.Length > 512 ? summary[..512] : summary,
+            Result = name,
+        }, cancellationToken).ConfigureAwait(false);
+
+        return new BeatmapStatusChangeResult(setId, name, changed.Select(b => b.Version).ToList(), scores);
     }
 
     /// <summary>The set's stored difficulties; imports it from the osu! API first when the server doesn't have it.</summary>

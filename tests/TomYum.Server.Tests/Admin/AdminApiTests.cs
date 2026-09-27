@@ -125,6 +125,32 @@ public sealed class AdminApiTests
     }
 
     [Fact]
+    public async Task Unlock_GivesBanchosStatusBack_ToStaffSetDifficultiesOnly()
+    {
+        var api = new FakeApi { Sets = { [7] = [Map(70, 7), Map(71, 7)] } };
+        var (services, repository, log) = Build(api);
+        using var scope = services.CreateScope();
+        var changer = scope.ServiceProvider.GetRequiredService<BeatmapStatusChanger>();
+        var beatmaps = services.GetRequiredService<BeatmapService>();
+        await changer.ChangeAsync(7, RankedStatus.Loved, [70], actorId: 2);
+        // What osu! says now (fresh objects, like a real API response).
+        api.Sets[7] = [Map(70, 7, status: RankedStatus.Ranked), Map(71, 7, status: RankedStatus.Ranked)];
+
+        var result = await changer.UnlockAsync(7, null, actorId: 2);
+
+        Assert.Equal(BeatmapStatusChanger.UnlockName, result!.Status);
+        Assert.Equal(["Normal 70"], result.Changed);
+        var unlocked = repository.Stored.Single(b => b.Id == 70);
+        Assert.Equal((RankedStatus.Ranked, false), (unlocked.Status, unlocked.StatusFrozen));
+        Assert.Null(beatmaps.GetStatusOverride(70));
+        Assert.Contains("[Normal 70] → bancho's status", log.Entries.Last(e => e.Action == BeatmapStatusChanger.LogAction).Summary, StringComparison.Ordinal);
+
+        // Nothing staff-set is left: nothing to do.
+        Assert.Empty((await changer.UnlockAsync(7, null, actorId: 2))!.Changed);
+        Assert.Null(await changer.UnlockAsync(404, null, actorId: 2));
+    }
+
+    [Fact]
     public async Task StatusChange_UnknownSet_ReturnsNull()
     {
         var (services, _, log) = Build(new FakeApi());
@@ -205,7 +231,7 @@ public sealed class AdminApiTests
     private static BeatmapImportRunner NewRunner(ServiceProvider services) => new(
         services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<BeatmapImportRunner>.Instance);
 
-    private static Beatmap Map(int id, int setId, DateTimeOffset? rankedAt = null) => new()
+    private static Beatmap Map(int id, int setId, DateTimeOffset? rankedAt = null, RankedStatus status = default) => new()
     {
         Id = id,
         SetId = setId,
@@ -213,6 +239,7 @@ public sealed class AdminApiTests
         Artist = $"Artist {setId}",
         Version = $"Normal {id}",
         Title = $"Title {setId}",
+        Status = status,
         Details = new BeatmapDetails { ApprovedDate = rankedAt },
     };
 
@@ -288,8 +315,22 @@ public sealed class AdminApiTests
             return Task.FromResult(true);
         }
 
+        public Task<bool> UnfreezeStatusAsync(int beatmapId, CancellationToken cancellationToken = default)
+        {
+            var beatmap = Stored.FirstOrDefault(b => b.Id == beatmapId);
+            if (beatmap is not null)
+                beatmap.StatusFrozen = false;
+            return Task.FromResult(beatmap is not null);
+        }
+
         public Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
         {
+            // Like the real repository: a frozen status survives.
+            if (Stored.FirstOrDefault(b => b.Id == beatmap.Id) is { StatusFrozen: true } frozen)
+            {
+                beatmap.Status = frozen.Status;
+                beatmap.StatusFrozen = true;
+            }
             Stored.RemoveAll(b => b.Id == beatmap.Id);
             Stored.Add(beatmap);
             return Task.CompletedTask;

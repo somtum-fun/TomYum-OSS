@@ -146,19 +146,9 @@ public sealed class ScoreModeration
         if (stats is null)
             return;
 
-        var bests = _db.Scores.AsNoTracking().Where(s => s.UserId == userId && s.Mode == mode && s.Status == ScoreStatus.Best);
-        stats.RankedScore = await bests.SumAsync(s => s.ScoreValue, cancellationToken).ConfigureAwait(false);
+        await BestScoreStats.ApplyAsync(_db, stats, cancellationToken).ConfigureAwait(false);
         stats.TotalScore = Math.Max(0, stats.TotalScore - removedScore);
         stats.PlayCount = Math.Max(0, stats.PlayCount - removedCount);
-
-        var performances = await bests.Where(s => s.Pp > 0).OrderByDescending(s => s.Pp)
-            .Select(s => new { s.Pp, s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss })
-            .ToListAsync(cancellationToken).ConfigureAwait(false);
-        var totals = PerformanceTotals.Compute(performances
-            .Select(p => (p.Pp, (float)AccuracyCalculator.Compute(GameMode.AsVanilla(mode), p.Count300, p.Count100, p.Count50, p.CountGeki, p.CountKatu, p.CountMiss)))
-            .ToList());
-        stats.Pp = totals?.Pp ?? 0;
-        stats.Accuracy = totals?.Accuracy ?? 0;
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.Entry(stats).State = EntityState.Detached;

@@ -47,6 +47,10 @@ public sealed class OsuWebMirroringBeatmapRepository : IBeatmapRepository
         return true;
     }
 
+    // The website follows on the UpsertAsync that brings back the osu! API's status.
+    public Task<bool> UnfreezeStatusAsync(int beatmapId, CancellationToken cancellationToken = default) =>
+        _inner.UnfreezeStatusAsync(beatmapId, cancellationToken);
+
     public async Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(beatmap);
@@ -60,6 +64,9 @@ public sealed class OsuWebMirroringBeatmapRepository : IBeatmapRepository
         effective.Details = beatmap.Details;
 
         await _mirror.WriteAsync(effective, cancellationToken).ConfigureAwait(false);
+        // The write gave the set this difficulty's status; with mixed statuses (staff-set ones) the
+        // set shows its difficulties' best instead.
+        await _mirror.SyncSetStatusAsync(effective.SetId, cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<int> ReserveCustomSetIdAsync(CancellationToken cancellationToken = default)
