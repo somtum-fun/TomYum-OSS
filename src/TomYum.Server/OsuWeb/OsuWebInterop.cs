@@ -75,6 +75,21 @@ public sealed class OsuWebInterop
         fallback.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Rebuilds a country's ranking data on osu-web (the fork's <c>/_lio/tomyum/recalculate-country/{code}</c>).
+    /// On osu! a scheduled job does this; a TomYum setup has no scheduler running, so TomYum asks after
+    /// stats change. A 404 (a stock osu-web without the endpoint) is ignored.
+    /// </summary>
+    public async Task RecalculateCountryAsync(string countryAcronym, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(countryAcronym);
+
+        using var response = await PostAsync($"/_lio/tomyum/recalculate-country/{Uri.EscapeDataString(countryAcronym.ToUpperInvariant())}", cancellationToken)
+            .ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.NotFound)
+            response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>The signed URL for <paramref name="path"/> at the current time.</summary>
     public (Uri Url, string Signature) Sign(string path)
     {

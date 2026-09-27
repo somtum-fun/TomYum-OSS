@@ -33,6 +33,7 @@ public sealed class ScoreModeration
     private readonly ILogger<ScoreModeration> _logger;
     private readonly OsuWebScoreMirror? _mirror;
     private readonly OsuWebScoreIndexing? _indexing;
+    private readonly OsuWeb.OsuWebInterop? _interop;
 
     public ScoreModeration(
         TomYumDbContext db,
@@ -41,7 +42,8 @@ public sealed class ScoreModeration
         TimeProvider time,
         ILogger<ScoreModeration> logger,
         OsuWebScoreMirror? mirror = null,
-        OsuWebScoreIndexing? indexing = null)
+        OsuWebScoreIndexing? indexing = null,
+        OsuWeb.OsuWebInterop? interop = null)
     {
         _db = db;
         _log = log;
@@ -50,6 +52,7 @@ public sealed class ScoreModeration
         _logger = logger;
         _mirror = mirror;
         _indexing = indexing;
+        _interop = interop;
     }
 
     /// <summary>A player's scores, newest first (optionally one mode, or only their bests by pp).</summary>
@@ -176,6 +179,8 @@ public sealed class ScoreModeration
             }
             if (_indexing is not null)
                 await _indexing.QueueAsync(deleted).ConfigureAwait(false);
+            if (_interop is { IsConfigured: true } && await _mirror.GetCountryAsync(userId, cancellationToken).ConfigureAwait(false) is { Length: > 0 } country)
+                await _interop.RecalculateCountryAsync(country, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
