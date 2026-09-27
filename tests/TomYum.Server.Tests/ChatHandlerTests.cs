@@ -36,6 +36,11 @@ public class ChatHandlerTests
 
         public Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public Task<IReadOnlyList<Beatmap>> GetSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public bool SupportsSince => false;
     }
 
     private static OnlinePlayer AddPlayer(PlayerRegistry registry, int userId, string name) =>

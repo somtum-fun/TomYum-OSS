@@ -56,22 +56,48 @@ public sealed class BeatmapService
     /// </summary>
     public async Task<IReadOnlyList<Beatmap>> FetchSetOnceAsync(int setId, CancellationToken cancellationToken = default)
     {
-        if (setId is <= 0 or >= Beatmap.CustomIdFloor || !_fetchedSets.TryAdd(setId, 0))
+        if (!IsOfficialSet(setId) || !_fetchedSets.TryAdd(setId, 0))
         {
             return [];
         }
 
-        var set = await _api.GetSetAsync(setId, cancellationToken).ConfigureAwait(false);
+        var set = await FetchAndCacheAsync(setId, cancellationToken).ConfigureAwait(false);
         if (set.Count == 0)
         {
             _fetchedSets.TryRemove(setId, out _);
-            return set;
+        }
+        return set;
+    }
+
+    /// <summary>
+    /// Fetches every difficulty of set <paramref name="setId"/> from the API now, whether or not it
+    /// was fetched before (staff imports want current data). Empty for unknown or custom sets.
+    /// </summary>
+    public async Task<IReadOnlyList<Beatmap>> FetchSetAsync(int setId, CancellationToken cancellationToken = default)
+    {
+        if (!IsOfficialSet(setId))
+        {
+            return [];
         }
 
-        // The other difficulties are now known too: later lookups of them skip the API.
+        var set = await FetchAndCacheAsync(setId, cancellationToken).ConfigureAwait(false);
+        if (set.Count > 0)
+        {
+            _fetchedSets.TryAdd(setId, 0);
+        }
+        return set;
+    }
+
+    private static bool IsOfficialSet(int setId) => setId is > 0 and < Beatmap.CustomIdFloor;
+
+    private async Task<IReadOnlyList<Beatmap>> FetchAndCacheAsync(int setId, CancellationToken cancellationToken)
+    {
+        var set = await _api.GetSetAsync(setId, cancellationToken).ConfigureAwait(false);
+
+        // The set's difficulties are now known: later lookups of them skip the API.
         foreach (var beatmap in set)
         {
-            _byMd5.TryAdd(beatmap.Md5, beatmap);
+            _byMd5[beatmap.Md5] = beatmap;
         }
         return set;
     }

@@ -145,5 +145,10 @@ public class BeatmapStatusTests
             SetCalls++;
             return Task.FromResult(_set);
         }
+
+        public Task<IReadOnlyList<Beatmap>> GetSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public bool SupportsSince => false;
     }
 }
