@@ -148,6 +148,35 @@ public sealed class OsuWebAccountHistory
     public DateTime? Timestamp { get; set; }
 }
 
+/// <summary>A row of osu-web's <c>osu_beatmappacks</c> (a beatmap pack, identified by its tag).</summary>
+public sealed class OsuWebBeatmapPack
+{
+    public short PackId { get; set; }
+
+    public string Url { get; set; } = string.Empty;
+
+    public string Name { get; set; } = string.Empty;
+
+    public string Author { get; set; } = string.Empty;
+
+    /// <summary>E.g. <c>S788</c>, <c>P304</c> (varchar(5), unique).</summary>
+    public string Tag { get; set; } = string.Empty;
+
+    public DateTime Date { get; set; }
+
+    public bool Hidden { get; set; }
+}
+
+/// <summary>A row of osu-web's <c>osu_beatmappacks_items</c>: a set in a pack.</summary>
+public sealed class OsuWebBeatmapPackItem
+{
+    public uint ItemId { get; set; }
+
+    public ushort PackId { get; set; }
+
+    public uint BeatmapsetId { get; set; }
+}
+
 /// <summary>A row of osu-web's <c>osu_beatmaps</c> (only what TomYum writes; the rest have defaults).</summary>
 public sealed class OsuWebBeatmap
 {

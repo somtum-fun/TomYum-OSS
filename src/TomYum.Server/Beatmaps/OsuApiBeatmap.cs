@@ -133,4 +133,8 @@ public sealed class OsuApiBeatmap
     /// <summary>Ranked/approved/loved date.</summary>
     [JsonPropertyName("approved_date")]
     public string? ApprovedDate { get; set; }
+
+    /// <summary>Beatmap pack tags (e.g. <c>S788</c>): an array on osu.direct, a comma-separated string on old.ppy.sh.</summary>
+    [JsonPropertyName("packs")]
+    public System.Text.Json.JsonElement Packs { get; set; }
 }

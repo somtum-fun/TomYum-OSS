@@ -33,6 +33,37 @@ public sealed class OsuWebBeatmapMirror
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
+
+        if (beatmap.Details?.PackTags is { } packTags)
+            await SyncPacksAsync(beatmap.SetId, packTags, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Puts set <paramref name="setId"/> in exactly the packs <paramref name="tags"/> (creating packs
+    /// the website doesn't have yet; the osu! API only gives their tags, which then serve as name).
+    /// </summary>
+    public async Task SyncPacksAsync(int setId, IReadOnlyList<string> tags, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(tags);
+
+        var packs = await _db.BeatmapPacks.Where(p => tags.Contains(p.Tag)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var tag in tags.Where(t => packs.All(p => p.Tag != t)))
+        {
+            var pack = new OsuWebBeatmapPack { Tag = tag, Name = OsuWebBeatmaps.PackName(tag), Date = DateTime.UtcNow };
+            _db.BeatmapPacks.Add(pack);
+            packs.Add(pack);
+        }
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        var set = (uint)setId;
+        var wanted = packs.Select(p => (ushort)p.PackId).ToHashSet();
+        var current = await _db.BeatmapPackItems.Where(i => i.BeatmapsetId == set).ToListAsync(cancellationToken).ConfigureAwait(false);
+        _db.BeatmapPackItems.RemoveRange(current.Where(i => !wanted.Contains(i.PackId)));
+        foreach (var packId in wanted.Where(id => current.All(i => i.PackId != id)))
+            _db.BeatmapPackItems.Add(new OsuWebBeatmapPackItem { PackId = packId, BeatmapsetId = set });
+
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.ChangeTracker.Clear();
     }
 
     /// <summary>

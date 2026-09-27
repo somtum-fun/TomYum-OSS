@@ -43,6 +43,35 @@ public static class OsuWebBeatmaps
         };
     }
 
+    /// <summary>
+    /// A readable name for a pack known only by its tag: osu!'s tag prefixes are S (spotlights),
+    /// P (osu! packs), T/C/R (taiko/catch/mania packs), ST/SC/SM (taiko/catch/mania spotlights), L (loved) and others; the number follows.
+    /// </summary>
+    public static string PackName(string tag)
+    {
+        ArgumentNullException.ThrowIfNull(tag);
+        if (tag.Length > 2 && int.TryParse(tag[2..], out var spotlight))
+        {
+            var ruleset = tag[..2] switch { "ST" => "osu!taiko ", "SC" => "osu!catch ", "SM" => "osu!mania ", _ => null };
+            if (ruleset is not null)
+                return $"{ruleset}Spotlight pack #{spotlight}";
+        }
+
+        if (tag.Length < 2 || !int.TryParse(tag[1..], out var number))
+            return $"Beatmap pack {tag}";
+
+        return tag[0] switch
+        {
+            'S' => $"Spotlight pack #{number}",
+            'P' => $"osu! Beatmap Pack #{number}",
+            'T' => $"osu!taiko Beatmap Pack #{number}",
+            'C' => $"osu!catch Beatmap Pack #{number}",
+            'R' => $"osu!mania Beatmap Pack #{number}",
+            'L' => $"Project Loved pack #{number}",
+            _ => $"Beatmap pack {tag}",
+        };
+    }
+
     /// <summary>osu!'s precedence of <c>approved</c> values for a whole set: ranked, approved, loved, qualified, pending, WIP, graveyard.</summary>
     private static readonly sbyte[] SetStatusPrecedence = [1, 2, 4, 3, 0, -1, -2];
 

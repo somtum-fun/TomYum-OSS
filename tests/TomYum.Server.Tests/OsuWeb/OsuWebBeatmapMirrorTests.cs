@@ -120,6 +120,41 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task PackTags_PutTheSetInThosePacks_CreatingMissingOnes()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        await ExecuteAsync("INSERT INTO osu_beatmappacks (url, name, author, tag) VALUES ('https://x', 'Existing', 'peppy', 'S1')");
+        var repository = NewRepository(tomyum);
+        var map = Map(600, 60, RankedStatus.Ranked, api: 1);
+        map.Details = new BeatmapDetails { PackTags = ["S1", "P304"] };
+        await repository.UpsertAsync(map);
+        var sibling = Map(601, 60, RankedStatus.Ranked, api: 1, version: "Hard");
+        sibling.Details = new BeatmapDetails { PackTags = ["S1", "P304"] };
+        await repository.UpsertAsync(sibling); // a second difficulty doesn't add the set twice
+
+        Assert.Equal(2L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_beatmappacks"));
+        Assert.Equal("Existing", await ScalarAsync<string>("SELECT name FROM osu_beatmappacks WHERE tag = 'S1'"));
+        Assert.Equal("osu! Beatmap Pack #304", await ScalarAsync<string>("SELECT name FROM osu_beatmappacks WHERE tag = 'P304'"));
+        Assert.Equal(2L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_beatmappacks_items WHERE beatmapset_id = 60"));
+
+        // The set left P304; without pack data (keyless mirror) nothing changes.
+        map.Details = new BeatmapDetails { PackTags = ["S1"] };
+        await repository.UpsertAsync(map);
+        map.Details = new BeatmapDetails();
+        await repository.UpsertAsync(map);
+
+        Assert.Equal(1L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_beatmappacks_items WHERE beatmapset_id = 60"));
+    }
+
+    [Theory]
+    [InlineData("S788", "Spotlight pack #788")]
+    [InlineData("R12", "osu!mania Beatmap Pack #12")]
+    [InlineData("SM331", "osu!mania Spotlight pack #331")]
+    [InlineData("X", "Beatmap pack X")]
+    [InlineData("SAB", "Beatmap pack SAB")]
+    public void PackNames_FollowTheTagPrefix(string tag, string name) => Assert.Equal(name, OsuWebBeatmaps.PackName(tag));
+
+    [MySqlFact]
     public async Task MissingDetails_NeverBlankKnownValues()
     {
         await using var tomyum = await NewTomYumContextAsync();
