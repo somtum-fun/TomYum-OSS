@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using TomYum.Server.Beatmaps;
 
 namespace TomYum.Server.OsuWeb;
 
@@ -112,6 +113,21 @@ public sealed class OsuWebInterop
     }
 
     /// <summary>Creates the game's public channels in website chat (the fork's <c>/_lio/tomyum/chat-channels</c>).</summary>
+    /// <summary>
+    /// Gives a set on the website its osu! description (BBCode; the site keeps it as the set's
+    /// description post) and nominators (osu! users, shown with links to their osu! profiles).
+    /// </summary>
+    public async Task SyncBeatmapsetExtrasAsync(int beatmapsetId, BeatmapsetExtras extras, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(extras);
+        using var response = await PostJsonAsync(string.Create(CultureInfo.InvariantCulture, $"/_lio/tomyum/beatmapset-extras/{beatmapsetId}"), new
+        {
+            description = extras.DescriptionBbcode,
+            nominators = extras.Nominators.Select(n => new { id = n.OsuUserId, username = n.Username, rulesets = n.Rulesets }),
+        }, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task EnsureChatChannelsAsync(IEnumerable<(string Name, string Description, bool Moderated)> channels, CancellationToken cancellationToken = default)
     {
         using var response = await PostJsonAsync("/_lio/tomyum/chat-channels", new

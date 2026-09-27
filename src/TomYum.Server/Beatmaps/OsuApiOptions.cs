@@ -19,6 +19,12 @@ public sealed class OsuApiOptions
     /// <summary>osu! v1 API key. When empty, the keyless mirror is used.</summary>
     public string? ApiKey { get; set; }
 
+    /// <summary>osu! API v2 OAuth application id (descriptions, nominators); optional.</summary>
+    public string? ClientId { get; set; }
+
+    /// <summary>osu! API v2 OAuth application secret; optional.</summary>
+    public string? ClientSecret { get; set; }
+
     /// <summary>
     /// Effective API base address: the official endpoint when an <see cref="ApiKey"/> is present,
     /// otherwise the keyless mirror. Always ends in <c>/</c> so relative requests compose cleanly.
