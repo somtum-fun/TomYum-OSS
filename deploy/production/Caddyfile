@@ -1,0 +1,111 @@
+# Production routing behind a Cloudflare Tunnel (docs/deploy-production.md). Cloudflare ends
+# HTTPS and sends every hostname to caddy:80 over the tunnel, so the sites here are plain HTTP.
+# {$DOMAIN} is your domain (e.g. example.com): osu.example.com is the website, c./ce./c4. the
+# game's bancho, a. avatars, spectator. lazer's multiplayer/spectating.
+{
+	auto_https off
+	servers {
+		# Only cloudflared (on the compose network) reaches this Caddy.
+		trusted_proxies static private_ranges
+		client_ip_headers Cf-Connecting-Ip X-Forwarded-For
+	}
+}
+
+(tomyum) {
+	reverse_proxy server:8080 {
+		header_up X-Real-IP {client_ip}
+		header_up X-Forwarded-Proto https
+	}
+}
+
+(osu-web) {
+	reverse_proxy osu-web:8080 {
+		header_up X-Forwarded-For {client_ip}
+		header_up X-Forwarded-Proto https
+	}
+}
+
+# Game endpoints (bancho, beatmap assets, medal icons).
+http://c.{$DOMAIN}, http://ce.{$DOMAIN}, http://c4.{$DOMAIN}, http://cho.{$DOMAIN}, http://b.{$DOMAIN}, http://assets.{$DOMAIN} {
+	request_body {
+		max_size 20MB
+	}
+	import tomyum
+}
+
+# Avatars (a.<domain>/<user id>): the website's uploads; users without one get its guest avatar.
+http://a.{$DOMAIN} {
+	header Cache-Control "no-cache"
+
+	@user path_regexp user ^/([0-9]+)$
+	handle @user {
+		rewrite * /uploads/avatar/{re.user.1}
+		reverse_proxy osu-web:8080 {
+			# Stored without an extension; browsers sniff the real format from any image/* type.
+			header_down Content-Type image/png
+			@missing status 404
+			handle_response @missing {
+				rewrite * /images/layout/avatar-guest@2x.png
+				reverse_proxy osu-web:8080
+			}
+		}
+	}
+	handle {
+		rewrite * /images/layout/avatar-guest@2x.png
+		reverse_proxy osu-web:8080
+	}
+}
+
+# osu.: the game client's /web/* and in-game registration go to TomYum, the website to osu-web.
+http://osu.{$DOMAIN} {
+	request_body {
+		max_size 32MB
+	}
+
+	# The website's InterOp API is for TomYum and ppy's services on the compose network only.
+	handle /_lio/* {
+		respond 404
+	}
+
+	@tomyum path /web/* /d/*
+	handle @tomyum {
+		import tomyum
+	}
+	@stable_register {
+		method POST
+		path /users
+		header User-Agent osu!
+	}
+	handle @stable_register {
+		import tomyum
+	}
+
+	# Lazer's hubs when it derives them from the API URL (<api>/signalr/<hub>).
+	handle_path /signalr/* {
+		reverse_proxy spectator:80
+	}
+
+	# Beatmap covers: the website links them under its uploads, but the official ones are on
+	# ppy's asset server at the same path.
+	@covers path_regexp covers ^/uploads/default/(beatmaps/[0-9]+/covers/.+)$
+	handle @covers {
+		redir https://assets.ppy.sh/{re.covers.1}
+	}
+
+	handle /uploads/avatar/* {
+		reverse_proxy osu-web:8080 {
+			header_down Content-Type image/png
+		}
+	}
+
+	handle {
+		import osu-web
+	}
+
+	encode gzip zstd
+}
+
+# Lazer's multiplayer, spectating and online presence (SignalR over WebSockets).
+http://spectator.{$DOMAIN} {
+	reverse_proxy spectator:80
+}

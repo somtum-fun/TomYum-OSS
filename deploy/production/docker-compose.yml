@@ -1,0 +1,285 @@
+# TomYum + osu-web (the website) + ppy's services on one server, published through a Cloudflare
+# Tunnel. See docs/deploy-production.md. Configure with deploy/production/.env (copy
+# .env.example), tomyum.env and osu-web.env; nothing here needs editing.
+#
+#   cloudflared ─► caddy:80 ─┬─► server:8080        TomYum (bancho, /web/*, osu!direct downloads)
+#                            ├─► osu-web:8080       the website (nginx ► octane), /api/v2 for lazer
+#                            └─► spectator:80       lazer multiplayer / spectating
+#
+# Nothing listens on the host: MySQL, Redis and Elasticsearch stay on the compose network.
+# Needs Docker Compose 2.26+ (volume subpaths).
+
+x-osu-web: &osu-web
+  image: tomyum/osu-web:production
+  restart: unless-stopped
+  env_file: osu-web.env
+  environment: &osu-web-env
+    APP_URL: https://osu.${DOMAIN}
+    APP_KEY: ${OSU_WEB_APP_KEY}
+    SESSION_DOMAIN: osu.${DOMAIN}
+    DB_HOST: db
+    DB_USERNAME: osuweb
+    DB_PASSWORD: ${DB_PASSWORD}
+    REDIS_HOST: redis
+    NOTIFICATION_REDIS_HOST: redis
+    ES_HOST: http://elasticsearch:9200
+    ES_SOLO_SCORES_HOST: http://elasticsearch:9200
+    BEATMAPS_DIFFICULTY_CACHE_SERVER_URL: http://beatmap-difficulty-lookup-cache:8080
+    SHARED_INTEROP_SECRET: ${SHARED_INTEROP_SECRET}
+    TOMYUM_ADMIN_URL: http://server:8080
+    OSU_API_KEY: ${OSU_API_KEY:-}
+  volumes:
+    - osu-web-uploads:/app/public/uploads
+    - osu-web-storage:/app/storage
+  depends_on: &osu-web-deps
+    volumes-init:
+      condition: service_completed_successfully
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+# ppy's services read the database and Redis the same way.
+x-ppy-env: &ppy-env
+  DB_HOST: db
+  DB_USER: osuweb
+  DB_PASS: ${DB_PASSWORD}
+  DB_NAME: osu
+  REDIS_HOST: redis
+  SHARED_INTEROP_DOMAIN: http://osu-web:8080
+  SHARED_INTEROP_SECRET: ${SHARED_INTEROP_SECRET}
+
+# The website's Passport public key, which checks lazer/API logins (made by `artisan passport:keys`).
+x-oauth-key: &oauth-key
+  type: volume
+  source: osu-web-storage
+  target: /app/oauth-public.key
+  read_only: true
+  volume:
+    subpath: oauth-public.key
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on: [caddy]
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+  # --- TomYum ---------------------------------------------------------------------------------
+  server:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        PROJECT: src/TomYum.Server/TomYum.Server.csproj
+    restart: unless-stopped
+    env_file: tomyum.env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      TOMYUM_SERVER__DOMAIN: ${DOMAIN}
+      TOMYUM_DATABASE__ENABLED: "true"
+      TOMYUM_DATABASE__HOST: db
+      TOMYUM_DATABASE__PORT: "3306"
+      TOMYUM_DATABASE__NAME: tomyum
+      TOMYUM_DATABASE__OSUWEBNAME: osu
+      TOMYUM_DATABASE__USER: osuweb
+      TOMYUM_DATABASE__PASSWORD: ${DB_PASSWORD}
+      TOMYUM_REDIS__CONFIGURATION: redis:6379
+      TOMYUM_OSUWEB__INTEROPURL: http://osu-web:8080
+      TOMYUM_OSUWEB__INTEROPSECRET: ${SHARED_INTEROP_SECRET}
+      TOMYUM_OSUWEB__SCOREPROCESSOR: "true"
+      TOMYUM_OSU__APIKEY: ${OSU_API_KEY:-}
+      TOMYUM_OSU__CLIENTID: ${OSU_CLIENT_ID:-}
+      TOMYUM_OSU__CLIENTSECRET: ${OSU_CLIENT_SECRET:-}
+    volumes:
+      - server-data:/app/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # --- The website (your osu-web fork, built with ppy's production Dockerfile) -----------------
+  osu-web-build:
+    # Only builds the image the website services share: `docker compose build osu-web-build`.
+    image: tomyum/osu-web:production
+    build:
+      context: ${OSU_WEB_PATH:-../../../osu-web}
+      dockerfile: Dockerfile.deployment
+      args:
+        APP_URL: https://osu.${DOMAIN}
+    profiles: [build]
+
+  volumes-init:
+    # The image runs as `osuweb`; fresh volumes belong to root. Runs once per start, quickly.
+    image: tomyum/osu-web:production
+    user: "0"
+    entrypoint: ["sh", "-c"]
+    command:
+      - mkdir -p /app/public/uploads/avatar /app/public/uploads/replay /app/storage/logs
+        /app/storage/framework/cache /app/storage/framework/views /app/storage/framework/sessions
+        && chown -R osuweb /app/public/uploads /app/storage
+    volumes:
+      - osu-web-uploads:/app/public/uploads
+      - osu-web-storage:/app/storage
+
+  osu-web:
+    # nginx in front of octane, as in osu-web's development setup: static files and uploads from
+    # disk, the notification websocket to its server, everything else to PHP.
+    <<: *osu-web
+    entrypoint: ["nginx", "-c", "/etc/osu-web/nginx.conf"]
+    command: []
+    volumes:
+      - osu-web-uploads:/app/public/uploads
+      - osu-web-storage:/app/storage
+      - ./osu-web-nginx.conf:/etc/osu-web/nginx.conf:ro
+    depends_on:
+      <<: *osu-web-deps
+      php:
+        condition: service_started
+
+  php:
+    <<: *osu-web
+    command: ["octane"]
+
+  job:
+    <<: *osu-web
+    command: ["artisan", "queue:work", "--queue=notification,default,beatmap_high,beatmap_default,imagesize", "--tries=3", "--timeout=1000"]
+
+  scheduler:
+    <<: *osu-web
+    command: ["artisan", "schedule:work"]
+
+  artisan:
+    # One-off artisan commands, e.g. `docker compose run --rm artisan migrate --force`.
+    <<: *osu-web
+    restart: "no"
+    entrypoint: ["/app/artisan"]
+    command: ["list"]
+    profiles: [tools]
+
+  notification-server:
+    image: pppy/osu-notification-server
+    restart: unless-stopped
+    environment:
+      <<: *osu-web-env
+    volumes:
+      - ./osu-web.env:/app/.env:ro
+      - *oauth-key
+    depends_on: *osu-web-deps
+
+  # --- ppy's services -------------------------------------------------------------------------
+  score-indexer:
+    image: pppy/osu-elastic-indexer:master
+    restart: unless-stopped
+    command: ["queue", "watch"]
+    environment:
+      DB_CONNECTION_STRING: Server=db;Database=osu;Uid=osuweb;Pwd=${DB_PASSWORD};
+      ES_HOST: http://elasticsearch:9200
+      REDIS_HOST: redis
+      SCHEMA: "1"
+    depends_on:
+      db:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+
+  score-processor:
+    image: pppy/osu-queue-score-statistics:latest
+    restart: unless-stopped
+    command: ["queue", "watch"]
+    environment:
+      <<: *ppy-env
+      WRITE_LEGACY_SCORE_PP: "0"
+      # Exactly "0" turns the client build check off (ppy's processor tests != "0").
+      CLIENT_CHECK_VERSION: "0"
+      # Custom (server-only) maps: TomYum serves every map's .osu file.
+      BEATMAP_DOWNLOAD_PATH: http://server:8080/osu/{0}
+    depends_on:
+      db:
+        condition: service_healthy
+
+  spectator:
+    build:
+      context: ${OSU_WEB_PATH:-../../../osu-web}/docker/spectator
+    restart: unless-stopped
+    environment:
+      <<: *ppy-env
+      SERVER_PORT: "80"
+      SENTRY_DSN: ""
+      SAVE_REPLAYS: "true"
+      # Straight into the website's uploads, where it reads lazer replays from.
+      REPLAYS_PATH: /uploads/replay
+      BANCHO_BOT_USER_ID: "1"
+      CLIENT_CHECK_VERSION: "false"
+    volumes:
+      - osu-web-uploads:/uploads
+      - *oauth-key
+    depends_on: *osu-web-deps
+
+  beatmap-difficulty-lookup-cache:
+    image: pppy/osu-beatmap-difficulty-lookup-cache
+    restart: unless-stopped
+
+  # --- Storage --------------------------------------------------------------------------------
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      DB_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql-init.sh:/docker-entrypoint-initdb.d/tomyum.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      start_period: 60s
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  elasticsearch:
+    image: elasticsearch:7.17.16
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: -Xms1g -Xmx1g
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"]
+      start_period: 60s
+      interval: 10s
+      retries: 30
+
+volumes:
+  caddy-data:
+  server-data:
+  mysql-data:
+  redis-data:
+  elasticsearch-data:
+  osu-web-uploads:
+  osu-web-storage:

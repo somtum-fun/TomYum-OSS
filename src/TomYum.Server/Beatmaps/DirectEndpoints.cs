@@ -28,6 +28,28 @@ public static class DirectEndpoints
         // Download redirect — no host restriction so clients that hit the osu. subdomain
         // for /d/ still get the redirect. If the deployment needs host filtering, add hosts.
         app.MapGet("/d/{setId}", HandleDownload);
+
+        // One difficulty's .osu file, like osu.ppy.sh/osu/{id}: ppy's score processor reads maps
+        // from here (BEATMAP_DOWNLOAD_PATH), so custom maps (whose files are only in TomYum's
+        // .osu cache) get pp too. No host restriction: it's called by the compose service name.
+        app.MapGet("/osu/{beatmapId:int}", HandleOsuFileAsync);
+    }
+
+    private static async Task<IResult> HandleOsuFileAsync(int beatmapId, TomYum.Performance.OsuFileCache files, CancellationToken cancellationToken)
+    {
+        if (beatmapId <= 0)
+            return Results.NotFound();
+
+        try
+        {
+            var bytes = await files.GetAsync(beatmapId, cancellationToken).ConfigureAwait(false);
+            return Results.File(bytes, "text/plain; charset=utf-8", $"{beatmapId}.osu");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+        {
+            // Neither cached (a custom map) nor on osu.ppy.sh.
+            return Results.NotFound();
+        }
     }
 
     /// <summary>
