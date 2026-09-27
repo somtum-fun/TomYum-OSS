@@ -256,6 +256,14 @@ public sealed class OsuWebScoreMirror
         return _osuWeb.Database.ExecuteSqlRawAsync(sql, cancellationToken);
     }
 
+    /// <summary>The player's osu-web country code (e.g. <c>TH</c>), or null when it's not an osu-web account.</summary>
+    public Task<string?> GetCountryAsync(int userId, CancellationToken cancellationToken = default)
+    {
+        var uid = (uint)userId;
+        return _osuWeb.Users.AsNoTracking().Where(u => u.UserId == uid)
+            .Select(u => u.CountryAcronym).FirstOrDefaultAsync(cancellationToken)!;
+    }
+
     /// <summary>The osu-web copies of <paramref name="userId"/>'s scores (for re-indexing after a restriction change).</summary>
     public async Task<IReadOnlyList<ulong>> GetLinkedScoreIdsAsync(int userId, CancellationToken cancellationToken = default) =>
         await _tomyum.Database

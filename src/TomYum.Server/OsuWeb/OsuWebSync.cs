@@ -46,6 +46,28 @@ public sealed class OsuWebSync : IOsuWebSync
 
         if (osuWebScoreId is { } id)
             await _indexQueue.QueueAsync([id]).ConfigureAwait(false);
+
+        await RecalculateCountryAsync(score.UserId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Has osu-web rebuild the player's country ranking data (country rankings and the country filter
+    /// of the global ranking). Best effort: rankings just lag behind if it fails.
+    /// </summary>
+    private async Task RecalculateCountryAsync(int userId, CancellationToken cancellationToken)
+    {
+        if (!_interop.IsConfigured)
+            return;
+
+        try
+        {
+            if (await _mirror.GetCountryAsync(userId, cancellationToken).ConfigureAwait(false) is { Length: > 0 } country)
+                await _interop.RecalculateCountryAsync(country, cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogWarning(ex, "osu-web country recalculation failed for user {UserId}.", userId);
+        }
     }
 
     public async Task MedalsUnlockedAsync(int userId, IReadOnlyList<Medal> medals, int beatmapId, CancellationToken cancellationToken = default)
