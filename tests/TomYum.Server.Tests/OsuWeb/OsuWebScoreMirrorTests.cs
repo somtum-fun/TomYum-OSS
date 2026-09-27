@@ -1,5 +1,6 @@
 using System.Text.Json;
 using StackExchange.Redis;
+using TomYum.Caching;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Persistence;
@@ -167,7 +168,7 @@ public sealed class OsuWebScoreMirrorTests : OsuWebDatabaseTest
         {
             var sync = new OsuWebSync(
                 new OsuWebScoreMirror(tomyum, NewOsuWebContext()),
-                new OsuWebScoreIndexing(redis, new DatabaseOptions { OsuWebIndexPrefix = prefix }));
+                new OsuWebScoreIndexing(redis, prefix));
 
             await sync.ScoreSubmittedAsync(score);
 

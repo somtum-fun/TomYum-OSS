@@ -119,7 +119,8 @@ with Caddy and point the subdomain records at your host — see `deploy/caddy/Ca
 
 The website is [osu-web](https://github.com/ppy/osu-web), run alongside TomYum on the same MySQL and
 Redis, with Caddy splitting `osu.<domain>` between the two. See [docs/osu-web.md](docs/osu-web.md)
-for setup and the plan for sharing one database.
+for setup and the plan for sharing one database. Moving an existing server with players:
+[tools/MigrateToOsuWeb](tools/MigrateToOsuWeb/README.md).
 
 ### Deployment
 

@@ -132,7 +132,7 @@ public sealed class OsuWebScoreMirror
                 CountMiss = g.Sum(s => (long)s.CountMiss),
                 MaxCombo = g.Max(s => s.MaxCombo),
             })
-            .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+            .SingleOrDefaultAsync(cancellationToken).ConfigureAwait(false); // one group at most
         var grades = await scores
             .Where(s => s.Status == ScoreStatus.Best)
             .GroupBy(s => s.Grade)
@@ -182,6 +182,56 @@ public sealed class OsuWebScoreMirror
                 Math.Max(0, stats.Pp),
             ],
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Copies TomYum's existing history to osu-web: every vanilla score not copied yet (oldest
+    /// first, so osu-web ids follow play order), then every player's stats, then global ranks.
+    /// Returns the new osu-web score ids (queue them for osu-web's score indexer). Only safe once
+    /// TomYum's user ids are osu-web's — after <see cref="OsuWebAccountMigration"/>, or on a server
+    /// that has only ever used osu-web accounts. Re-running copies only what's missing.
+    /// </summary>
+    public async Task<IReadOnlyList<ulong>> CopyHistoryAsync(IProgress<int>? progress = null, CancellationToken cancellationToken = default)
+    {
+        await EnsureLinkTableAsync(cancellationToken).ConfigureAwait(false);
+
+        var linked = (await _tomyum.Database.SqlQueryRaw<long>("SELECT ScoreId AS Value FROM osu_web_score_links")
+                .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToHashSet();
+        var pending = (await _tomyum.Scores.AsNoTracking()
+                .Where(s => s.Mode >= 0 && s.Mode < GameMode.RelaxOffset)
+                .OrderBy(s => s.Id)
+                .Select(s => s.Id)
+                .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .Where(id => !linked.Contains(id))
+            .ToList();
+
+        var copied = new List<ulong>();
+        foreach (var batch in pending.Chunk(500))
+        {
+            var scores = await _tomyum.Scores.AsNoTracking()
+                .Where(s => batch.Contains(s.Id))
+                .OrderBy(s => s.Id)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+            foreach (var score in scores)
+            {
+                if (await WriteScoreAsync(score, cancellationToken).ConfigureAwait(false) is { } id)
+                    copied.Add(id);
+            }
+            progress?.Report(copied.Count);
+        }
+
+        var players = await _tomyum.UserStats.AsNoTracking()
+            .Where(s => s.Mode >= 0 && s.Mode < GameMode.RelaxOffset)
+            .Select(s => new { s.UserId, s.Mode })
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var player in players)
+            await WriteStatsAsync(player.UserId, player.Mode, cancellationToken).ConfigureAwait(false);
+
+        for (var mode = 0; mode < GameMode.RelaxOffset; mode++)
+            await RecomputeGlobalRanksAsync(mode, cancellationToken).ConfigureAwait(false);
+
+        return copied;
     }
 
     /// <summary>
