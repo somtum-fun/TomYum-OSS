@@ -15,8 +15,12 @@ Done (2026-09-27):
     upgrade keep their old in-game pp until recalculated (`tools/RecalcPp`); the website already
     has the new values.
 
-Not yet: the spectator server (multiplayer, spectating, online presence, lazer replays) and
-custom-map pp (the processor downloads `.osu` files from osu.ppy.sh).
+- **Multiplayer, spectating, online presence, lazer replays**: osu-web's compose builds ppy's
+  spectator server (`spectator`, from `docker/spectator/Dockerfile`) with one change: replays go
+  to `public/uploads/replay` (where the website reads them) instead of Amazon S3. Caddy serves it
+  as `https://spectator.localtest.me` (`deploy/caddy/Caddyfile.local`).
+
+Not yet: custom-map pp (the processor downloads `.osu` files from osu.ppy.sh).
 
 ## Connecting a lazer client
 
@@ -27,8 +31,9 @@ in lazer**: using it against the official servers gets accounts banned. Remove t
 2. Copy `osu.Game.Rulesets.EnhancedAuth.dll` from the
    [latest release](https://github.com/MingxuanGame/LazerAuthlibInjection/releases) into `rulesets`.
 3. Restart lazer. Settings → Rulesets → set **API Url** and **Website Url** to
-   `https://osu.localtest.me`. Keep the default client ID/secret. Turn off the g0v0-server features
-   (the `--non-g0v0-server` option).
+   `https://osu.localtest.me`, and **Spectator / Multiplayer / Metadata Url** to
+   `https://spectator.localtest.me/spectator`, `.../multiplayer`, `.../metadata`. Keep the default
+   client ID/secret. Turn off the g0v0-server features (the `--non-g0v0-server` option).
 4. Sign in with your normal account from the website.
 
 ## Research

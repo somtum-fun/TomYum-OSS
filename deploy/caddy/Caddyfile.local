@@ -3,7 +3,8 @@
 # public DNS, so no hosts-file edits are needed. Run `caddy trust` once so Windows/macOS/Linux
 # (and therefore osu! and your browser) trust these certificates.
 #
-# TomYum.Server on localhost:8080, osu-web's nginx on localhost:8180 (NGINX_PORT=8180).
+# TomYum.Server on localhost:8080, osu-web's nginx on localhost:8180 (NGINX_PORT=8180), lazer's
+# spectator server on localhost:8190.
 {
 	local_certs
 }
@@ -68,4 +69,10 @@ osu.localtest.me {
 	handle {
 		reverse_proxy localhost:8180
 	}
+}
+
+# osu!(lazer)'s multiplayer, spectating and online presence (docs/lazer.md): ppy's spectator
+# server in osu-web's compose, on localhost:8190 (SPECTATOR_PORT). SignalR over WebSockets.
+spectator.localtest.me {
+	reverse_proxy localhost:8190
 }
