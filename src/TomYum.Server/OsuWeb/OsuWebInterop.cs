@@ -1,0 +1,77 @@
+using System.Globalization;
+using System.Net;
+using System.Security.Cryptography;
+using System.Text;
+
+namespace TomYum.Server.OsuWeb;
+
+/// <summary>
+/// Calls osu-web's InterOp API (<c>/_lio/*</c>), the endpoints osu!'s own game server uses to tell
+/// the website about things that happen in-game. Requests are signed as osu-web's
+/// <c>LegacyInterOpAuth</c> expects: <c>?timestamp=</c> (unix seconds, 5-minute window) and header
+/// <c>X-LIO-Signature</c> = hex HMAC-SHA1 of the full URL keyed with <c>SHARED_INTEROP_SECRET</c>.
+/// </summary>
+public sealed class OsuWebInterop
+{
+    private readonly HttpClient _http;
+    private readonly OsuWebInteropOptions _options;
+    private readonly TimeProvider _time;
+
+    public OsuWebInterop(HttpClient http, OsuWebInteropOptions options, TimeProvider? time = null)
+    {
+        _http = http;
+        _options = options;
+        _time = time ?? TimeProvider.System;
+    }
+
+    public bool IsConfigured => _options.IsConfigured;
+
+    /// <summary>
+    /// Unlocks a medal the way osu! does (<c>POST /_lio/user-achievement/{user}/{medal}[/{beatmap}]</c>):
+    /// osu-web records it, adds the "unlocked a medal" activity entry, bumps the medal's count and
+    /// notifies the player. Returns false when it was already unlocked.
+    /// </summary>
+    public async Task<bool> UnlockMedalAsync(int userId, int medalId, int? beatmapId, CancellationToken cancellationToken = default)
+    {
+        var path = string.Create(CultureInfo.InvariantCulture, $"/_lio/user-achievement/{userId}/{medalId}");
+        if (beatmapId is > 0)
+            path += string.Create(CultureInfo.InvariantCulture, $"/{beatmapId}");
+
+        using var response = await PostAsync(path, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.UnprocessableEntity)
+            return false; // "user already unlocked the specified achievement"
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
+    /// <summary>Puts a user into osu-web's search index (<c>POST /_lio/user-index/{user}</c>).</summary>
+    public async Task IndexUserAsync(int userId, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostAsync(string.Create(CultureInfo.InvariantCulture, $"/_lio/user-index/{userId}"), cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>The signed URL for <paramref name="path"/> at the current time.</summary>
+    public (Uri Url, string Signature) Sign(string path)
+    {
+        if (!IsConfigured)
+            throw new InvalidOperationException("osu-web InterOp isn't configured (OsuWeb:InteropUrl / OsuWeb:InteropSecret).");
+
+        var timestamp = _time.GetUtcNow().ToUnixTimeSeconds();
+        var url = string.Create(CultureInfo.InvariantCulture, $"{_options.InteropUrl!.TrimEnd('/')}{path}?timestamp={timestamp}");
+        // HMAC-SHA1 is what osu-web verifies (LegacyInterOpAuth: hash_hmac('sha1', ...)); not our choice.
+#pragma warning disable CA5350
+        var hash = HMACSHA1.HashData(Encoding.UTF8.GetBytes(_options.InteropSecret!), Encoding.UTF8.GetBytes(url));
+#pragma warning restore CA5350
+        return (new Uri(url), Convert.ToHexStringLower(hash));
+    }
+
+    private async Task<HttpResponseMessage> PostAsync(string path, CancellationToken cancellationToken)
+    {
+        var (url, signature) = Sign(path);
+        using var request = new HttpRequestMessage(HttpMethod.Post, url);
+        request.Headers.Add("X-LIO-Signature", signature);
+        return await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+    }
+}

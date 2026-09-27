@@ -31,6 +31,10 @@ services:
       TOMYUM_DATABASE__USER: ${OSU_WEB_DB_USER:-osuweb}
       TOMYUM_DATABASE__PASSWORD: ${OSU_WEB_DB_PASSWORD:-}
       TOMYUM_REDIS__CONFIGURATION: redis:6379
+      # osu-web's InterOp API (medal unlocks with activity entries, search updates for new
+      # accounts). The secret (osu-web's SHARED_INTEROP_SECRET) goes in config/.env as
+      # TOMYUM_OSUWEB__INTEROPSECRET; it's not set here so this file can't blank it.
+      TOMYUM_OSUWEB__INTEROPURL: ${OSU_WEB_INTEROP_URL-http://nginx}
     networks:
       - default
       - osu-web

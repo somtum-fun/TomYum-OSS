@@ -1,3 +1,5 @@
+using TomYum.Server.OsuWeb;
+
 namespace TomYum.Server.Bancho;
 
 /// <summary>
@@ -24,6 +26,8 @@ public static class RegistrationEndpoints
     private static async Task<IResult> HandleRegisterAsync(
         HttpContext context,
         RegistrationService registration,
+        IOsuWebSync osuWebSync,
+        ILogger<RegistrationService> logger,
         CancellationToken cancellationToken)
     {
         if (!context.Request.HasFormContentType)
@@ -61,6 +65,19 @@ public static class RegistrationEndpoints
             return Results.Json(
                 new { form_error = new { user = fields } },
                 statusCode: 400);
+        }
+
+        // Website search (osu-web mode). Best-effort: the account exists either way.
+        if (result.Created is { } created)
+        {
+            try
+            {
+                await osuWebSync.AccountCreatedAsync(created.Id, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "osu-web search update for new account {UserId} failed", created.Id);
+            }
         }
 
         // The client only proceeds when the body is exactly "ok" (both validate and create).

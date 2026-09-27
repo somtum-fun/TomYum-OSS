@@ -9,6 +9,8 @@
 -- Every column is kept so an insert that misses a NOT NULL column fails here as it would in
 -- osu-web. Groups are what osu-web's GroupSeeder creates.
 
+DROP TABLE IF EXISTS osu_achievements;
+DROP TABLE IF EXISTS osu_user_achievements;
 DROP TABLE IF EXISTS scores;
 DROP TABLE IF EXISTS osu_user_stats;
 DROP TABLE IF EXISTS osu_user_stats_taiko;
@@ -448,4 +450,36 @@ CREATE TABLE osu_user_stats_mania (
   KEY ranked_score (ranked_score),
   KEY rank_score (rank_score),
   KEY country_ranked_score (country_acronym, ranked_score)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Medals: base_tables + 2015_08_10 slug, 2016_01_29 description, 2016_05_10 enabled/mode/image
+-- nullable/unsigned id, 2025_10_10 achieved_count, 2026_01_16 client_side. osu-web seeds no rows.
+CREATE TABLE osu_achievements (
+  achievement_id mediumint unsigned NOT NULL,
+  name varchar(40) NOT NULL,
+  slug varchar(255) NOT NULL,
+  description text NULL,
+  image varchar(50) NULL,
+  `grouping` varchar(30) NOT NULL DEFAULT '-',
+  ordering tinyint unsigned NOT NULL,
+  progression tinyint unsigned NOT NULL,
+  quest_ordering tinyint NULL,
+  quest_instructions text NULL,
+  enabled tinyint(1) NOT NULL DEFAULT 1,
+  mode tinyint NULL,
+  achieved_count int unsigned NOT NULL DEFAULT 0,
+  client_side tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (achievement_id),
+  KEY display_order (`grouping`, ordering),
+  KEY name (name)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE osu_user_achievements (
+  user_id mediumint NOT NULL,
+  achievement_id mediumint NOT NULL,
+  `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  beatmap_id mediumint NULL,
+  PRIMARY KEY (user_id, achievement_id),
+  KEY user_id (user_id, `date`),
+  KEY achievement_id (achievement_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

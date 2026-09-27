@@ -20,6 +20,9 @@ done in two phases:
 
 ## Phase A — running both
 
+> **Trying it on one machine?** [docs/local-testing.md](local-testing.md) walks through osu-web,
+> TomYum, HTTPS and the osu! client end to end.
+
 > **Existing TomYum server with players?** Before switching it to osu-web accounts, run
 > [`tools/MigrateToOsuWeb`](../tools/MigrateToOsuWeb/README.md): it turns your players into osu-web
 > accounts (same passwords), renumbers TomYum's data to the osu-web ids and copies the history
@@ -111,6 +114,28 @@ value as `TOMYUM_DATABASE__OSUWEBINDEXPREFIX`.
   The server itself only mirrors new plays: it never guesses whose an old TomYum user id was.
 - **Session plugin** (`plugins/tomyum-session`) reads TomYum's own `users` table, so it doesn't see
   osu-web accounts. The osu-web site has its own login; leave the plugin off in osu-web mode.
+
+### Medals and osu-web's InterOp API
+
+osu-web's migrations leave its medal catalog (`osu_achievements`) empty, and a profile only shows
+catalogued medals, so TomYum adds its 83 medals on start (only ids that are missing; ids, names and
+slugs match osu!'s, so the icons load from osu-web's default icon URL). Earlier unlocks TomYum
+recorded are copied over at the same time.
+
+New unlocks go through osu-web's **InterOp API** (`POST /_lio/user-achievement/{user}/{medal}`), the
+way osu!'s own game server reports them: osu-web records the unlock, adds "unlocked the … medal" to
+the player's recent activity, updates the medal's unlock count and notifies the player. InterOp is
+also used to put players who register in-game into the website's search. To enable it, set in
+osu-web's `.env` and TomYum's `config/.env`:
+
+| osu-web | TomYum | |
+|---|---|---|
+| `SHARED_INTEROP_SECRET=<long random string>` | `TOMYUM_OSUWEB__INTEROPSECRET=<same>` | shared signing key |
+| | `TOMYUM_OSUWEB__INTEROPURL=http://nginx` | how TomYum reaches osu-web (the overlay sets this) |
+
+Requests are signed like osu-web's `LegacyInterOpAuth` expects (HMAC-SHA1 of the full URL). Without
+InterOp — or if a call fails — TomYum writes the unlock straight into `osu_user_achievements`: the
+medal still shows on the profile, just without the activity entry.
 
 ### Making yourself staff
 
@@ -225,7 +250,8 @@ Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_ba
    `ScoreSearch::queueForIndex`). TomYum's `osu_web_score_links` table records which TomYum score
    became which osu-web score. Best-effort: a failure is logged and never fails the submission.
    Beatmaps can become osu-web-only (and `RecalcPp` follow) once TomYum *reads* scores from osu-web.
-4. Achievements: `osu_user_achievements`, with TomYum's catalog mapped to osu-web achievement ids.
+4. ~~Achievements~~ **Done:** catalog added to `osu_achievements` on start; unlocks via InterOp
+   (`OsuWebInterop`) with a direct-insert fallback (`OsuWebMedals`); earlier unlocks copied.
 5. ~~Data migration~~ **Done:** `tools/MigrateToOsuWeb` (`OsuWebAccountMigration` +
    `OsuWebScoreMirror.CopyHistoryAsync`): creates or links osu-web accounts, renumbers TomYum's
    scores/stats/medals to the osu-web ids (two-pass, one transaction), drops the Development seed

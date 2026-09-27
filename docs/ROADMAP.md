@@ -162,8 +162,11 @@ uses its tables. Human doc: `docs/osu-web.md`._
       `osu-elastic-indexer`. Relax/autopilot stay TomYum-only.
 - [x] **Phase B, migration:** `tools/MigrateToOsuWeb` moves an existing server's players to osu-web
       accounts, renumbers TomYum's data and copies the history (maps, scores, stats, ranks).
-- [ ] **Phase B, rest:** TomYum reads scores from osu-web → beatmaps become osu-web-only (RecalcPp follows) → achievements
-      (`osu_user_achievements`). Replaces the EF-migrations item in Phase 0 for these tables.
+- [x] **Phase B, medals:** TomYum's catalog added to osu-web's `osu_achievements`; unlocks sent through
+      osu-web's InterOp API (activity entry + notification), direct insert as fallback; in-game sign-ups
+      pushed to the website search via InterOp. Local end-to-end guide: `docs/local-testing.md`.
+- [ ] **Phase B, rest:** TomYum reads scores (and medals) from osu-web → beatmaps become osu-web-only
+      (RecalcPp follows). Replaces the EF-migrations item in Phase 0 for these tables.
 - [ ] Phase 7 rescope: osu-web already serves `/api/v2` + `/oauth/token`; TomYum keeps the realtime hubs.
 
 ## Achievements (medals) 🔒 (none) — done 2026-07-09

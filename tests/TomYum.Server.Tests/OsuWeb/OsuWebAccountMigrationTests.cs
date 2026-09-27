@@ -59,7 +59,8 @@ public sealed class OsuWebAccountMigrationTests : OsuWebDatabaseTest
         Assert.Equal(1, result.Linked);
         var alice = await IdOfAsync("alice");
         var bob = await IdOfAsync("bob smith");
-        Assert.Equal(new[] { 3, 4 }, new[] { alice, bob }.Order()); // osu-web ids after the existing #2
+        Assert.Equal(3, Math.Min(alice, bob)); // osu-web ids after the existing #2
+        Assert.Equal(4, Math.Max(alice, bob));
 
         // Same password hash and country; Owner became osu-web staff.
         Assert.Equal(AliceHash,
