@@ -508,3 +508,27 @@ CREATE TABLE osu_user_beatmap_playcount (
   playcount smallint unsigned NOT NULL,
   PRIMARY KEY (user_id, beatmap_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Beatmap packs and their sets: as on a current osu-web database.
+CREATE TABLE osu_beatmappacks (
+  pack_id smallint NOT NULL AUTO_INCREMENT,
+  url varchar(1024) NOT NULL,
+  name varchar(255) NOT NULL,
+  author varchar(255) NOT NULL,
+  tag varchar(5) NOT NULL,
+  `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  playmode tinyint unsigned DEFAULT NULL,
+  hidden tinyint(1) NOT NULL DEFAULT 0,
+  no_diff_reduction tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (pack_id),
+  UNIQUE KEY tag (tag)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE osu_beatmappacks_items (
+  item_id mediumint unsigned NOT NULL AUTO_INCREMENT,
+  pack_id smallint unsigned NOT NULL,
+  beatmapset_id mediumint unsigned NOT NULL,
+  PRIMARY KEY (item_id),
+  KEY pack_id (pack_id, beatmapset_id),
+  KEY set_lookup (beatmapset_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

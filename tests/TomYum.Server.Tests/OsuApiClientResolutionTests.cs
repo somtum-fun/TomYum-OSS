@@ -131,6 +131,29 @@ public class OsuApiClientResolutionTests
         Assert.NotNull(details.ApprovedDate);
     }
 
+    [Theory]
+    [InlineData("\"S1082, S1086,TOOLONG\"", "S1082,S1086")]
+    [InlineData("[\"S1\",\"P2\",\"S1\"]", "S1,P2")]
+    [InlineData("\"\"", "")]
+    public async Task PackTags_AreReadFromAStringOrAnArray(string packs, string expected)
+    {
+        var client = ClientReturning($$"""[{"file_md5":"aaa","beatmapset_id":"1","beatmap_id":"2","approved":"1","packs":{{packs}}}]""");
+
+        var details = (await client.GetByMd5Async("aaa"))!.Details!;
+
+        Assert.Equal(expected, string.Join(',', details.PackTags!));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(",\"packs\":null")]
+    public async Task PackTags_AreUnknownWithoutPackData(string packs)
+    {
+        var client = ClientReturning($$"""[{"file_md5":"aaa","beatmapset_id":"1","beatmap_id":"2","approved":"1"{{packs}}}]""");
+
+        Assert.Null((await client.GetByMd5Async("aaa"))!.Details!.PackTags);
+    }
+
     private sealed class StubHandler(string json) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

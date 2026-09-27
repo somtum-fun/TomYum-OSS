@@ -191,8 +191,26 @@ public sealed class OsuApiClient : IOsuApiClient
             Video = ParseIntOrNull(api.Video) is { } video ? video != 0 : null,
             Storyboard = ParseIntOrNull(api.Storyboard) is { } storyboard ? storyboard != 0 : null,
             ApprovedDate = string.IsNullOrEmpty(api.ApprovedDate) ? null : ParseDate(api.ApprovedDate),
+            PackTags = ParsePackTags(api.Packs),
         },
     };
+
+    /// <summary>Pack tags from an array (osu.direct) or a comma-separated string (old.ppy.sh); null when absent.</summary>
+    private static List<string>? ParsePackTags(JsonElement packs)
+    {
+        IEnumerable<string?> raw = packs.ValueKind switch
+        {
+            JsonValueKind.Array => packs.EnumerateArray().Select(p => p.ValueKind == JsonValueKind.String ? p.GetString() : null),
+            JsonValueKind.String => (packs.GetString() ?? string.Empty).Split(','),
+            _ => [],
+        };
+        var tags = raw
+            .Select(t => t?.Trim() ?? string.Empty)
+            .Where(t => t.Length is > 0 and <= 5) // osu-web's tag column is varchar(5)
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        return packs.ValueKind is JsonValueKind.Array or JsonValueKind.String ? tags : null;
+    }
 
     private static int ParseInt(string? value) =>
         int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result) ? result : 0;

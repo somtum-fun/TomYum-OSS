@@ -26,9 +26,35 @@ public sealed class OsuWebDbContext : DbContext
 
     public DbSet<OsuWebAccountHistory> AccountHistory => Set<OsuWebAccountHistory>();
 
+    public DbSet<OsuWebBeatmapPack> BeatmapPacks => Set<OsuWebBeatmapPack>();
+
+    public DbSet<OsuWebBeatmapPackItem> BeatmapPackItems => Set<OsuWebBeatmapPackItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
+
+        modelBuilder.Entity<OsuWebBeatmapPack>(pack =>
+        {
+            pack.ToTable("osu_beatmappacks");
+            pack.HasKey(p => p.PackId);
+            pack.Property(p => p.PackId).HasColumnName("pack_id").ValueGeneratedOnAdd();
+            pack.Property(p => p.Url).HasColumnName("url");
+            pack.Property(p => p.Name).HasColumnName("name");
+            pack.Property(p => p.Author).HasColumnName("author");
+            pack.Property(p => p.Tag).HasColumnName("tag");
+            pack.Property(p => p.Date).HasColumnName("date");
+            pack.Property(p => p.Hidden).HasColumnName("hidden");
+        });
+
+        modelBuilder.Entity<OsuWebBeatmapPackItem>(item =>
+        {
+            item.ToTable("osu_beatmappacks_items");
+            item.HasKey(i => i.ItemId);
+            item.Property(i => i.ItemId).HasColumnName("item_id").ValueGeneratedOnAdd();
+            item.Property(i => i.PackId).HasColumnName("pack_id");
+            item.Property(i => i.BeatmapsetId).HasColumnName("beatmapset_id");
+        });
 
         modelBuilder.Entity<OsuWebAccountHistory>(history =>
         {

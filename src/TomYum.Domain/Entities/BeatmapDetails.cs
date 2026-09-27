@@ -58,4 +58,7 @@ public sealed class BeatmapDetails
 
     /// <summary>When the set was ranked/approved/loved upstream.</summary>
     public DateTimeOffset? ApprovedDate { get; set; }
+
+    /// <summary>Tags of the beatmap packs the set is in (e.g. <c>S788</c>, <c>P304</c>); null when unknown.</summary>
+    public IReadOnlyList<string>? PackTags { get; set; }
 }
