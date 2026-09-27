@@ -9,8 +9,34 @@
 }
 
 # Game endpoints (bancho, beatmap assets, medal icons).
-c.localtest.me, ce.localtest.me, c4.localtest.me, cho.localtest.me, b.localtest.me, assets.localtest.me, a.localtest.me {
+c.localtest.me, ce.localtest.me, c4.localtest.me, cho.localtest.me, b.localtest.me, assets.localtest.me {
 	reverse_proxy localhost:8080
+}
+
+# Avatars (a.<domain>/<user id>, what the osu! client loads): osu-web stores uploads as
+# /uploads/avatar/<user id>. Users without one get osu-web's guest avatar.
+a.localtest.me {
+	# Always revalidate so a new avatar shows up right away.
+	header Cache-Control "no-cache"
+
+	@user path_regexp user ^/([0-9]+)$
+	handle @user {
+		rewrite * /uploads/avatar/{re.user.1}
+		reverse_proxy localhost:8180 {
+			# The files have no extension, so they'd be served as a download; browsers sniff the
+			# real format (png/jpeg/gif) from any image/* type and show it inline.
+			header_down Content-Type image/png
+			@missing status 404
+			handle_response @missing {
+				rewrite * /images/layout/avatar-guest@2x.png
+				reverse_proxy localhost:8180
+			}
+		}
+	}
+	handle {
+		rewrite * /images/layout/avatar-guest@2x.png
+		reverse_proxy localhost:8180
+	}
 }
 
 # osu.: the client's /web/* and in-game registration go to TomYum, the website to osu-web.
@@ -26,6 +52,18 @@ osu.localtest.me {
 	}
 	handle @stable_register {
 		reverse_proxy localhost:8080
+	}
+	# Beatmap covers: osu-web links them under its own uploads, but TomYum never stores any; the
+	# official ones are on ppy's asset server at the same path.
+	@covers path_regexp covers ^/uploads/default/(beatmaps/[0-9]+/covers/.+)$
+	handle @covers {
+		redir https://assets.ppy.sh/{re.covers.1}
+	}
+	# Extension-less avatar uploads: show them as images instead of downloading (see a. below).
+	handle /uploads/avatar/* {
+		reverse_proxy localhost:8180 {
+			header_down Content-Type image/png
+		}
 	}
 	handle {
 		reverse_proxy localhost:8180
