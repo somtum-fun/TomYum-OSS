@@ -18,6 +18,10 @@ public sealed class OsuWebDbContext : DbContext
 
     public DbSet<OsuWebUserGroup> UserGroups => Set<OsuWebUserGroup>();
 
+    public DbSet<OsuWebBeatmapset> Beatmapsets => Set<OsuWebBeatmapset>();
+
+    public DbSet<OsuWebBeatmap> Beatmaps => Set<OsuWebBeatmap>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ArgumentNullException.ThrowIfNull(modelBuilder);
@@ -67,6 +71,38 @@ public sealed class OsuWebDbContext : DbContext
             membership.Property(m => m.UserId).HasColumnName("user_id");
             membership.Property(m => m.GroupLeader).HasColumnName("group_leader");
             membership.Property(m => m.UserPending).HasColumnName("user_pending");
+        });
+
+        modelBuilder.Entity<OsuWebBeatmapset>(set =>
+        {
+            set.ToTable("osu_beatmapsets");
+            set.HasKey(s => s.BeatmapsetId);
+            // Ids come from osu! (or TomYum's custom range), never from the auto-increment.
+            set.Property(s => s.BeatmapsetId).HasColumnName("beatmapset_id").ValueGeneratedNever();
+            set.Property(s => s.Artist).HasColumnName("artist");
+            set.Property(s => s.Title).HasColumnName("title");
+            set.Property(s => s.Creator).HasColumnName("creator");
+            set.Property(s => s.Approved).HasColumnName("approved");
+            set.Property(s => s.ApprovedDate).HasColumnName("approved_date");
+            set.Property(s => s.SubmitDate).HasColumnName("submit_date");
+            set.Property(s => s.LastUpdate).HasColumnName("last_update");
+        });
+
+        modelBuilder.Entity<OsuWebBeatmap>(map =>
+        {
+            map.ToTable("osu_beatmaps");
+            map.HasKey(b => b.BeatmapId);
+            map.Property(b => b.BeatmapId).HasColumnName("beatmap_id").ValueGeneratedNever();
+            map.Property(b => b.BeatmapsetId).HasColumnName("beatmapset_id");
+            map.Property(b => b.Checksum).HasColumnName("checksum");
+            map.Property(b => b.Version).HasColumnName("version");
+            map.Property(b => b.TotalLength).HasColumnName("total_length");
+            map.Property(b => b.HitLength).HasColumnName("hit_length");
+            map.Property(b => b.Playmode).HasColumnName("playmode");
+            map.Property(b => b.Approved).HasColumnName("approved");
+            map.Property(b => b.LastUpdate).HasColumnName("last_update");
+            map.Property(b => b.Difficultyrating).HasColumnName("difficultyrating");
+            map.Property(b => b.MaxCombo).HasColumnName("max_combo");
         });
 
         base.OnModelCreating(modelBuilder);

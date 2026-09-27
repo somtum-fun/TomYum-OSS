@@ -11,8 +11,9 @@ done in two phases:
 - **Phase A — side by side (works today).** Both run on osu-web's MySQL/Redis behind one Caddy.
 - **Phase B — one database (in progress, below).** TomYum's repositories are pointed at osu-web's
   tables. **Accounts are done:** an account made on the website logs into the game and an in-game
-  registration shows up on the website. Scores, stats and beatmaps still live in TomYum's own
-  `tomyum` database, so plays don't show on the site yet.
+  registration shows up on the website. **Beatmaps are mirrored:** every map played is copied to
+  osu-web's beatmap tables. Scores and stats still live in TomYum's own `tomyum` database, so plays
+  don't show on the site yet.
 
 ---
 
@@ -67,6 +68,18 @@ It also sets `TOMYUM_DATABASE__OSUWEBNAME=osu`, which makes TomYum use osu-web's
 (`OSU_WEB_DB_NAME=` empty turns that off). On start TomYum creates BanchoBot as user 1 in osu-web's
 `bot` group; nothing else is created or altered in osu-web's database. Outside Docker, set
 `TOMYUM_DATABASE__OSUWEBNAME` yourself (see `config/.env.example`).
+
+### Search on the website
+
+osu-web's beatmap listing and user search read from **Elasticsearch**, not MySQL. Maps TomYum
+copies and players who register in-game are reachable by URL straight away
+(`/beatmapsets/<id>`, `/users/<id>`) but only appear in listings and search after re-indexing:
+
+```bash
+docker compose run --rm php artisan es:index-documents --types=beatmapsets,users --inplace
+```
+
+Run it on a schedule (e.g. every few minutes from cron) until TomYum queues index updates itself.
 
 ### Making yourself staff
 
@@ -167,7 +180,13 @@ Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_ba
    both. Countries are upper-case in osu-web and converted both ways. Tested against the real
    table definitions (`tests/TomYum.Server.Tests/OsuWeb/`, run in CI with MySQL) and end-to-end
    with the stable login/registration flow. TomYum's own `users` table is simply unused in this mode.
-2. Beatmaps: cache resolved maps into `osu_beatmaps`/`osu_beatmapsets`.
+2. ~~Beatmaps~~ **Done (mirror):** `OsuWebMirroringBeatmapRepository` writes every map to TomYum's
+   table *and* osu-web's `osu_beatmapsets`/`osu_beatmaps`; TomYum's table stays the one the server
+   and `RecalcPp` read, because scores (which join to it) still live there. On start, maps osu-web
+   doesn't have yet are copied over. Status: osu-web gets the raw osu! API value, so graveyard and
+   WIP aren't folded into pending; a staff-frozen status wins. Names are cut to osu-web's 80
+   characters. Only played difficulties are known, so a set lists those; bpm, AR/OD/CS/HP and
+   object counts keep osu-web's defaults, and drain time is filled with total length.
 3. Scores + stats: write `solo_scores` and `osu_user_stats*`; queue scores for the indexer.
 4. Achievements: `osu_user_achievements`, with TomYum's catalog mapped to osu-web achievement ids.
 5. Data migration: copy existing `tomyum` rows into osu-web's tables (then `RecalcPp --force`).

@@ -1,5 +1,6 @@
--- osu-web account tables, for OsuWebUserRepository integration tests.
+-- osu-web tables TomYum reads/writes, for the OsuWeb* integration tests.
 --
+-- Accounts:
 -- Hand-translated from osu-web's migrations (database/migrations/2015_01_01_133337_base_tables.php
 -- plus every later alter of these tables: 2019_12_04 add_extra_columns_to_groups,
 -- 2020_01_23 nullable_groups_display_order, 2020_05_15 sync_structure, 2020_10_01 has_playmodes /
@@ -8,6 +9,8 @@
 -- Every column is kept so an insert that misses a NOT NULL column fails here as it would in
 -- osu-web. Groups are what osu-web's GroupSeeder creates.
 
+DROP TABLE IF EXISTS osu_beatmaps;
+DROP TABLE IF EXISTS osu_beatmapsets;
 DROP TABLE IF EXISTS phpbb_user_group;
 DROP TABLE IF EXISTS phpbb_groups;
 DROP TABLE IF EXISTS phpbb_users;
@@ -162,3 +165,105 @@ INSERT INTO phpbb_groups (group_desc, group_name, group_type, has_playmodes, ide
   ('', 'loved', 2, 0, 'loved', 'loved'),
   ('', 'nat', 2, 0, 'nat', 'nat'),
   ('', 'no_profile', 2, 0, 'no_profile', 'no_profile');
+
+-- Beatmaps: base_tables + 2016_02_25 cover_updated_at, 2017_08_28 discussion_enabled/deleted_at,
+-- 2017_09_04 deleted_at, 2018_01_03 hype, 2018_01_11 nominations, 2018_04_20 queue time,
+-- 2018_06_25 datetimes -> TIMESTAMP, 2019_04_17 discussion_locked, 2019_11_27 + 2022_01_17 +
+-- 2023_08_17 bpm, 2020_05_15 sync_structure, 2020_08_27 nsfw, 2021_08_30 track_id,
+-- 2022_04_30 spotlight, 2022_05_16 approvedby_id, 2022_06_08 + 2023_08_17 comment_locked,
+-- 2023_09_21 max_combo, 2024_05_17 eligible_main_rulesets, 2025_06_27 osu_file_version,
+-- 2025_10_20 anime_cover, 2026_06_18 lazer_only.
+
+CREATE TABLE osu_beatmapsets (
+  beatmapset_id mediumint unsigned NOT NULL AUTO_INCREMENT,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  thread_id mediumint unsigned NOT NULL DEFAULT 0,
+  artist varchar(80) NOT NULL DEFAULT '',
+  artist_unicode varchar(80) NULL,
+  title varchar(80) NOT NULL DEFAULT '',
+  title_unicode varchar(80) NULL,
+  creator varchar(80) NOT NULL DEFAULT '',
+  source varchar(200) NOT NULL DEFAULT '',
+  tags varchar(1000) NOT NULL DEFAULT '',
+  video tinyint(1) NOT NULL DEFAULT 0,
+  storyboard tinyint(1) NOT NULL DEFAULT 0,
+  epilepsy tinyint(1) NOT NULL DEFAULT 0,
+  bpm float NOT NULL DEFAULT 0,
+  versions_available tinyint(1) unsigned NOT NULL DEFAULT 1,
+  approved tinyint NOT NULL DEFAULT 0,
+  approvedby_id int unsigned NULL,
+  approved_date timestamp NULL DEFAULT NULL,
+  submit_date timestamp NULL DEFAULT NULL,
+  last_update timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  filename varchar(120) NULL,
+  active tinyint(1) NOT NULL DEFAULT 1,
+  rating float unsigned NOT NULL DEFAULT 0,
+  `offset` smallint NOT NULL DEFAULT 0,
+  displaytitle varchar(200) NOT NULL DEFAULT '',
+  genre_id smallint unsigned NOT NULL DEFAULT 1,
+  language_id smallint unsigned NOT NULL DEFAULT 1,
+  star_priority smallint NOT NULL DEFAULT 0,
+  filesize bigint NOT NULL DEFAULT 0,
+  filesize_novideo bigint NULL,
+  body_hash binary(16) NULL,
+  header_hash binary(16) NULL,
+  osz2_hash binary(16) NULL,
+  download_disabled tinyint(1) unsigned NOT NULL DEFAULT 0,
+  download_disabled_url varchar(100) NULL,
+  thread_icon_date timestamp NULL DEFAULT NULL,
+  favourite_count mediumint unsigned NOT NULL DEFAULT 0,
+  play_count int unsigned NOT NULL DEFAULT 0,
+  difficulty_names varchar(2048) NULL,
+  cover_updated_at timestamp NULL DEFAULT NULL,
+  discussion_enabled tinyint(1) NOT NULL DEFAULT 0,
+  discussion_locked tinyint(1) NOT NULL DEFAULT 0,
+  deleted_at timestamp NULL,
+  hype int NOT NULL DEFAULT 0,
+  nominations int NOT NULL DEFAULT 0,
+  previous_queue_duration int NOT NULL DEFAULT 0,
+  queued_at timestamp NULL DEFAULT NULL,
+  storyboard_hash varchar(32) NULL,
+  nsfw tinyint(1) NOT NULL DEFAULT 0,
+  anime_cover tinyint(1) NOT NULL DEFAULT 0,
+  track_id int unsigned NULL,
+  spotlight tinyint(1) NOT NULL DEFAULT 0,
+  comment_locked tinyint NULL DEFAULT 0,
+  eligible_main_rulesets json NULL,
+  PRIMARY KEY (beatmapset_id),
+  KEY approved (approved, active, approved_date)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE osu_beatmaps (
+  beatmap_id mediumint unsigned NOT NULL AUTO_INCREMENT,
+  beatmapset_id mediumint unsigned NULL,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  filename varchar(150) NULL,
+  checksum varchar(32) NULL,
+  version varchar(80) NOT NULL DEFAULT '',
+  total_length mediumint unsigned NOT NULL DEFAULT 0,
+  hit_length mediumint unsigned NOT NULL DEFAULT 0,
+  countTotal mediumint unsigned NOT NULL DEFAULT 0,
+  countNormal mediumint unsigned NOT NULL DEFAULT 0,
+  countSlider mediumint unsigned NOT NULL DEFAULT 0,
+  countSpinner mediumint unsigned NOT NULL DEFAULT 0,
+  diff_drain float unsigned NOT NULL DEFAULT 0,
+  diff_size float unsigned NOT NULL DEFAULT 0,
+  diff_overall float unsigned NOT NULL DEFAULT 0,
+  diff_approach float unsigned NOT NULL DEFAULT 0,
+  playmode tinyint unsigned NOT NULL DEFAULT 0,
+  approved tinyint NOT NULL DEFAULT 0,
+  last_update timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  difficultyrating float NOT NULL DEFAULT 0,
+  max_combo mediumint unsigned NOT NULL DEFAULT 0,
+  playcount int unsigned NOT NULL DEFAULT 0,
+  passcount int unsigned NOT NULL DEFAULT 0,
+  youtube_preview varchar(50) NULL,
+  score_version tinyint NOT NULL DEFAULT 1,
+  osu_file_version tinyint unsigned NOT NULL DEFAULT 14,
+  deleted_at timestamp NULL,
+  bpm float NOT NULL DEFAULT 60,
+  lazer_only tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (beatmap_id),
+  KEY beatmapset_id (beatmapset_id),
+  KEY checksum (checksum)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

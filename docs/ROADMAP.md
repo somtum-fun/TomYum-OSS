@@ -155,9 +155,12 @@ uses its tables. Human doc: `docs/osu-web.md`._
 - [x] BanchoBot as a real `phpbb_users` row (id 1, `bot` group) + osu-web `BANCHO_BOT_USER_ID=1`.
 - [x] **Phase B, accounts:** `OsuWebUserRepository` over `phpbb_users` + groups (`Database:OsuWebName`);
       website and in-game accounts are the same. No auto-Owner in this mode (staff via osu-web `admin`).
-- [ ] **Phase B, rest:** beatmaps (`osu_beatmaps`/`osu_beatmapsets`) → scores + stats (`solo_scores`,
-      `osu_user_stats*`, queue for `osu-elastic-indexer`) → achievements (`osu_user_achievements`)
-      → migrate existing `tomyum` data. Replaces the EF-migrations item in Phase 0 for these tables.
+- [x] **Phase B, beatmaps (mirror):** every map written to TomYum's table and osu-web's
+      `osu_beatmapsets`/`osu_beatmaps`; startup copies missing ones. Raw osu! API status kept.
+- [ ] **Phase B, rest:** scores + stats (`solo_scores`, `osu_user_stats*`, queue for
+      `osu-elastic-indexer`) → beatmaps become osu-web-only (RecalcPp follows) → achievements
+      (`osu_user_achievements`) → migrate existing `tomyum` data. Replaces the EF-migrations item in
+      Phase 0 for these tables.
 - [ ] Phase 7 rescope: osu-web already serves `/api/v2` + `/oauth/token`; TomYum keeps the realtime hubs.
 
 ## Achievements (medals) 🔒 (none) — done 2026-07-09

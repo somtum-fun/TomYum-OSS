@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using TomYum.Caching;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
@@ -204,6 +205,12 @@ if (databaseOptions.Enabled)
         await scope.ServiceProvider.GetRequiredService<OsuWebUserRepository>()
             .EnsureBotAsync(BanchoBot.UserId, BanchoBot.Name);
         app.Logger.LogInformation("Accounts stored in osu-web database {OsuWebName}.", databaseOptions.OsuWebName);
+
+        // Maps played before the osu-web link existed: copy the ones the website doesn't have yet.
+        var knownBeatmaps = await db.Beatmaps.AsNoTracking().ToListAsync();
+        var mirrored = await scope.ServiceProvider.GetRequiredService<OsuWebBeatmapMirror>().BackfillAsync(knownBeatmaps);
+        if (mirrored > 0)
+            app.Logger.LogInformation("Copied {Count} beatmap(s) to osu-web.", mirrored);
     }
 }
 

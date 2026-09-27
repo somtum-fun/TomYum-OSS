@@ -40,12 +40,17 @@ public static class PersistenceServiceCollectionExtensions
             services.AddDbContext<OsuWebDbContext>(db => db.UseMySql(options.BuildOsuWebConnectionString(), serverVersion));
             services.AddScoped<OsuWebUserRepository>();
             services.AddScoped<IUserRepository>(sp => sp.GetRequiredService<OsuWebUserRepository>());
+
+            // Beatmaps: TomYum's table stays authoritative; writes are mirrored to osu-web's.
+            services.AddScoped<BeatmapRepository>();
+            services.AddScoped<OsuWebBeatmapMirror>();
+            services.AddScoped<IBeatmapRepository, OsuWebMirroringBeatmapRepository>();
         }
         else
         {
             services.AddScoped<IUserRepository, UserRepository>();
+            services.AddScoped<IBeatmapRepository, BeatmapRepository>();
         }
-        services.AddScoped<IBeatmapRepository, BeatmapRepository>();
         services.AddScoped<IScoreRepository, ScoreRepository>();
         services.AddScoped<IUserStatsRepository, UserStatsRepository>();
         services.AddScoped<IUserAchievementRepository, UserAchievementRepository>();
