@@ -36,6 +36,12 @@ public interface IOsuApiClient
 
     /// <summary>Whether <see cref="GetSinceAsync"/> is available (an API key is configured).</summary>
     bool SupportsSince { get; }
+
+    /// <summary>
+    /// Fetches one difficulty by its beatmap id, or <c>null</c> when unknown or the request fails
+    /// (logged, like the other lookups).
+    /// </summary>
+    Task<Beatmap?> GetByIdAsync(int beatmapId, CancellationToken cancellationToken = default) => Task.FromResult<Beatmap?>(null);
 }
 
 /// <summary>
@@ -119,6 +125,28 @@ public sealed class OsuApiClient : IOsuApiClient
         {
             _logger.LogWarning(ex, "osu! API lookup failed for beatmap set {SetId}.", setId);
             return [];
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<Beatmap?> GetByIdAsync(int beatmapId, CancellationToken cancellationToken = default)
+    {
+        if (beatmapId <= 0)
+        {
+            return null;
+        }
+
+        try
+        {
+            var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(Query($"b={beatmapId}"), JsonOptions, cancellationToken).ConfigureAwait(false);
+
+            // Like h=, a mirror may answer with the whole set: pick the asked-for difficulty.
+            return beatmaps?.Select(Map).FirstOrDefault(b => b.Id == beatmapId && b.SetId > 0);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
+        {
+            _logger.LogWarning(ex, "osu! API lookup failed for beatmap {BeatmapId}.", beatmapId);
+            return null;
         }
     }
 

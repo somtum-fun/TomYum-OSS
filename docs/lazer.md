@@ -20,6 +20,11 @@ Done (2026-09-27):
   to `public/uploads/replay` (where the website reads them) instead of Amazon S3. Caddy serves it
   as `https://spectator.localtest.me` (`deploy/caddy/Caddyfile.local`).
 
+- **Maps the website doesn't have yet**: lazer asks about every map the player has. The fork's
+  `TomYumImportMissingBeatmaps` middleware imports a missing beatmap or set from bancho through
+  TomYum (`POST /_admin/beatmaps/import`, `/_admin/beatmapsets/{id}/import`) before the request is
+  handled. Maps osu! doesn't know are remembered for an hour.
+
 Not yet: custom-map pp (the processor downloads `.osu` files from osu.ppy.sh).
 
 ## Connecting a lazer client
@@ -31,9 +36,10 @@ in lazer**: using it against the official servers gets accounts banned. Remove t
 2. Copy `osu.Game.Rulesets.EnhancedAuth.dll` from the
    [latest release](https://github.com/MingxuanGame/LazerAuthlibInjection/releases) into `rulesets`.
 3. Restart lazer. Settings → Rulesets → set **API Url** and **Website Url** to
-   `https://osu.localtest.me`, and **Spectator / Multiplayer / Metadata Url** to
-   `https://spectator.localtest.me/spectator`, `.../multiplayer`, `.../metadata`. Keep the default
-   client ID/secret. Turn off the g0v0-server features (the `--non-g0v0-server` option).
+   `https://osu.localtest.me`. Leave the Spectator / Multiplayer / Metadata Urls empty (the client
+   then uses `https://osu.localtest.me/signalr/<hub>`, which Caddy sends to the spectator server) or
+   set them to `https://spectator.localtest.me/spectator`, `.../multiplayer`, `.../metadata`. Keep
+   the default client ID/secret. Turn off the g0v0-server features (the `--non-g0v0-server` option).
 4. Sign in with your normal account from the website.
 
 ## Research

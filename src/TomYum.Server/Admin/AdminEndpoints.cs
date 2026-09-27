@@ -13,6 +13,9 @@ namespace TomYum.Server.Admin;
 /// request (<see cref="AdminAuthFilter"/>) and is bound to internal host names only, so the public
 /// subdomains Caddy forwards never reach it.
 /// </summary>
+/// <summary>Body of <c>POST /_admin/beatmaps/import</c>: a beatmap id or a <c>.osu</c> checksum.</summary>
+public sealed record BeatmapImportRequest(int? BeatmapId, string? Checksum);
+
 /// <summary>Body of <c>POST /_admin/beatmapsets/{id}/status</c>; no beatmap ids = the whole set.</summary>
 public sealed record StatusChangeRequest(string? Status, IReadOnlyList<int>? BeatmapIds);
 
@@ -50,6 +53,7 @@ public static class AdminEndpoints
             .AddEndpointFilter<AdminAuthFilter>();
 
         admin.MapPost("/beatmapsets/{setId:int}/import", ImportSetAsync);
+        admin.MapPost("/beatmaps/import", ImportBeatmapAsync);
         admin.MapGet("/beatmapsets/{setId:int}", GetSetAsync);
         admin.MapPost("/beatmapsets/{setId:int}/status", ChangeStatusAsync);
         admin.MapPost("/beatmapsets/import-bulk", StartBulkImport);
@@ -127,6 +131,39 @@ public static class AdminEndpoints
             Result = request.Result is { Length: > 32 } result ? result[..32] : request.Result,
         }, cancellationToken).ConfigureAwait(false);
         return Results.NoContent();
+    }
+
+    /// <summary>
+    /// Imports the set of a beatmap the website doesn't have yet, found by beatmap id or <c>.osu</c>
+    /// checksum (osu-web calls this when lazer asks about a map, docs/lazer.md). 404 when osu! doesn't
+    /// know it either.
+    /// </summary>
+    private static async Task<IResult> ImportBeatmapAsync(
+        BeatmapImportRequest request, IBeatmapRepository beatmaps, BeatmapService service, IOsuApiClient api, BeatmapSetImporter importer,
+        HttpContext context, CancellationToken cancellationToken)
+    {
+        int? setId = null;
+        if (request.BeatmapId is > 0 and var id)
+        {
+            setId = (await beatmaps.GetByIdAsync(id, cancellationToken).ConfigureAwait(false))?.SetId
+                ?? (await api.GetByIdAsync(id, cancellationToken).ConfigureAwait(false))?.SetId;
+        }
+        else if (!string.IsNullOrWhiteSpace(request.Checksum))
+        {
+            setId = (await beatmaps.GetByMd5Async(request.Checksum, cancellationToken).ConfigureAwait(false))?.SetId
+                ?? (await service.GetByMd5Async(request.Checksum, cancellationToken).ConfigureAwait(false))?.SetId;
+        }
+        else
+        {
+            return Results.BadRequest(new { error = "Give a beatmap id or checksum." });
+        }
+
+        // Custom (server-only) sets are on the website already; there's nothing on osu! to import.
+        if (setId is not { } set || set <= 0 || set >= TomYum.Domain.Entities.Beatmap.CustomIdFloor)
+            return Results.NotFound(new { error = "osu! doesn't know that beatmap." });
+
+        var result = await importer.ImportAsync(set, ActorId(context), cancellationToken: cancellationToken).ConfigureAwait(false);
+        return result.Found ? Results.Ok(result) : Results.NotFound(result);
     }
 
     private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, HttpContext context, CancellationToken cancellationToken)
