@@ -257,7 +257,11 @@ if (databaseOptions.Enabled)
             app.Logger.LogInformation("Copied {Count} beatmap(s) to osu-web.", mirrored);
 
         // Records which TomYum score became which osu-web score (lives in TomYum's database).
-        await scope.ServiceProvider.GetRequiredService<OsuWebScoreMirror>().EnsureLinkTableAsync();
+        var scoreMirror = scope.ServiceProvider.GetRequiredService<OsuWebScoreMirror>();
+        await scoreMirror.EnsureLinkTableAsync();
+        // Play counts ("Most Played Beatmaps", beatmap play/pass counts) from TomYum's scores.
+        var playCounts = await scoreMirror.RebuildPlayCountsAsync();
+        app.Logger.LogInformation("osu-web play counts rebuilt for {Count} player/beatmap pair(s).", playCounts);
 
         // Medals: osu-web's catalog starts empty, and profiles only show catalogued medals.
         var medals = scope.ServiceProvider.GetRequiredService<OsuWebMedals>();

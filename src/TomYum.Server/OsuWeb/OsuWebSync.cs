@@ -41,6 +41,7 @@ public sealed class OsuWebSync : IOsuWebSync
             return;
 
         var osuWebScoreId = await _mirror.WriteScoreAsync(score, cancellationToken).ConfigureAwait(false);
+        await _mirror.RecordPlayAsync(score, cancellationToken).ConfigureAwait(false);
         await _mirror.WriteStatsAsync(score.UserId, score.Mode, cancellationToken).ConfigureAwait(false);
         await _mirror.RecomputeGlobalRanksAsync(score.Mode, cancellationToken).ConfigureAwait(false);
 

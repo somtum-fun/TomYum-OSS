@@ -256,6 +256,85 @@ public sealed class OsuWebScoreMirror
         return _osuWeb.Database.ExecuteSqlRawAsync(sql, cancellationToken);
     }
 
+    /// <summary>
+    /// Counts a play on osu-web: the player's play count for the map ("Most Played Beatmaps" on
+    /// profiles), the map's play/pass counts and its set's play count. Once per submitted score,
+    /// passed or failed; vanilla rulesets only, like the rest of the mirror.
+    /// </summary>
+    public async Task RecordPlayAsync(Score score, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        if (!OsuWebScores.IsMirrored(score.Mode) || score.UserId <= 0 || score.BeatmapId <= 0)
+            return;
+
+        var beatmapId = (uint)score.BeatmapId;
+        var setId = await _osuWeb.Beatmaps.AsNoTracking().Where(b => b.BeatmapId == beatmapId)
+            .Select(b => b.BeatmapsetId).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        if (setId is null)
+            return; // the map isn't on the website
+
+        var userId = (uint)score.UserId;
+        var passed = score.Passed ? 1 : 0;
+        await _osuWeb.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO osu_user_beatmap_playcount (user_id, beatmap_id, playcount) VALUES ({userId}, {beatmapId}, 1) ON DUPLICATE KEY UPDATE playcount = LEAST(playcount + 1, 65535)",
+            cancellationToken).ConfigureAwait(false);
+        await _osuWeb.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE osu_beatmaps SET playcount = playcount + 1, passcount = passcount + {passed} WHERE beatmap_id = {beatmapId}",
+            cancellationToken).ConfigureAwait(false);
+        await _osuWeb.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE osu_beatmapsets SET play_count = play_count + 1 WHERE beatmapset_id = {setId}",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Rebuilds every osu-web play count from TomYum's scores (the source of truth), so plays from
+    /// before counting existed show up. Returns how many player/map pairs were written. Run at startup.
+    /// </summary>
+    public async Task<int> RebuildPlayCountsAsync(CancellationToken cancellationToken = default)
+    {
+        var plays = await _tomyum.Scores.AsNoTracking()
+            .Where(s => s.Mode >= 0 && s.Mode < GameMode.RelaxOffset && s.UserId > 0 && s.BeatmapId > 0)
+            .GroupBy(s => new { s.UserId, s.BeatmapId })
+            .Select(g => new { g.Key.UserId, g.Key.BeatmapId, Plays = g.Count(), Passes = g.Count(s => s.Passed) })
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        var onWebsite = (await _osuWeb.Beatmaps.AsNoTracking().Select(b => b.BeatmapId).ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToHashSet();
+        plays = plays.Where(p => onWebsite.Contains((uint)p.BeatmapId)).ToList();
+
+        await _osuWeb.Database.ExecuteSqlRawAsync("DELETE FROM osu_user_beatmap_playcount", cancellationToken).ConfigureAwait(false);
+        await _osuWeb.Database.ExecuteSqlRawAsync("UPDATE osu_beatmaps SET playcount = 0, passcount = 0 WHERE playcount <> 0 OR passcount <> 0", cancellationToken).ConfigureAwait(false);
+        await _osuWeb.Database.ExecuteSqlRawAsync("UPDATE osu_beatmapsets SET play_count = 0 WHERE play_count <> 0", cancellationToken).ConfigureAwait(false);
+
+        foreach (var chunk in plays.Chunk(500))
+        {
+            var rows = string.Join(",", chunk.Select(p => string.Create(CultureInfo.InvariantCulture,
+                $"({(uint)p.UserId},{(uint)p.BeatmapId},{Math.Min(p.Plays, 65535)})")));
+#pragma warning disable EF1002 // numbers formatted invariantly, not user text
+            await _osuWeb.Database.ExecuteSqlRawAsync(
+                $"INSERT INTO osu_user_beatmap_playcount (user_id, beatmap_id, playcount) VALUES {rows}", cancellationToken).ConfigureAwait(false);
+#pragma warning restore EF1002
+        }
+
+        foreach (var map in plays.GroupBy(p => p.BeatmapId))
+        {
+            var beatmapId = (uint)map.Key;
+            var total = map.Sum(p => p.Plays);
+            var passes = map.Sum(p => p.Passes);
+            await _osuWeb.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE osu_beatmaps SET playcount = {total}, passcount = {passes} WHERE beatmap_id = {beatmapId}", cancellationToken).ConfigureAwait(false);
+        }
+
+        await _osuWeb.Database.ExecuteSqlRawAsync(
+            """
+            UPDATE osu_beatmapsets s
+            JOIN (SELECT beatmapset_id, SUM(playcount) AS plays FROM osu_beatmaps GROUP BY beatmapset_id) b ON b.beatmapset_id = s.beatmapset_id
+            SET s.play_count = b.plays
+            """, cancellationToken).ConfigureAwait(false);
+
+        return plays.Count;
+    }
+
     /// <summary>The player's osu-web country code (e.g. <c>TH</c>), or null when it's not an osu-web account.</summary>
     public Task<string?> GetCountryAsync(int userId, CancellationToken cancellationToken = default)
     {
