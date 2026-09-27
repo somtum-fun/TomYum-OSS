@@ -30,18 +30,47 @@ public sealed class OsuWebScoreMirror
         ) CHARACTER SET=utf8mb4;
         """;
 
+    /// <summary>
+    /// With the score processor: the stable counters TomYum last added to each <c>osu_user_stats*</c>
+    /// row, so later writes add only the difference and lazer's share of the row survives.
+    /// </summary>
+    private const string WrittenStatsTableDdl =
+        """
+        CREATE TABLE IF NOT EXISTS `osu_web_stats_written` (
+          `UserId` int NOT NULL,
+          `Mode` int NOT NULL,
+          `Count300` bigint NOT NULL,
+          `Count100` bigint NOT NULL,
+          `Count50` bigint NOT NULL,
+          `CountMiss` bigint NOT NULL,
+          `PlayCount` bigint NOT NULL,
+          `SecondsPlayed` bigint NOT NULL,
+          `RankedScore` bigint NOT NULL,
+          `TotalScore` bigint NOT NULL,
+          PRIMARY KEY (`UserId`, `Mode`)
+        ) CHARACTER SET=utf8mb4;
+        """;
+
     private readonly TomYumDbContext _tomyum;
     private readonly OsuWebDbContext _osuWeb;
+    private readonly OsuWebMirrorOptions _options;
 
-    public OsuWebScoreMirror(TomYumDbContext tomyum, OsuWebDbContext osuWeb)
+    public OsuWebScoreMirror(TomYumDbContext tomyum, OsuWebDbContext osuWeb, OsuWebMirrorOptions? options = null)
     {
         _tomyum = tomyum;
         _osuWeb = osuWeb;
+        _options = options ?? new OsuWebMirrorOptions();
     }
 
-    /// <summary>Creates TomYum's link table if missing (idempotent; run at startup).</summary>
-    public Task EnsureLinkTableAsync(CancellationToken cancellationToken = default) =>
-        _tomyum.Database.ExecuteSqlRawAsync(LinkTableDdl, cancellationToken);
+    /// <summary>Whether ppy's score processor owns pp, accuracy, ranks and grade counts on the website.</summary>
+    public bool UsesScoreProcessor => _options.ScoreProcessor;
+
+    /// <summary>Creates TomYum's link tables if missing (idempotent; run at startup).</summary>
+    public async Task EnsureLinkTableAsync(CancellationToken cancellationToken = default)
+    {
+        await _tomyum.Database.ExecuteSqlRawAsync(LinkTableDdl, cancellationToken).ConfigureAwait(false);
+        await _tomyum.Database.ExecuteSqlRawAsync(WrittenStatsTableDdl, cancellationToken).ConfigureAwait(false);
+    }
 
     /// <summary>
     /// Writes <paramref name="score"/> to osu-web's <c>scores</c>. Returns the osu-web score id, or
@@ -155,6 +184,16 @@ public sealed class OsuWebScoreMirror
 
         int Grade(string grade) => grades.TryGetValue(grade, out var n) ? n : 0;
 
+        if (_options.ScoreProcessor)
+        {
+            var counters = new StableCounters(
+                totals?.Count300 ?? 0, totals?.Count100 ?? 0, totals?.Count50 ?? 0, totals?.CountMiss ?? 0,
+                stats.PlayCount, secondsPlayed, stats.RankedScore, stats.TotalScore);
+            await WriteStableCountersAsync(table, userId, mode, country, counters, Math.Clamp(totals?.MaxCombo ?? 0, 0, ushort.MaxValue), cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         // Table name comes from a fixed whitelist (OsuWebScores.StatsTable), never from input.
         var sql = $$"""
             INSERT INTO `{{table}}` (user_id, count300, count100, count50, countMiss, accuracy_total, accuracy_count,
@@ -190,6 +229,220 @@ public sealed class OsuWebScoreMirror
                 Math.Max(0, stats.Pp),
             ],
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>TomYum's stable-only counters for one stats row.</summary>
+    private sealed record StableCounters(
+        long Count300, long Count100, long Count50, long CountMiss, long PlayCount, long SecondsPlayed, long RankedScore, long TotalScore);
+
+    /// <summary>Row of <c>osu_web_stats_written</c>.</summary>
+    private sealed class WrittenCounters
+    {
+        public long Count300 { get; set; }
+        public long Count100 { get; set; }
+        public long Count50 { get; set; }
+        public long CountMiss { get; set; }
+        public long PlayCount { get; set; }
+        public long SecondsPlayed { get; set; }
+        public long RankedScore { get; set; }
+        public long TotalScore { get; set; }
+    }
+
+    /// <summary>
+    /// Score-processor mode: adds what changed in TomYum's stable counters since the last write, so
+    /// the processor's lazer counts in the same row are kept. The first write for a row (from before
+    /// the processor, when the row held only stable data) sets the counters instead. pp, accuracy,
+    /// ranks and grade counts are left to the processor and <see cref="RecomputeTotalPerformanceAsync"/>.
+    /// </summary>
+    private async Task WriteStableCountersAsync(string table, int userId, int mode, string country, StableCounters now, int maxCombo, CancellationToken cancellationToken)
+    {
+        var before = (await _tomyum.Database
+                .SqlQuery<WrittenCounters>($"""
+                    SELECT Count300, Count100, Count50, CountMiss, PlayCount, SecondsPlayed, RankedScore, TotalScore
+                    FROM osu_web_stats_written WHERE UserId = {userId} AND Mode = {mode}
+                    """)
+                .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault();
+
+        // Either "set to the value" (first write) or "add the difference" to each counter column.
+        string Column(string name, long value, long? previous) => previous is { } old
+            ? string.Create(CultureInfo.InvariantCulture, $"{name} = GREATEST(0, CAST({name} AS SIGNED) + {value - old})")
+            : string.Create(CultureInfo.InvariantCulture, $"{name} = {value}");
+
+        var updates = string.Join(", ",
+            Column("count300", now.Count300, before?.Count300),
+            Column("count100", now.Count100, before?.Count100),
+            Column("count50", now.Count50, before?.Count50),
+            Column("countMiss", now.CountMiss, before?.CountMiss),
+            Column("playcount", now.PlayCount, before?.PlayCount),
+            Column("total_seconds_played", now.SecondsPlayed, before?.SecondsPlayed),
+            Column("ranked_score", now.RankedScore, before?.RankedScore),
+            Column("total_score", now.TotalScore, before?.TotalScore));
+
+        // Table name from a fixed whitelist and numbers formatted invariantly: nothing here is user text.
+        var sql = string.Create(CultureInfo.InvariantCulture, $$"""
+            INSERT INTO `{{table}}` (user_id, count300, count100, count50, countMiss, accuracy_total, accuracy_count,
+              accuracy, accuracy_new, playcount, total_seconds_played, ranked_score, total_score,
+              x_rank_count, xh_rank_count, s_rank_count, sh_rank_count, a_rank_count, `rank`, level, max_combo,
+              country_acronym, rank_score, rank_score_index, last_played)
+            VALUES ({{userId}}, {{now.Count300}}, {{now.Count100}}, {{now.Count50}}, {{now.CountMiss}}, 0, 0, 0, 0,
+              {{now.PlayCount}}, {{now.SecondsPlayed}}, {{now.RankedScore}}, {{now.TotalScore}},
+              0, 0, 0, 0, 0, 0, {{OsuWebScores.Level(now.TotalScore)}}, {{maxCombo}}, {0}, 0, 0, UTC_TIMESTAMP())
+            ON DUPLICATE KEY UPDATE {{updates}}, max_combo = GREATEST(max_combo, {{maxCombo}}),
+              country_acronym = VALUES(country_acronym), last_played = UTC_TIMESTAMP()
+            """);
+#pragma warning disable EF1002 // see above; the country goes in as a parameter
+        await _osuWeb.Database.ExecuteSqlRawAsync(sql, [country], cancellationToken).ConfigureAwait(false);
+#pragma warning restore EF1002
+
+        // The level follows the row's total score, which now includes lazer's.
+        var totalSql = "SELECT CAST(total_score AS SIGNED) AS Value FROM `" + table + "` WHERE user_id = {0}";
+        var total = (await _osuWeb.Database.SqlQueryRaw<long>(totalSql, (uint)userId)
+                .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .FirstOrDefault();
+        var levelSql = "UPDATE `" + table + "` SET level = {0} WHERE user_id = {1}";
+        await _osuWeb.Database.ExecuteSqlRawAsync(levelSql, [OsuWebScores.Level(total), (uint)userId], cancellationToken).ConfigureAwait(false);
+
+        await _tomyum.Database.ExecuteSqlInterpolatedAsync($"""
+            REPLACE INTO osu_web_stats_written (UserId, Mode, Count300, Count100, Count50, CountMiss, PlayCount, SecondsPlayed, RankedScore, TotalScore)
+            VALUES ({userId}, {mode}, {now.Count300}, {now.Count100}, {now.Count50}, {now.CountMiss}, {now.PlayCount}, {now.SecondsPlayed}, {now.RankedScore}, {now.TotalScore})
+            """, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>A website score as the pp total reads it.</summary>
+    private sealed class PerformanceRow
+    {
+        public uint BeatmapId { get; set; }
+        public float Pp { get; set; }
+        public float Accuracy { get; set; }
+    }
+
+    /// <summary>
+    /// Sets the player's total pp (<c>rank_score</c>) and accuracy from their website scores in
+    /// <paramref name="mode"/>, stable and lazer together, exactly as ppy's processor does
+    /// (<see cref="OsuWebScores.TotalPerformance"/>). For changes the processor doesn't see: removed
+    /// scores, staff status changes. Returns the new values, or null without a stats row.
+    /// </summary>
+    public async Task<OsuWebPerformance?> RecomputeTotalPerformanceAsync(int userId, int mode, CancellationToken cancellationToken = default)
+    {
+        var table = OsuWebScores.StatsTable(mode);
+        var uid = (uint)userId;
+        var scores = await _osuWeb.Database
+            .SqlQuery<PerformanceRow>($"""
+                SELECT beatmap_id AS BeatmapId, pp AS Pp, accuracy AS Accuracy FROM scores
+                WHERE user_id = {uid} AND ruleset_id = {mode} AND pp IS NOT NULL AND preserve = 1 AND ranked = 1
+                ORDER BY pp DESC LIMIT 1000
+                """)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var (pp, accuracy) = OsuWebScores.TotalPerformance(scores.Select(s => (s.BeatmapId, (double)s.Pp, (double)s.Accuracy)).ToList());
+
+        var updateSql = "UPDATE `" + table + "` SET rank_score = {0}, accuracy_new = {1}, accuracy = {2} WHERE user_id = {3}";
+        var updated = await _osuWeb.Database.ExecuteSqlRawAsync(updateSql, [pp, accuracy, accuracy / 100.0, uid], cancellationToken).ConfigureAwait(false);
+        return updated == 0 ? null : new OsuWebPerformance(pp, (float)(accuracy / 100.0));
+    }
+
+    /// <summary>The player's total pp and accuracy (0-1) on the website, or null without a stats row.</summary>
+    public async Task<OsuWebPerformance?> ReadPerformanceAsync(int userId, int mode, CancellationToken cancellationToken = default)
+    {
+        var table = OsuWebScores.StatsTable(mode);
+        var sql = "SELECT 0 AS BeatmapId, rank_score AS Pp, accuracy_new AS Accuracy FROM `" + table + "` WHERE user_id = {0}";
+        var rows = await _osuWeb.Database.SqlQueryRaw<PerformanceRow>(sql, (uint)userId)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Count == 0 ? null : new OsuWebPerformance(rows[0].Pp, rows[0].Accuracy / 100f);
+    }
+
+    /// <summary>A <c>score_process_history</c> row.</summary>
+    private sealed class ProcessedRow
+    {
+        public ulong ScoreId { get; set; }
+        public int Version { get; set; }
+    }
+
+    /// <summary>
+    /// Queue items for ppy's score processor for the website scores <paramref name="osuWebScoreIds"/>:
+    /// <c>{"Score": row}</c>, the shape osu-web's <c>Solo\Score::queueForProcessing</c> sends. With
+    /// <paramref name="reprocess"/>, scores the processor already handled get their history one version
+    /// back, which makes it undo and redo them (it skips scores at its current version). Used after a
+    /// staff status change, when their pp changes.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> BuildProcessingItemsAsync(IReadOnlyCollection<ulong> osuWebScoreIds, bool reprocess = false, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(osuWebScoreIds);
+
+        var items = new List<string>();
+        foreach (var chunk in osuWebScoreIds.Chunk(500))
+        {
+            var rows = await _osuWeb.Scores.AsNoTracking().Where(s => chunk.Contains(s.Id)).ToListAsync(cancellationToken).ConfigureAwait(false);
+            var versions = new Dictionary<ulong, int>();
+            if (reprocess && rows.Count > 0)
+            {
+                var list = string.Join(",", rows.Select(r => r.Id.ToString(CultureInfo.InvariantCulture)));
+                var sql = "SELECT score_id AS ScoreId, processed_version AS Version FROM score_process_history WHERE score_id IN (" + list + ")";
+                versions = (await _osuWeb.Database.SqlQueryRaw<ProcessedRow>(sql).ToListAsync(cancellationToken).ConfigureAwait(false))
+                    .ToDictionary(r => r.ScoreId, r => r.Version);
+            }
+            items.AddRange(rows.Select(r => OsuWebScores.ProcessingItem(r, versions.TryGetValue(r.Id, out var v) && v > 0 ? v - 1 : null)));
+        }
+        return items;
+    }
+
+    /// <summary>A lazer score's owner and ruleset.</summary>
+    private sealed class PlayerRow
+    {
+        public uint UserId { get; set; }
+        public int RulesetId { get; set; }
+    }
+
+    /// <summary>
+    /// After a staff status change: lazer scores on <paramref name="beatmapIds"/> whose map no longer
+    /// gives pp (not ranked/approved on the website) lose their pp. ppy's processor never takes pp
+    /// away, it only skips unranked maps. Returns every player with lazer scores on those maps, whose
+    /// totals need redoing.
+    /// </summary>
+    public async Task<IReadOnlyList<(int UserId, int Mode)>> ClearLazerPpOnUnrankedAsync(IReadOnlyCollection<int> beatmapIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(beatmapIds);
+        if (beatmapIds.Count == 0)
+            return [];
+
+        var list = string.Join(",", beatmapIds.Select(id => id.ToString(CultureInfo.InvariantCulture)));
+        var clear = "UPDATE scores s JOIN osu_beatmaps b ON b.beatmap_id = s.beatmap_id SET s.pp = NULL "
+            + "WHERE s.legacy_score_id IS NULL AND s.pp IS NOT NULL AND b.approved NOT IN (1, 2) AND s.beatmap_id IN (" + list + ")";
+        await _osuWeb.Database.ExecuteSqlRawAsync(clear, cancellationToken).ConfigureAwait(false);
+
+        var players = "SELECT DISTINCT user_id AS UserId, ruleset_id AS RulesetId FROM scores WHERE legacy_score_id IS NULL AND beatmap_id IN (" + list + ")";
+        return (await _osuWeb.Database.SqlQueryRaw<PlayerRow>(players).ToListAsync(cancellationToken).ConfigureAwait(false))
+            .Select(p => ((int)p.UserId, p.RulesetId))
+            .ToList();
+    }
+
+    /// <summary>Every website score (stable and lazer) on <paramref name="beatmapIds"/>, to re-process after a status change.</summary>
+    public async Task<IReadOnlyList<ulong>> GetScoreIdsOnBeatmapsAsync(IReadOnlyCollection<int> beatmapIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(beatmapIds);
+        var ids = beatmapIds.Select(id => (uint)id).ToList();
+        return await _osuWeb.Scores.AsNoTracking().Where(s => ids.Contains(s.BeatmapId)).Select(s => s.Id)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Waits until the processor has handled website score <paramref name="osuWebScoreId"/> (its
+    /// <c>score_process_history</c> row exists), up to <paramref name="timeout"/>. False on timeout.
+    /// </summary>
+    public async Task<bool> WaitForProcessingAsync(ulong osuWebScoreId, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (true)
+        {
+            var done = await _osuWeb.Database
+                .SqlQuery<int>($"SELECT COUNT(*) AS Value FROM score_process_history WHERE score_id = {osuWebScoreId}")
+                .SingleAsync(cancellationToken).ConfigureAwait(false);
+            if (done > 0)
+                return true;
+            if (DateTime.UtcNow >= deadline)
+                return false;
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

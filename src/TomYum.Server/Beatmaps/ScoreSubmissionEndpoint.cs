@@ -324,7 +324,13 @@ public static class ScoreSubmissionEndpoint
         // Website (osu-web) copy of the score + stats. Best-effort: the game must not fail over it.
         try
         {
-            await osuWebSync.ScoreSubmittedAsync(score, cancellationToken).ConfigureAwait(false);
+            // With ppy's score processor, pp and accuracy combine stable and lazer scores: take those.
+            if (await osuWebSync.ScoreSubmittedAsync(score, cancellationToken).ConfigureAwait(false) is { } combined)
+            {
+                stats.Pp = combined.Pp;
+                stats.Accuracy = combined.Accuracy;
+                globalRank = await userStats.GetGlobalRankAsync(user.Id, gameMode, cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {

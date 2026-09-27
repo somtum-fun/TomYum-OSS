@@ -19,6 +19,7 @@ public sealed class OsuWebSync : IOsuWebSync
     private readonly OsuWebMedals _medals;
     private readonly OsuWebInterop _interop;
     private readonly IConfiguration _configuration;
+    private readonly OsuWebPerformanceSync _performance;
     private readonly ILogger<OsuWebSync> _logger;
 
     public OsuWebSync(
@@ -27,6 +28,7 @@ public sealed class OsuWebSync : IOsuWebSync
         OsuWebMedals medals,
         OsuWebInterop interop,
         IConfiguration configuration,
+        OsuWebPerformanceSync performance,
         ILogger<OsuWebSync> logger)
     {
         _mirror = mirror;
@@ -34,27 +36,44 @@ public sealed class OsuWebSync : IOsuWebSync
         _medals = medals;
         _interop = interop;
         _configuration = configuration;
+        _performance = performance;
         _logger = logger;
     }
 
-    public async Task ScoreSubmittedAsync(Score score, CancellationToken cancellationToken = default)
+    public async Task<OsuWebPerformance?> ScoreSubmittedAsync(Score score, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(score);
 
         if (!OsuWebScores.IsMirrored(score.Mode))
-            return;
+            return null;
 
         // The replay is saved before this runs; the website downloads it from TomYum.
         var osuWebScoreId = await _mirror.WriteScoreAsync(score, ReplayFiles.Exists(_configuration, score.Id), cancellationToken).ConfigureAwait(false);
         await _mirror.RecordPlayAsync(score, cancellationToken).ConfigureAwait(false);
         await _mirror.WriteStatsAsync(score.UserId, score.Mode, cancellationToken).ConfigureAwait(false);
+
+        OsuWebPerformance? combined = null;
+        if (_performance.Enabled && osuWebScoreId is { } processed)
+        {
+            // ppy's processor gives the score its pp and grade counts. Give it a moment so the
+            // ranking panel shows the new total; if it's slower, the watcher catches up later.
+            await _performance.QueueAsync([processed], cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!await _mirror.WaitForProcessingAsync(processed, ProcessingWait, cancellationToken).ConfigureAwait(false))
+                _logger.LogInformation("Score processor hasn't handled website score {ScoreId} yet; pp follows when it does.", processed);
+            combined = await _performance.ApplyAsync(score.UserId, score.Mode, recompute: true, cancellationToken).ConfigureAwait(false);
+        }
+
         await _mirror.RecomputeGlobalRanksAsync(score.Mode, cancellationToken).ConfigureAwait(false);
 
         if (osuWebScoreId is { } id)
             await _indexQueue.QueueAsync([id]).ConfigureAwait(false);
 
         await RecalculateCountryAsync(score.UserId, cancellationToken).ConfigureAwait(false);
+        return combined;
     }
+
+    /// <summary>How long a submission waits for ppy's score processor.</summary>
+    private static readonly TimeSpan ProcessingWait = TimeSpan.FromSeconds(3);
 
     /// <summary>
     /// Has osu-web rebuild the player's country ranking data (country rankings and the country filter

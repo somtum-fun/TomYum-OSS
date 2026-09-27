@@ -1,4 +1,5 @@
 using TomYum.Domain.Entities;
+using TomYum.Persistence.OsuWeb;
 using TomYum.Server.Achievements;
 
 namespace TomYum.Server.OsuWeb;
@@ -9,8 +10,12 @@ namespace TomYum.Server.OsuWeb;
 /// </summary>
 public interface IOsuWebSync
 {
-    /// <summary>Called after a score and the player's TomYum stats have been saved.</summary>
-    Task ScoreSubmittedAsync(Score score, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Called after a score and the player's TomYum stats have been saved. Returns the player's
+    /// combined stable + lazer pp when ppy's score processor owns it (TomYum's stats then hold it
+    /// too), else null.
+    /// </summary>
+    Task<OsuWebPerformance?> ScoreSubmittedAsync(Score score, CancellationToken cancellationToken = default);
 
     /// <summary>Called after TomYum recorded new medal unlocks (earned on <paramref name="beatmapId"/>).</summary>
     Task MedalsUnlockedAsync(int userId, IReadOnlyList<Medal> medals, int beatmapId, CancellationToken cancellationToken = default);
@@ -22,7 +27,8 @@ public interface IOsuWebSync
 /// <summary>Standalone TomYum: nothing to sync.</summary>
 public sealed class NoOsuWebSync : IOsuWebSync
 {
-    public Task ScoreSubmittedAsync(Score score, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public Task<OsuWebPerformance?> ScoreSubmittedAsync(Score score, CancellationToken cancellationToken = default) =>
+        Task.FromResult<OsuWebPerformance?>(null);
 
     public Task MedalsUnlockedAsync(int userId, IReadOnlyList<Medal> medals, int beatmapId, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
