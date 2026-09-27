@@ -171,6 +171,7 @@ public sealed class OsuWebScoreMirrorTests : OsuWebDatabaseTest
                 new OsuWebScoreIndexing(redis, prefix),
                 new OsuWebMedals(NewOsuWebContext(), tomyum),
                 new OsuWebInterop(new HttpClient(), new OsuWebInteropOptions()),
+                new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
                 Microsoft.Extensions.Logging.Abstractions.NullLogger<OsuWebSync>.Instance);
 
             await sync.ScoreSubmittedAsync(score);

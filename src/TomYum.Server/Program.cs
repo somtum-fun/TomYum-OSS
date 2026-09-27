@@ -265,6 +265,10 @@ if (databaseOptions.Enabled)
         // Play counts ("Most Played Beatmaps", beatmap play/pass counts) from TomYum's scores.
         var playCounts = await scoreMirror.RebuildPlayCountsAsync();
         app.Logger.LogInformation("osu-web play counts rebuilt for {Count} player/beatmap pair(s).", playCounts);
+        // Replays: website scores copied before replays were linked.
+        var replaysMarked = await scoreMirror.MarkReplaysAsync(scoreId => ReplayFiles.Exists(app.Configuration, scoreId));
+        if (replaysMarked > 0)
+            app.Logger.LogInformation("Marked {Count} website score(s) as having a replay.", replaysMarked);
 
         // Medals: osu-web's catalog starts empty, and profiles only show catalogued medals.
         var medals = scope.ServiceProvider.GetRequiredService<OsuWebMedals>();
