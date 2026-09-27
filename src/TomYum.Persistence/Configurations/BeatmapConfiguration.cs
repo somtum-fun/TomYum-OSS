@@ -40,6 +40,7 @@ public sealed class BeatmapConfiguration : IEntityTypeConfiguration<Beatmap>
         builder.Property(b => b.StatusFrozen).IsRequired();
         // Only carried in memory to osu-web (docs/osu-web.md); no column here.
         builder.Ignore(b => b.OsuApiStatus);
+        builder.Ignore(b => b.Details);
 
         builder.Property(b => b.Mode).IsRequired();
         builder.Property(b => b.StarRating).IsRequired();

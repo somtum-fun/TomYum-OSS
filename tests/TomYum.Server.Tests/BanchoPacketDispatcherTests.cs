@@ -26,6 +26,9 @@ public class BanchoPacketDispatcherTests
     {
         public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default) =>
             Task.FromResult<Beatmap?>(null);
+
+        public Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
     }
 
     private static BanchoPacketDispatcher NewDispatcher() => new(

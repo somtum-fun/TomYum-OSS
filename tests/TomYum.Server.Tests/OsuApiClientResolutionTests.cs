@@ -63,6 +63,74 @@ public class OsuApiClientResolutionTests
         Assert.Null(result);   // never guess a difficulty when the hash isn't present
     }
 
+    [Fact]
+    public async Task GetSetAsync_ReturnsEveryDifficultyOfTheSet()
+    {
+        var client = ClientReturning(SetJson);
+
+        var set = await client.GetSetAsync(859783);
+
+        Assert.Equal([1797542, 1801936, 1849505], set.Select(b => b.Id));
+    }
+
+    [Fact]
+    public async Task GetSetAsync_DropsEntriesFromOtherSets()
+    {
+        var client = ClientReturning(SetJson);
+
+        Assert.Empty(await client.GetSetAsync(1));
+    }
+
+    [Fact]
+    public async Task Details_AreReadFromTheMirrorsNumericShape()
+    {
+        // osu.direct: bare numbers, no object counts, genre/language 0.
+        var client = ClientReturning("""
+        [{"file_md5":"aaa","beatmapset_id":950289,"beatmap_id":2044361,"approved":1,"mode":0,
+          "diff_size":3,"diff_approach":5,"diff_overall":4,"diff_drain":4.5,"bpm":185,"hit_length":87,
+          "genre_id":0,"language_id":0,"source":"Black Clover","tags":"opening pop","video":1,"storyboard":0,
+          "approved_date":"2019-06-30T02:40:01Z"}]
+        """);
+
+        var details = (await client.GetByMd5Async("aaa"))!.Details!;
+
+        Assert.Equal(3f, details.CircleSize);
+        Assert.Equal(5f, details.ApproachRate);
+        Assert.Equal(4f, details.OverallDifficulty);
+        Assert.Equal(4.5f, details.DrainRate);
+        Assert.Equal(185f, details.Bpm);
+        Assert.Equal(87, details.HitLength);
+        Assert.Null(details.CountCircles);
+        Assert.Null(details.GenreId);      // 0 = unknown
+        Assert.Null(details.LanguageId);
+        Assert.Equal("Black Clover", details.Source);
+        Assert.Equal("opening pop", details.Tags);
+        Assert.True(details.Video);
+        Assert.False(details.Storyboard);
+        Assert.Equal(new DateTimeOffset(2019, 6, 30, 2, 40, 1, TimeSpan.Zero), details.ApprovedDate);
+    }
+
+    [Fact]
+    public async Task Details_AreReadFromTheOfficialStringShape()
+    {
+        // old.ppy.sh: every value quoted, object counts and real genre/language present.
+        var client = ClientReturning("""
+        [{"file_md5":"aaa","beatmapset_id":"1","beatmap_id":"2","approved":"1","mode":"0",
+          "diff_size":"4","count_normal":"120","count_slider":"80","count_spinner":"2",
+          "genre_id":"3","language_id":"3","approved_date":"2019-06-30 02:40:01"}]
+        """);
+
+        var details = (await client.GetByMd5Async("aaa"))!.Details!;
+
+        Assert.Equal(4f, details.CircleSize);
+        Assert.Equal(120, details.CountCircles);
+        Assert.Equal(80, details.CountSliders);
+        Assert.Equal(2, details.CountSpinners);
+        Assert.Equal(3, details.GenreId);
+        Assert.Equal(3, details.LanguageId);
+        Assert.NotNull(details.ApprovedDate);
+    }
+
     private sealed class StubHandler(string json) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>

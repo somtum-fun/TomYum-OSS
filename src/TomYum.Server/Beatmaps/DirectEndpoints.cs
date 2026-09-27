@@ -223,8 +223,8 @@ public static class DirectEndpoints
         IOptions<DirectOptions> opts)
     {
         var cfg = opts.Value;
-        // Pass through ?novideo if the client sent it.
-        var noVideo = request.Query.ContainsKey("novideo") ? "?novideo" : string.Empty;
+        // Pass through ?novideo if the client sent it; osu-web (as a download mirror) sends nv=1.
+        var noVideo = request.Query.ContainsKey("novideo") || request.Query["nv"] == "1" ? "?novideo" : string.Empty;
         var url = cfg.MirrorBaseUrl
             + string.Format(CultureInfo.InvariantCulture, cfg.DownloadPath, setId)
             + noVideo;

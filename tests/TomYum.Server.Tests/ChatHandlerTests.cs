@@ -33,6 +33,9 @@ public class ChatHandlerTests
     {
         public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default) =>
             Task.FromResult<Beatmap?>(null);
+
+        public Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
     }
 
     private static OnlinePlayer AddPlayer(PlayerRegistry registry, int userId, string name) =>

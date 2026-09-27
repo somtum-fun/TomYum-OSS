@@ -29,6 +29,8 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
         Assert.Equal(-2, await ScalarAsync<int>("SELECT approved FROM osu_beatmapsets WHERE beatmapset_id = 1"));
         Assert.Null(await ScalarAsync<DateTime?>("SELECT approved_date FROM osu_beatmapsets WHERE beatmapset_id = 1"));
         Assert.Equal("Artist 1", await ScalarAsync<string>("SELECT artist FROM osu_beatmapsets WHERE beatmapset_id = 1"));
+        // Without it the site treats the set as having no cover.
+        Assert.NotNull(await ScalarAsync<DateTime?>("SELECT cover_updated_at FROM osu_beatmapsets WHERE beatmapset_id = 1"));
     }
 
     [MySqlFact]
@@ -91,6 +93,51 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
         Assert.Equal(0, await new OsuWebBeatmapMirror(NewOsuWebContext()).BackfillAsync(known));
         Assert.Equal(3L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_beatmaps"));
         Assert.Equal("Normal", await ScalarAsync<string>("SELECT version FROM osu_beatmaps WHERE beatmap_id = 400")); // untouched
+    }
+
+    [MySqlFact]
+    public async Task Details_FillTheWebsitesStatColumns()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        var map = Map(500, 50, RankedStatus.Ranked, api: 1);
+        map.Details = new BeatmapDetails
+        {
+            CircleSize = 4, ApproachRate = 9.3f, OverallDifficulty = 8, DrainRate = 5, Bpm = 185, HitLength = 87,
+            CountCircles = 120, CountSliders = 80, CountSpinners = 2,
+            GenreId = 3, LanguageId = 3, Source = "Black Clover", Tags = "opening pop", Video = true,
+        };
+
+        await NewRepository(tomyum).UpsertAsync(map);
+
+        Assert.Equal(9.3f, await ScalarAsync<float>("SELECT diff_approach FROM osu_beatmaps WHERE beatmap_id = 500"));
+        Assert.Equal(4f, await ScalarAsync<float>("SELECT diff_size FROM osu_beatmaps WHERE beatmap_id = 500"));
+        Assert.Equal(87, await ScalarAsync<int>("SELECT hit_length FROM osu_beatmaps WHERE beatmap_id = 500"));
+        Assert.Equal(202, await ScalarAsync<int>("SELECT countTotal FROM osu_beatmaps WHERE beatmap_id = 500"));
+        Assert.Equal(185f, await ScalarAsync<float>("SELECT bpm FROM osu_beatmapsets WHERE beatmapset_id = 50"));
+        Assert.Equal(3, await ScalarAsync<int>("SELECT genre_id FROM osu_beatmapsets WHERE beatmapset_id = 50"));
+        Assert.Equal("Black Clover", await ScalarAsync<string>("SELECT source FROM osu_beatmapsets WHERE beatmapset_id = 50"));
+        Assert.True(await ScalarAsync<bool>("SELECT video FROM osu_beatmapsets WHERE beatmapset_id = 50"));
+    }
+
+    [MySqlFact]
+    public async Task MissingDetails_NeverBlankKnownValues()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        var repository = NewRepository(tomyum);
+        var full = Map(600, 60, RankedStatus.Ranked, api: 1);
+        full.Details = new BeatmapDetails { CountCircles = 120, CountSliders = 80, CountSpinners = 2, GenreId = 3 };
+        await repository.UpsertAsync(full);
+
+        // A later lookup from the keyless mirror: no object counts, no genre.
+        var sparse = Map(600, 60, RankedStatus.Ranked, api: 1);
+        sparse.Details = new BeatmapDetails { CircleSize = 4 };
+        await repository.UpsertAsync(sparse);
+        // A map TomYum stored without any API details.
+        await repository.UpsertAsync(Map(600, 60, RankedStatus.Ranked, api: 1));
+
+        Assert.Equal(202, await ScalarAsync<int>("SELECT countTotal FROM osu_beatmaps WHERE beatmap_id = 600"));
+        Assert.Equal(3, await ScalarAsync<int>("SELECT genre_id FROM osu_beatmapsets WHERE beatmapset_id = 60"));
+        Assert.Equal(4f, await ScalarAsync<float>("SELECT diff_size FROM osu_beatmaps WHERE beatmap_id = 600"));
     }
 
     [MySqlFact]

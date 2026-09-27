@@ -88,6 +88,14 @@ public sealed class OsuWebDbContext : DbContext
             set.Property(s => s.ApprovedDate).HasColumnName("approved_date");
             set.Property(s => s.SubmitDate).HasColumnName("submit_date");
             set.Property(s => s.LastUpdate).HasColumnName("last_update");
+            set.Property(s => s.CoverUpdatedAt).HasColumnName("cover_updated_at");
+            set.Property(s => s.Bpm).HasColumnName("bpm");
+            set.Property(s => s.GenreId).HasColumnName("genre_id");
+            set.Property(s => s.LanguageId).HasColumnName("language_id");
+            set.Property(s => s.Source).HasColumnName("source");
+            set.Property(s => s.Tags).HasColumnName("tags");
+            set.Property(s => s.Video).HasColumnName("video");
+            set.Property(s => s.Storyboard).HasColumnName("storyboard");
         });
 
         modelBuilder.Entity<OsuWebBeatmap>(map =>
@@ -105,6 +113,15 @@ public sealed class OsuWebDbContext : DbContext
             map.Property(b => b.LastUpdate).HasColumnName("last_update");
             map.Property(b => b.Difficultyrating).HasColumnName("difficultyrating");
             map.Property(b => b.MaxCombo).HasColumnName("max_combo");
+            map.Property(b => b.DiffSize).HasColumnName("diff_size");
+            map.Property(b => b.DiffApproach).HasColumnName("diff_approach");
+            map.Property(b => b.DiffOverall).HasColumnName("diff_overall");
+            map.Property(b => b.DiffDrain).HasColumnName("diff_drain");
+            map.Property(b => b.Bpm).HasColumnName("bpm");
+            map.Property(b => b.CountNormal).HasColumnName("countNormal");
+            map.Property(b => b.CountSlider).HasColumnName("countSlider");
+            map.Property(b => b.CountSpinner).HasColumnName("countSpinner");
+            map.Property(b => b.CountTotal).HasColumnName("countTotal");
         });
 
         modelBuilder.Entity<OsuWebScore>(score =>

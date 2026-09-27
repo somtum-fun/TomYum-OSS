@@ -18,6 +18,7 @@ public sealed class BeatmapService
 {
     private readonly IOsuApiClient _api;
     private readonly ConcurrentDictionary<string, Beatmap?> _byMd5 = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<int, byte> _fetchedSets = new();
 
     /// <summary>Creates the service over the osu! API client.</summary>
     public BeatmapService(IOsuApiClient api) => _api = api;
@@ -45,5 +46,33 @@ public sealed class BeatmapService
         var resolved = await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
         _byMd5[md5] = resolved;
         return resolved;
+    }
+
+    /// <summary>
+    /// Fetches every difficulty of set <paramref name="setId"/> the first time it is asked for in
+    /// this process, and returns empty on later calls — so the caller imports each set once per
+    /// run instead of on every play. A failed or empty fetch is retried on the next call. Official
+    /// sets only: server-local custom sets aren't on the osu! API.
+    /// </summary>
+    public async Task<IReadOnlyList<Beatmap>> FetchSetOnceAsync(int setId, CancellationToken cancellationToken = default)
+    {
+        if (setId is <= 0 or >= Beatmap.CustomIdFloor || !_fetchedSets.TryAdd(setId, 0))
+        {
+            return [];
+        }
+
+        var set = await _api.GetSetAsync(setId, cancellationToken).ConfigureAwait(false);
+        if (set.Count == 0)
+        {
+            _fetchedSets.TryRemove(setId, out _);
+            return set;
+        }
+
+        // The other difficulties are now known too: later lookups of them skip the API.
+        foreach (var beatmap in set)
+        {
+            _byMd5.TryAdd(beatmap.Md5, beatmap);
+        }
+        return set;
     }
 }

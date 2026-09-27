@@ -44,6 +44,9 @@ public class SpectatingTests
     {
         public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default) =>
             Task.FromResult<Beatmap?>(null);
+
+        public Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
     }
 
     /// <summary>Builds a SEND_PUBLIC_MESSAGE payload (sender + text + target + sender_id; sender fields ignored).</summary>
