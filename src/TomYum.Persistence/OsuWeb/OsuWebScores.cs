@@ -150,4 +150,87 @@ public static class OsuWebScores
 
     private static Dictionary<string, int> WithoutZeros(Dictionary<string, int> values) =>
         values.Where(kv => kv.Value != 0).ToDictionary(kv => kv.Key, kv => kv.Value);
+
+    /// <summary>
+    /// A player's total pp and accuracy (percent) from their scores, as ppy's
+    /// <c>UserTotalPerformanceAggregateHelper</c> computes it: the best pp per beatmap (from any
+    /// client), weighted by 0.95 per place, plus bonus pp for the number of scores (before
+    /// de-duplication); accuracy weighted the same way and normalised. <paramref name="scores"/> are
+    /// the player's preserved, ranked scores with pp, best first, at most 1000.
+    /// </summary>
+    public static (double Pp, double Accuracy) TotalPerformance(IReadOnlyList<(uint BeatmapId, double Pp, double Accuracy)> scores)
+    {
+        ArgumentNullException.ThrowIfNull(scores);
+
+        var best = scores.GroupBy(s => s.BeatmapId)
+            .Select(g => g.OrderByDescending(s => s.Pp).First())
+            .OrderByDescending(s => s.Pp)
+            .ToList();
+
+        double factor = 1, pp = 0, accuracy = 0;
+        foreach (var score in best)
+        {
+            pp += score.Pp * factor;
+            accuracy += score.Accuracy * factor;
+            factor *= 0.95;
+        }
+
+        pp += (417.0 - 1.0 / 3.0) * (1.0 - Math.Pow(0.995, scores.Count));
+        if (best.Count > 0)
+            accuracy *= 100.0 / (20 * (1 - Math.Pow(0.95, best.Count)));
+
+        return (Math.Max(0, pp), Math.Clamp(accuracy, 0, 100));
+    }
+
+    /// <summary>
+    /// A queue item for ppy's score processor: <c>{"Score": row}</c> with the website row's columns,
+    /// like osu-web's <c>Solo\Score::queueForProcessing</c> (<c>data</c> stays a JSON string).
+    /// </summary>
+    public static string ProcessingItem(OsuWebScore row, int? previousVersion = null)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+
+        var item = new Dictionary<string, object?>
+        {
+            ["Score"] = new Dictionary<string, object?>
+            {
+                ["id"] = row.Id,
+                ["user_id"] = row.UserId,
+                ["ruleset_id"] = row.RulesetId,
+                ["beatmap_id"] = row.BeatmapId,
+                ["has_replay"] = row.HasReplay,
+                ["preserve"] = row.Preserve,
+                ["ranked"] = row.Ranked,
+                ["rank"] = row.Rank,
+                ["passed"] = row.Passed,
+                ["accuracy"] = row.Accuracy,
+                ["max_combo"] = row.MaxCombo,
+                ["total_score"] = row.TotalScore,
+                ["data"] = row.Data,
+                ["pp"] = row.Pp,
+                ["legacy_score_id"] = row.LegacyScoreId,
+                ["legacy_total_score"] = row.LegacyTotalScore,
+                ["started_at"] = null,
+                ["ended_at"] = new DateTimeOffset(DateTime.SpecifyKind(row.EndedAt, DateTimeKind.Utc)).ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+                ["build_id"] = null,
+            },
+        };
+        if (previousVersion is { } version)
+            item["ProcessHistory"] = new Dictionary<string, object> { ["score_id"] = row.Id, ["processed_version"] = version };
+        return JsonSerializer.Serialize(item);
+    }
 }
+
+/// <summary>Website options for the mirror (config section <c>OsuWeb</c>).</summary>
+public sealed class OsuWebMirrorOptions
+{
+    /// <summary>
+    /// ppy's score processor runs next to osu-web (lazer support, docs/lazer.md): it owns pp,
+    /// accuracy, ranks and grade counts on the website for stable and lazer scores together, and
+    /// TomYum adds only its stable counters.
+    /// </summary>
+    public bool ScoreProcessor { get; set; }
+}
+
+/// <summary>A player's total pp and accuracy (0-1) on the website.</summary>
+public sealed record OsuWebPerformance(double Pp, float Accuracy);

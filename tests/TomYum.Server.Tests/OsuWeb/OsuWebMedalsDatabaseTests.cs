@@ -86,6 +86,7 @@ public sealed class OsuWebMedalsDatabaseTests : OsuWebDatabaseTest
         new OsuWebMedals(NewOsuWebContext(), tomyum),
         new OsuWebInterop(handler is null ? new HttpClient() : new HttpClient(handler), options),
         new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build(),
+        new OsuWebPerformanceSync(new OsuWebScoreMirror(tomyum, NewOsuWebContext()), new TomYum.Persistence.Repositories.UserStatsRepository(tomyum, new TomYum.Domain.Services.RestrictedUsers()), new TomYum.Server.Bancho.PlayerRegistry()),
         NullLogger<OsuWebSync>.Instance);
 
     private static Medal Medal(int id) => MedalCatalog.All.Single(m => m.Id == id);

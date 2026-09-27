@@ -96,6 +96,17 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHttpClient<OsuWebInterop>(http => http.Timeout = TimeSpan.FromSeconds(10));
     builder.Services.AddScoped<IOsuWebSync, OsuWebSync>();
 
+    // ppy's score processor next to osu-web (lazer support, docs/lazer.md): it owns pp on the website.
+    var mirrorOptions = new OsuWebMirrorOptions();
+    builder.Configuration.GetSection(OsuWebInteropOptions.SectionName).Bind(mirrorOptions);
+    builder.Services.AddSingleton(mirrorOptions);
+    if (mirrorOptions.ScoreProcessor)
+    {
+        builder.Services.AddSingleton(sp => new OsuWebScoreProcessing(sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>()));
+        builder.Services.AddHostedService<OsuWebPerformanceWatcher>();
+    }
+    builder.Services.AddScoped<OsuWebPerformanceSync>();
+
     // Admin API for osu-web's staff panels (signed with the same shared secret as InterOp).
     builder.Services.TryAddSingleton(TimeProvider.System);
     builder.Services.AddSingleton<AdminAuthFilter>();

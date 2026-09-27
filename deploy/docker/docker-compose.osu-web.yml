@@ -35,6 +35,9 @@ services:
       # accounts). The secret (osu-web's SHARED_INTEROP_SECRET) goes in config/.env as
       # TOMYUM_OSUWEB__INTEROPSECRET; it's not set here so this file can't blank it.
       TOMYUM_OSUWEB__INTEROPURL: ${OSU_WEB_INTEROP_URL-http://nginx}
+      # ppy's score processor runs in osu-web's compose (score-processor): pp on the website
+      # combines stable and lazer scores (docs/lazer.md). Set to false if it isn't running.
+      TOMYUM_OSUWEB__SCOREPROCESSOR: ${OSU_WEB_SCORE_PROCESSOR:-true}
     networks:
       - default
       - osu-web

@@ -34,6 +34,7 @@ public sealed class ScoreModeration
     private readonly OsuWebScoreMirror? _mirror;
     private readonly OsuWebScoreIndexing? _indexing;
     private readonly OsuWeb.OsuWebInterop? _interop;
+    private readonly OsuWeb.OsuWebPerformanceSync? _performance;
 
     public ScoreModeration(
         TomYumDbContext db,
@@ -43,7 +44,8 @@ public sealed class ScoreModeration
         ILogger<ScoreModeration> logger,
         OsuWebScoreMirror? mirror = null,
         OsuWebScoreIndexing? indexing = null,
-        OsuWeb.OsuWebInterop? interop = null)
+        OsuWeb.OsuWebInterop? interop = null,
+        OsuWeb.OsuWebPerformanceSync? performance = null)
     {
         _db = db;
         _log = log;
@@ -53,6 +55,7 @@ public sealed class ScoreModeration
         _mirror = mirror;
         _indexing = indexing;
         _interop = interop;
+        _performance = performance;
     }
 
     /// <summary>A player's scores, newest first (optionally one mode, or only their bests by pp).</summary>
@@ -165,7 +168,12 @@ public sealed class ScoreModeration
             foreach (var mode in modes.Where(OsuWebScores.IsMirrored))
             {
                 await _mirror.WriteStatsAsync(userId, mode, cancellationToken).ConfigureAwait(false);
+                // With ppy's processor the total combines stable and lazer: redo it without the removed scores.
+                if (_performance is { Enabled: true })
+                    await _performance.ApplyAsync(userId, mode, recompute: true, cancellationToken).ConfigureAwait(false);
                 await _mirror.RecomputeGlobalRanksAsync(mode, cancellationToken).ConfigureAwait(false);
+                if (_performance is { Enabled: true })
+                    await _performance.RefreshPresenceAsync(userId, mode, cancellationToken).ConfigureAwait(false);
             }
             if (_indexing is not null)
                 await _indexing.QueueAsync(deleted).ConfigureAwait(false);

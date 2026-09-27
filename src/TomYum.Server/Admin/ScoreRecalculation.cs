@@ -32,6 +32,7 @@ public sealed class ScoreRecalculation
     private readonly OsuWebScoreMirror? _mirror;
     private readonly OsuWebScoreIndexing? _indexing;
     private readonly OsuWeb.OsuWebInterop? _interop;
+    private readonly OsuWeb.OsuWebPerformanceSync? _performance;
 
     public ScoreRecalculation(
         TomYumDbContext db,
@@ -41,7 +42,8 @@ public sealed class ScoreRecalculation
         ILogger<ScoreRecalculation> logger,
         OsuWebScoreMirror? mirror = null,
         OsuWebScoreIndexing? indexing = null,
-        OsuWeb.OsuWebInterop? interop = null)
+        OsuWeb.OsuWebInterop? interop = null,
+        OsuWeb.OsuWebPerformanceSync? performance = null)
     {
         _db = db;
         _pp = pp;
@@ -51,6 +53,7 @@ public sealed class ScoreRecalculation
         _mirror = mirror;
         _indexing = indexing;
         _interop = interop;
+        _performance = performance;
     }
 
     /// <summary>Recalculates every passed score on <paramref name="beatmaps"/> for the status each now has.</summary>
@@ -96,7 +99,7 @@ public sealed class ScoreRecalculation
         var websiteScores = await _db.Scores.AsNoTracking()
             .Where(s => md5s.Contains(s.BeatmapMd5) && s.Passed)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
-        await UpdateWebsiteAsync(websiteScores, players, cancellationToken).ConfigureAwait(false);
+        await UpdateWebsiteAsync(websiteScores, players, beatmaps.Select(b => b.Id).ToList(), cancellationToken).ConfigureAwait(false);
 
         return new ScoreRecalculationResult(looked, changed.Count, players.Count);
     }
@@ -153,7 +156,7 @@ public sealed class ScoreRecalculation
         _registry.EnqueueAbout(player, writer.ToArray());
     }
 
-    private async Task UpdateWebsiteAsync(List<Score> scores, HashSet<(int UserId, int Mode)> players, CancellationToken cancellationToken)
+    private async Task UpdateWebsiteAsync(List<Score> scores, HashSet<(int UserId, int Mode)> players, IReadOnlyCollection<int> beatmapIds, CancellationToken cancellationToken)
     {
         if (_mirror is null)
             return;
@@ -163,6 +166,23 @@ public sealed class ScoreRecalculation
             var written = await _mirror.RefreshScoresAsync(scores, cancellationToken).ConfigureAwait(false);
             foreach (var (userId, mode) in players.Where(p => OsuWebScores.IsMirrored(p.Mode)))
                 await _mirror.WriteStatsAsync(userId, mode, cancellationToken).ConfigureAwait(false);
+
+            if (_performance is { Enabled: true })
+            {
+                // Lazer scores on these maps change too. The processor redoes every score on them
+                // (its pp for stable scores replaces ours); totals are redone now with what's there,
+                // and again by the processor as it goes.
+                foreach (var lazer in await _mirror.ClearLazerPpOnUnrankedAsync(beatmapIds, cancellationToken).ConfigureAwait(false))
+                    players.Add(lazer);
+                await _performance.QueueAsync(await _mirror.GetScoreIdsOnBeatmapsAsync(beatmapIds, cancellationToken).ConfigureAwait(false), reprocess: true, cancellationToken)
+                    .ConfigureAwait(false);
+                foreach (var (userId, mode) in players.Where(p => OsuWebScores.IsMirrored(p.Mode)))
+                {
+                    await _performance.ApplyAsync(userId, mode, recompute: true, cancellationToken).ConfigureAwait(false);
+                    await _performance.RefreshPresenceAsync(userId, mode, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
             foreach (var mode in players.Select(p => p.Mode).Distinct().Where(OsuWebScores.IsMirrored))
                 await _mirror.RecomputeGlobalRanksAsync(mode, cancellationToken).ConfigureAwait(false);
             if (_indexing is not null)
