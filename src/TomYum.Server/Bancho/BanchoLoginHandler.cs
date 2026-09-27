@@ -15,7 +15,8 @@ namespace TomYum.Server.Bancho;
 /// Credentials are real: the username is resolved by canonical <see cref="User.SafeName"/>
 /// and the client's md5-hex password is verified against the stored bcrypt hash
 /// (see <see cref="IPasswordHasher"/>). Still backed by an in-memory repository until
-/// <c>TomYum.Persistence</c> lands. TODO: honour ban/restriction state and geolocate the
+/// <c>TomYum.Persistence</c> lands. Restricted players log in but get the restricted notice and
+/// stay invisible to others; silenced players get their remaining silence. TODO: geolocate the
 /// client IP for presence (country, lon/lat).
 /// </remarks>
 public sealed class BanchoLoginHandler
@@ -109,6 +110,8 @@ public sealed class BanchoLoginHandler
         }
 
         var player = _registry.Add(presence);
+        player.IsRestricted = user.IsRestricted;
+        player.SilenceEndUtc = user.SilenceEndUtc;
         var welcome = string.Create(CultureInfo.InvariantCulture, $"Welcome to TomYum, {user.Username}!");
 
         // Auto-join the player to the auto-join channels (e.g. #osu) so they can chat immediately,
@@ -142,10 +145,15 @@ public sealed class BanchoLoginHandler
         // player so the newcomer's user list is populated immediately. Their own presence/stats
         // are already in the burst (BuildSuccess), so skip self here to avoid a duplicate.
         var writer = new BanchoPacketWriter(1024);
-        writer.WriteRaw(LoginResponseBuilder.BuildSuccess(presence, welcome, WriteChannels));
+        writer.WriteRaw(LoginResponseBuilder.BuildSuccess(
+            presence, welcome, WriteChannels, player.SilenceSecondsLeft(DateTimeOffset.UtcNow)));
+        if (player.IsRestricted)
+            ModerationPackets.WriteRestricted(writer);
+
         foreach (var other in _registry.All)
         {
-            if (other.UserId == player.UserId)
+            // Restricted players are invisible to everyone else.
+            if (other.UserId == player.UserId || other.IsRestricted)
             {
                 continue;
             }
@@ -160,7 +168,7 @@ public sealed class BanchoLoginHandler
         var announce = new BanchoPacketWriter(128);
         LoginResponseBuilder.WritePresence(announce, presence);
         LoginResponseBuilder.WriteStats(announce, presence);
-        _registry.EnqueueToAll(announce.ToArray(), exceptUserId: player.UserId);
+        _registry.EnqueueAbout(player, announce.ToArray(), exceptUserId: player.UserId);
 
         _logger.LogInformation(
             "Login ok: {Username} (id {UserId}) on {Version}; {Online} online.",

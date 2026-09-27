@@ -483,3 +483,20 @@ CREATE TABLE osu_user_achievements (
   KEY user_id (user_id, `date`),
   KEY achievement_id (achievement_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Account history (notes, restrictions, silences): base_tables + later alters, as on a current
+-- osu-web database (SHOW CREATE TABLE osu_user_banhistory).
+CREATE TABLE osu_user_banhistory (
+  ban_id int unsigned NOT NULL AUTO_INCREMENT,
+  user_id int unsigned NULL,
+  reason varchar(8000) NULL DEFAULT 'Blanket Cheating Action',
+  supporting_url varchar(255) NULL,
+  ban_status tinyint(1) NULL DEFAULT 1,
+  period int unsigned NOT NULL DEFAULT 0,
+  `timestamp` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  banner_id int unsigned NULL,
+  permanent tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (ban_id),
+  KEY user_id (user_id, `timestamp`),
+  KEY `timestamp` (`timestamp`)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

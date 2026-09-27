@@ -15,6 +15,12 @@ namespace TomYum.Server.Admin;
 /// <summary>Body of <c>POST /_admin/beatmapsets/{id}/status</c>; no beatmap ids = the whole set.</summary>
 public sealed record StatusChangeRequest(string? Status, IReadOnlyList<int>? BeatmapIds);
 
+/// <summary>Body of <c>POST /_admin/users/{id}/wipe-scores</c>; no mode = every mode.</summary>
+public sealed record WipeScoresRequest(int? Mode, string? Reason);
+
+/// <summary>Body of <c>POST /_admin/log</c>: an action the website did itself (restrict, silence, …).</summary>
+public sealed record StaffLogRequest(string? Action, long? TargetId, string? Summary, string? Result);
+
 public static class AdminEndpoints
 {
     /// <summary>Host names the admin API answers on by default (compose service name + local).</summary>
@@ -52,6 +58,19 @@ public static class AdminEndpoints
 
         admin.MapGet("/log", async (IStaffLogRepository log, string? action, long? targetId, string? jobId, long? before, int? limit, CancellationToken cancellationToken) =>
             Results.Ok(await log.ListAsync(new StaffLogQuery(action, targetId, jobId, before, limit ?? 50), cancellationToken).ConfigureAwait(false)));
+        admin.MapPost("/log", AppendLogAsync);
+
+        // Moderation (GMT/Admin panels).
+        admin.MapPost("/users/{userId:int}/refresh", async (int userId, UserModerationSync sync, CancellationToken cancellationToken) =>
+            await sync.RefreshAsync(userId, cancellationToken).ConfigureAwait(false) is { } result ? Results.Ok(result) : Results.NotFound());
+        admin.MapGet("/users/{userId:int}/scores", async (int userId, int? mode, bool? best, int? limit, ScoreModeration scores, CancellationToken cancellationToken) =>
+            Results.Ok(await scores.ListAsync(userId, mode, best ?? false, limit ?? 50, cancellationToken).ConfigureAwait(false)));
+        admin.MapPost("/users/{userId:int}/wipe-scores", async (int userId, WipeScoresRequest request, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken) =>
+            Results.Ok(await scores.WipeAsync(userId, request.Mode, ActorId(context), request.Reason, cancellationToken).ConfigureAwait(false)));
+        admin.MapDelete("/scores/{scoreId:long}", async (long scoreId, string? reason, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken) =>
+            await scores.RemoveAsync(scoreId, ActorId(context), reason, cancellationToken).ConfigureAwait(false) is { } result ? Results.Ok(result) : Results.NotFound());
+        admin.MapGet("/chat", async (int? userId, string? target, long? before, int? limit, IChatLogRepository chat, CancellationToken cancellationToken) =>
+            Results.Ok(await chat.ListAsync(new ChatLogQuery(userId, target, before, limit ?? 100), cancellationToken).ConfigureAwait(false)));
 
         admin.MapGet("/online", (PlayerRegistry players) => Results.Ok(
             players.All
@@ -83,6 +102,24 @@ public static class AdminEndpoints
         return int.TryParse(context.Items[AdminAuthFilter.ActorItemKey] as string, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
             ? id
             : 0;
+    }
+
+    private static async Task<IResult> AppendLogAsync(StaffLogRequest request, IStaffLogRepository log, TimeProvider time, HttpContext context, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Action) || request.Action.Length > 64 || string.IsNullOrWhiteSpace(request.Summary))
+            return Results.BadRequest(new { error = "Give an action (up to 64 characters) and a summary." });
+
+        var summary = request.Summary.Trim();
+        await log.AddAsync(new Domain.Entities.StaffLogEntry
+        {
+            CreatedAt = time.GetUtcNow().UtcDateTime,
+            ActorId = ActorId(context),
+            Action = request.Action.Trim(),
+            TargetId = request.TargetId,
+            Summary = summary.Length > 512 ? summary[..512] : summary,
+            Result = request.Result is { Length: > 32 } result ? result[..32] : request.Result,
+        }, cancellationToken).ConfigureAwait(false);
+        return Results.NoContent();
     }
 
     private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, HttpContext context, CancellationToken cancellationToken)

@@ -255,4 +255,39 @@ public sealed class OsuWebScoreMirror
             """);
         return _osuWeb.Database.ExecuteSqlRawAsync(sql, cancellationToken);
     }
+
+    /// <summary>The osu-web copies of <paramref name="userId"/>'s scores (for re-indexing after a restriction change).</summary>
+    public async Task<IReadOnlyList<ulong>> GetLinkedScoreIdsAsync(int userId, CancellationToken cancellationToken = default) =>
+        await _tomyum.Database
+            .SqlQuery<ulong>($"SELECT l.OsuWebScoreId AS Value FROM osu_web_score_links l JOIN scores s ON s.Id = l.ScoreId WHERE s.UserId = {userId}")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// Deletes the osu-web copies of TomYum scores <paramref name="scoreIds"/> (and their links);
+    /// returns the deleted osu-web score ids, to queue for the search index (which drops missing scores).
+    /// </summary>
+    public async Task<IReadOnlyList<ulong>> DeleteScoresAsync(IReadOnlyCollection<long> scoreIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(scoreIds);
+        if (scoreIds.Count == 0)
+            return [];
+
+        var ids = scoreIds.ToArray();
+        var linked = new List<ulong>();
+        foreach (var chunk in ids.Chunk(500))
+        {
+            var list = string.Join(",", chunk.Select(id => id.ToString(CultureInfo.InvariantCulture)));
+#pragma warning disable EF1002 // ids are longs formatted invariantly, not user text
+            linked.AddRange(await _tomyum.Database
+                .SqlQueryRaw<ulong>($"SELECT OsuWebScoreId AS Value FROM osu_web_score_links WHERE ScoreId IN ({list})")
+                .ToListAsync(cancellationToken).ConfigureAwait(false));
+            await _tomyum.Database.ExecuteSqlRawAsync($"DELETE FROM osu_web_score_links WHERE ScoreId IN ({list})", cancellationToken)
+                .ConfigureAwait(false);
+#pragma warning restore EF1002
+        }
+
+        foreach (var chunk in linked.Chunk(500))
+            await _osuWeb.Scores.Where(s => chunk.Contains(s.Id)).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        return linked;
+    }
 }

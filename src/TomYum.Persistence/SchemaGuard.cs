@@ -43,11 +43,31 @@ public static class SchemaGuard
         ) CHARACTER SET=utf8mb4;
         """;
 
+    // In-game chat log. Matches ChatLogEntryConfiguration (EF's default index names).
+    private const string ChatMessagesDdl =
+        """
+        CREATE TABLE IF NOT EXISTS `chat_messages` (
+          `Id` bigint NOT NULL AUTO_INCREMENT,
+          `SentAt` datetime(6) NOT NULL,
+          `SenderId` int NOT NULL,
+          `SenderName` varchar(32) NOT NULL,
+          `Target` varchar(64) NOT NULL,
+          `RecipientId` int NULL,
+          `Text` varchar(2048) NOT NULL,
+          PRIMARY KEY (`Id`),
+          KEY `IX_chat_messages_SentAt` (`SentAt`),
+          KEY `IX_chat_messages_SenderId_Id` (`SenderId`, `Id`),
+          KEY `IX_chat_messages_RecipientId_Id` (`RecipientId`, `Id`),
+          KEY `IX_chat_messages_Target_Id` (`Target`, `Id`)
+        ) CHARACTER SET=utf8mb4;
+        """;
+
     /// <summary>Applies the idempotent DDL for tables added after the initial <c>EnsureCreated</c> schema.</summary>
     public static async Task EnsureRuntimeTablesAsync(this TomYumDbContext db, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(db);
         await db.Database.ExecuteSqlRawAsync(UserAchievementsDdl, cancellationToken).ConfigureAwait(false);
         await db.Database.ExecuteSqlRawAsync(StaffLogDdl, cancellationToken).ConfigureAwait(false);
+        await db.Database.ExecuteSqlRawAsync(ChatMessagesDdl, cancellationToken).ConfigureAwait(false);
     }
 }

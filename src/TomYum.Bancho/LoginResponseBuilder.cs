@@ -40,7 +40,8 @@ public static class LoginResponseBuilder
     /// visible channels. Invoked before CHANNEL_INFO_END (89) so the client has the full list
     /// before the terminator. <c>null</c> advertises no channels (just the terminator).
     /// </param>
-    public static byte[] BuildSuccess(BanchoPresence self, string welcome, Action<BanchoPacketWriter>? writeChannels = null)
+    /// <param name="silenceSeconds">Seconds of chat silence left (0 = not silenced).</param>
+    public static byte[] BuildSuccess(BanchoPresence self, string welcome, Action<BanchoPacketWriter>? writeChannels = null, uint silenceSeconds = 0)
     {
         ArgumentNullException.ThrowIfNull(self);
 
@@ -70,7 +71,7 @@ public static class LoginResponseBuilder
         writer.WritePacket(ServerPacketId.FriendsList, w => w.WriteInt32List([]));
 
         // 8. Remaining silence in seconds (0 = not silenced).
-        writer.WritePacket(ServerPacketId.SilenceEnd, w => w.WriteUInt32(0));
+        writer.WritePacket(ServerPacketId.SilenceEnd, w => w.WriteUInt32(silenceSeconds));
 
         // 9. The player's own presence + stats so their profile renders immediately.
         WritePresence(writer, self);

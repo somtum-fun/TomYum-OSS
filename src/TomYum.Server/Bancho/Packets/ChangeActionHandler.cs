@@ -62,7 +62,7 @@ public sealed class ChangeActionHandler : IClientPacketHandler
         LoginResponseBuilder.WriteStats(writer, presence);
         var stats2 = writer.ToArray();
 
-        context.Registry.EnqueueToAll(stats2, exceptUserId: context.Player.UserId);
+        context.Registry.EnqueueAbout(context.Player, stats2, exceptUserId: context.Player.UserId);
         context.Response.WriteRaw(stats2);
 
         // Notify plugins (DAN Mode watches this to start/stop bot-spectating). Cheap when no plugin

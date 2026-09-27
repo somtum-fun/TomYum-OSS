@@ -44,5 +44,9 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
 
         // Store the privileges flags enum as its underlying int.
         builder.Property(u => u.Privileges).HasConversion<int>().IsRequired();
+
+        // Moderation state comes from osu-web's account data (osu-web mode only).
+        builder.Ignore(u => u.IsRestricted);
+        builder.Ignore(u => u.SilenceEndUtc);
     }
 }

@@ -125,6 +125,29 @@ public sealed class OsuWebBeatmapset
     public bool Storyboard { get; set; }
 }
 
+/// <summary>
+/// A row of osu-web's <c>osu_user_banhistory</c> (read only here): notes, restrictions and silences.
+/// osu-web's <c>User::isSilenced</c>: the newest restriction/silence row with a period that hasn't
+/// run out. Lifting a silence adds a silence row with period 0.
+/// </summary>
+public sealed class OsuWebAccountHistory
+{
+    public const sbyte Restriction = 1;
+    public const sbyte Silence = 2;
+
+    public uint BanId { get; set; }
+
+    public uint? UserId { get; set; }
+
+    /// <summary>0 note, 1 restriction, 2 silence, 3 tournament ban.</summary>
+    public sbyte? BanStatus { get; set; }
+
+    /// <summary>Length in seconds (0 = none / lifted).</summary>
+    public uint Period { get; set; }
+
+    public DateTime? Timestamp { get; set; }
+}
+
 /// <summary>A row of osu-web's <c>osu_beatmaps</c> (only what TomYum writes; the rest have defaults).</summary>
 public sealed class OsuWebBeatmap
 {

@@ -207,8 +207,13 @@ public sealed class OsuWebUserRepository : IUserRepository
                 select grp.Identifier)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
 
+        var restricted = OsuWebAccounts.IsRestricted(row.UserType, row.UserWarnings);
+
         return new User
         {
+            IsRestricted = restricted,
+            // Restricted players can't chat publicly anyway; a silence only matters otherwise.
+            SilenceEndUtc = restricted ? null : await GetSilenceEndAsync(row.UserId, cancellationToken).ConfigureAwait(false),
             Id = (int)row.UserId,
             Username = row.Username,
             SafeName = User.MakeSafeName(row.Username),
@@ -219,6 +224,30 @@ public sealed class OsuWebUserRepository : IUserRepository
             LatestActivity = row.UserLastvisit,
             Privileges = OsuWebAccounts.ToPrivileges(groups, row.OsuSubscriber),
         };
+    }
+
+    /// <summary>Ids of every restricted or banned account (hidden from leaderboards and rankings).</summary>
+    public async Task<IReadOnlyList<int>> GetRestrictedIdsAsync(CancellationToken cancellationToken = default) =>
+        await _db.Users.AsNoTracking()
+            .Where(u => u.UserType == OsuWebAccounts.BannedUserType || u.UserWarnings)
+            .Select(u => (int)u.UserId)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+    /// <summary>
+    /// When the user's silence ends, as osu-web's <c>User::isSilenced</c> decides it: the newest
+    /// restriction/silence entry, if it has a period that hasn't run out yet. Null when not silenced.
+    /// </summary>
+    private async Task<DateTimeOffset?> GetSilenceEndAsync(uint userId, CancellationToken cancellationToken)
+    {
+        var last = await _db.AccountHistory.AsNoTracking()
+            .Where(h => h.UserId == userId && (h.BanStatus == OsuWebAccountHistory.Restriction || h.BanStatus == OsuWebAccountHistory.Silence))
+            .OrderByDescending(h => h.Timestamp)
+            .ThenByDescending(h => h.BanId)
+            .FirstOrDefaultAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return OsuWebAccounts.SilenceEnd(last?.Timestamp, last?.Period ?? 0, DateTimeOffset.UtcNow);
     }
 
     /// <summary>Adds/removes TomYum-managed staff groups so they match <paramref name="privileges"/>.</summary>

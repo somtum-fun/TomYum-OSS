@@ -88,6 +88,32 @@ public sealed class PlayerRegistry
         }
     }
 
+    /// <summary>
+    /// Queues packets about <paramref name="subject"/> (presence, stats) to the players who can see
+    /// them: everyone except <paramref name="exceptUserId"/>, or only the subject itself when it's
+    /// restricted (restricted players are invisible to others).
+    /// </summary>
+    public void EnqueueAbout(OnlinePlayer subject, ReadOnlySpan<byte> framedPackets, int exceptUserId = 0)
+    {
+        ArgumentNullException.ThrowIfNull(subject);
+
+        if (!subject.IsRestricted)
+        {
+            EnqueueToAll(framedPackets, exceptUserId);
+        }
+        else if (subject.UserId != exceptUserId)
+        {
+            subject.Enqueue(framedPackets);
+        }
+    }
+
+    /// <summary>Whether the player <paramref name="viewerUserId"/> may see <paramref name="subject"/> (restricted players only see themselves).</summary>
+    public static bool IsVisibleTo(OnlinePlayer subject, int viewerUserId)
+    {
+        ArgumentNullException.ThrowIfNull(subject);
+        return !subject.IsRestricted || subject.UserId == viewerUserId;
+    }
+
     private static string NewToken() => Guid.NewGuid().ToString("N") +
         Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
 }

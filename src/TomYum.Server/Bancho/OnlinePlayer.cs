@@ -47,6 +47,19 @@ public sealed class OnlinePlayer
     /// <summary>Whether this player currently has the multiplayer lobby open.</summary>
     public bool InLobby { get; set; }
 
+    /// <summary>Restricted by staff: invisible to other players and can't chat in public channels.</summary>
+    public bool IsRestricted { get; set; }
+
+    /// <summary>When this player's chat silence ends (UTC); null when not silenced.</summary>
+    public DateTimeOffset? SilenceEndUtc { get; set; }
+
+    /// <summary>Whether the player is silenced at <paramref name="now"/>.</summary>
+    public bool IsSilenced(DateTimeOffset now) => SilenceEndUtc is { } end && end > now;
+
+    /// <summary>Whole seconds of silence left at <paramref name="now"/> (0 when not silenced).</summary>
+    public uint SilenceSecondsLeft(DateTimeOffset now) =>
+        SilenceEndUtc is { } end && end > now ? (uint)Math.Ceiling((end - now).TotalSeconds) : 0;
+
     /// <summary>
     /// The user id of the host this player is currently spectating, or <c>null</c> when not
     /// spectating anyone. Set by <c>START_SPECTATING</c>, cleared by <c>STOP_SPECTATING</c>/logout.

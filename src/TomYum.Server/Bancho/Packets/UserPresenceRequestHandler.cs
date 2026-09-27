@@ -23,7 +23,7 @@ public sealed class UserPresenceRequestHandler : IClientPacketHandler
         foreach (var id in ids)
         {
             var target = context.Registry.GetByUserId(id);
-            if (target is not null)
+            if (target is not null && PlayerRegistry.IsVisibleTo(target, context.Player.UserId))
             {
                 LoginResponseBuilder.WritePresence(context.Response, target.Presence);
             }
