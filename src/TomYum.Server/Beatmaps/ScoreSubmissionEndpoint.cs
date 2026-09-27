@@ -372,6 +372,17 @@ public static class ScoreSubmissionEndpoint
                 logger.LogWarning(ex, "Achievement check failed for user {UserId} on beatmap {BeatmapId}; submission continues", user.Id, beatmap.Id);
             }
         }
+        if (newMedals.Count > 0)
+        {
+            try
+            {
+                await osuWebSync.MedalsUnlockedAsync(user.Id, newMedals, beatmap.Id, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "osu-web medal sync failed for user {UserId}; submission continues", user.Id);
+            }
+        }
         var achievementsNew = MedalService.FormatAchievementsNew(newMedals);
 
         var response = string.Create(CultureInfo.InvariantCulture,

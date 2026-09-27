@@ -82,6 +82,11 @@ if (databaseOptions.UseOsuWebAccounts)
 {
     builder.Services.AddSingleton(sp => new OsuWebScoreIndexing(
         sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>(), databaseOptions.OsuWebIndexPrefix));
+    builder.Services.AddScoped<OsuWebMedals>();
+    var interopOptions = new OsuWebInteropOptions();
+    builder.Configuration.GetSection(OsuWebInteropOptions.SectionName).Bind(interopOptions);
+    builder.Services.AddSingleton(interopOptions);
+    builder.Services.AddHttpClient<OsuWebInterop>(http => http.Timeout = TimeSpan.FromSeconds(10));
     builder.Services.AddScoped<IOsuWebSync, OsuWebSync>();
 }
 else
@@ -226,6 +231,15 @@ if (databaseOptions.Enabled)
 
         // Records which TomYum score became which osu-web score (lives in TomYum's database).
         await scope.ServiceProvider.GetRequiredService<OsuWebScoreMirror>().EnsureLinkTableAsync();
+
+        // Medals: osu-web's catalog starts empty, and profiles only show catalogued medals.
+        var medals = scope.ServiceProvider.GetRequiredService<OsuWebMedals>();
+        var catalogued = await medals.WriteCatalogAsync();
+        var copiedUnlocks = await medals.CopyUnlocksAsync();
+        if (catalogued + copiedUnlocks > 0)
+            app.Logger.LogInformation("osu-web medals: {Catalogued} added to the catalog, {Unlocks} earlier unlock(s) copied.", catalogued, copiedUnlocks);
+        if (!scope.ServiceProvider.GetRequiredService<OsuWebInteropOptions>().IsConfigured)
+            app.Logger.LogInformation("osu-web InterOp not configured (OsuWeb:InteropUrl/InteropSecret): medals are written directly, without activity entries.");
     }
 }
 
