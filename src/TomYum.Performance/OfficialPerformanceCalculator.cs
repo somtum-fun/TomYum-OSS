@@ -153,7 +153,7 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator
 
     // Minimal WorkingBeatmap that wraps a downloaded .osu stream, same pattern as
     // osu-queue-score-statistics/Stores/StreamedWorkingBeatmap.cs.
-    private sealed class StreamedWorkingBeatmap : WorkingBeatmap
+    internal sealed class StreamedWorkingBeatmap : WorkingBeatmap
     {
         private readonly Beatmap _beatmap;
 

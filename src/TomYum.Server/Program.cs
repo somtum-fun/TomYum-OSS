@@ -106,6 +106,8 @@ if (databaseOptions.UseOsuWebAccounts)
         builder.Services.AddHostedService<OsuWebPerformanceWatcher>();
     }
     builder.Services.AddScoped<OsuWebPerformanceSync>();
+    // Stable scores already on the website: into lazer's scoring, once (docs/lazer.md).
+    builder.Services.AddHostedService<OsuWebScoreConversionBackfill>();
 
     // Admin API for osu-web's staff panels (signed with the same shared secret as InterOp).
     builder.Services.TryAddSingleton(TimeProvider.System);

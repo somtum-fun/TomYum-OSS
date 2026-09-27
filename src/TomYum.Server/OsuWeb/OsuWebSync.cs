@@ -21,6 +21,7 @@ public sealed class OsuWebSync : IOsuWebSync
     private readonly IConfiguration _configuration;
     private readonly OsuWebPerformanceSync _performance;
     private readonly ILogger<OsuWebSync> _logger;
+    private readonly TomYum.Performance.LegacyScoreConverter? _converter;
 
     public OsuWebSync(
         OsuWebScoreMirror mirror,
@@ -29,7 +30,8 @@ public sealed class OsuWebSync : IOsuWebSync
         OsuWebInterop interop,
         IConfiguration configuration,
         OsuWebPerformanceSync performance,
-        ILogger<OsuWebSync> logger)
+        ILogger<OsuWebSync> logger,
+        TomYum.Performance.LegacyScoreConverter? converter = null)
     {
         _mirror = mirror;
         _indexQueue = indexQueue;
@@ -38,6 +40,7 @@ public sealed class OsuWebSync : IOsuWebSync
         _configuration = configuration;
         _performance = performance;
         _logger = logger;
+        _converter = converter;
     }
 
     public async Task<OsuWebPerformance?> ScoreSubmittedAsync(Score score, CancellationToken cancellationToken = default)
@@ -48,7 +51,9 @@ public sealed class OsuWebSync : IOsuWebSync
             return null;
 
         // The replay is saved before this runs; the website downloads it from TomYum.
-        var osuWebScoreId = await _mirror.WriteScoreAsync(score, ReplayFiles.Exists(_configuration, score.Id), cancellationToken).ConfigureAwait(false);
+        // In lazer's scoring too, like ppy stores stable scores (lazer shows and sorts by it).
+        var standardised = _converter is null ? null : await OsuWebStandardisation.ConvertAsync(_converter, score, _logger, cancellationToken).ConfigureAwait(false);
+        var osuWebScoreId = await _mirror.WriteScoreAsync(score, ReplayFiles.Exists(_configuration, score.Id), standardised, cancellationToken).ConfigureAwait(false);
         await _mirror.RecordPlayAsync(score, cancellationToken).ConfigureAwait(false);
         await _mirror.WriteStatsAsync(score.UserId, score.Mode, cancellationToken).ConfigureAwait(false);
 

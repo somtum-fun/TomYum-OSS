@@ -83,8 +83,15 @@ public sealed class OsuWebScoreMirror
     /// <summary>
     /// Like <see cref="WriteScoreAsync(Score, CancellationToken)"/>; <paramref name="hasReplay"/> marks
     /// the website copy as having a replay (osu-web fetches it from TomYum when downloaded).
+    /// The overload with a standardised score writes it in lazer's scoring, as ppy stores stable scores
+    /// (<c>total_score</c> standardised, <c>legacy_total_score</c> the stable score); without it both
+    /// hold the stable score.
     /// </summary>
-    public async Task<ulong?> WriteScoreAsync(Score score, bool hasReplay, CancellationToken cancellationToken = default)
+    public async Task<ulong?> WriteScoreAsync(Score score, bool hasReplay, CancellationToken cancellationToken = default) =>
+        await WriteScoreAsync(score, hasReplay, standardised: null, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc cref="WriteScoreAsync(Score, bool, CancellationToken)"/>
+    public async Task<ulong?> WriteScoreAsync(Score score, bool hasReplay, OsuWebStandardisedScore? standardised, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(score);
 
@@ -118,10 +125,12 @@ public sealed class OsuWebScoreMirror
             Accuracy = (float)AccuracyCalculator.Compute(
                 score.Mode, score.Count300, score.Count100, score.Count50, score.CountGeki, score.CountKatu, score.CountMiss),
             MaxCombo = (uint)Math.Max(0, score.MaxCombo),
-            TotalScore = stableScore,
+            TotalScore = standardised is { } converted ? (uint)Math.Clamp(converted.TotalScore, 0, uint.MaxValue) : stableScore,
             LegacyTotalScore = stableScore,
-            LegacyScoreId = 0,
-            Data = OsuWebScores.DataJson(score),
+            // TomYum's own id: lazer recognises a downloaded stable replay by it (the replay file
+            // carries it), and the website's legacy score links use it.
+            LegacyScoreId = (ulong)score.Id,
+            Data = standardised?.DataJson ?? OsuWebScores.DataJson(score),
             Pp = ranked && score.Pp > 0 ? (float)score.Pp : null,
             EndedAt = OsuWebBeatmaps.ToTimestamp(score.SubmittedAt, DateTime.UtcNow),
         };
@@ -423,6 +432,57 @@ public sealed class OsuWebScoreMirror
         var ids = beatmapIds.Select(id => (uint)id).ToList();
         return await _osuWeb.Scores.AsNoTracking().Where(s => ids.Contains(s.BeatmapId)).Select(s => s.Id)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>A linked stable score not yet in lazer's scoring (or without its legacy score id).</summary>
+    public sealed record UnconvertedScore(long ScoreId, ulong OsuWebScoreId);
+
+    /// <summary>
+    /// TomYum's scores on the website that predate stable-score conversion: <c>total_score</c> still
+    /// the stable score, or no legacy score id. Oldest first, at most <paramref name="limit"/>.
+    /// </summary>
+    public async Task<IReadOnlyList<UnconvertedScore>> GetUnconvertedScoresAsync(int limit, CancellationToken cancellationToken = default)
+    {
+        var links = await _tomyum.Database
+            .SqlQuery<LinkRow>($"SELECT ScoreId, OsuWebScoreId FROM osu_web_score_links ORDER BY ScoreId")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var byWebsiteId = links.ToDictionary(l => l.OsuWebScoreId, l => l.ScoreId);
+
+        var result = new List<UnconvertedScore>();
+        foreach (var chunk in links.Select(l => l.OsuWebScoreId).Chunk(500))
+        {
+            var ids = await _osuWeb.Scores.AsNoTracking()
+                .Where(s => chunk.Contains(s.Id) && (s.LegacyScoreId == null || s.LegacyScoreId == 0 || s.TotalScore == s.LegacyTotalScore))
+                .Select(s => s.Id)
+                .ToListAsync(cancellationToken).ConfigureAwait(false);
+            result.AddRange(ids.Select(id => new UnconvertedScore(byWebsiteId[id], id)));
+            if (result.Count >= limit)
+                break;
+        }
+        return result.OrderBy(r => r.ScoreId).Take(limit).ToList();
+    }
+
+    /// <summary>A row of <c>osu_web_score_links</c>.</summary>
+    private sealed class LinkRow
+    {
+        public long ScoreId { get; set; }
+        public ulong OsuWebScoreId { get; set; }
+    }
+
+    /// <summary>Rewrites an existing website copy of stable score <paramref name="scoreId"/> in lazer's scoring.</summary>
+    public async Task ConvertScoreAsync(long scoreId, ulong osuWebScoreId, OsuWebStandardisedScore standardised, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(standardised);
+
+        var row = await _osuWeb.Scores.FirstOrDefaultAsync(s => s.Id == osuWebScoreId, cancellationToken).ConfigureAwait(false);
+        if (row is null)
+            return;
+
+        row.TotalScore = (uint)Math.Clamp(standardised.TotalScore, 0, uint.MaxValue);
+        row.Data = standardised.DataJson;
+        row.LegacyScoreId = (ulong)scoreId;
+        await _osuWeb.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _osuWeb.ChangeTracker.Clear();
     }
 
     /// <summary>A processed score and when (the database's clock).</summary>
