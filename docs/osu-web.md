@@ -20,6 +20,11 @@ done in two phases:
 
 ## Phase A — running both
 
+> **Existing TomYum server with players?** Before switching it to osu-web accounts, run
+> [`tools/MigrateToOsuWeb`](../tools/MigrateToOsuWeb/README.md): it turns your players into osu-web
+> accounts (same passwords), renumbers TomYum's data to the osu-web ids and copies the history
+> (maps, scores, stats) to the site. A fresh server can skip it.
+
 ### 1. Start osu-web
 
 In an osu-web checkout (ours is the private `sundeiii/osu-web`, an unmodified import of upstream):
@@ -102,9 +107,10 @@ value as `TOMYUM_DATABASE__OSUWEBINDEXPREFIX`.
 - **Profile stats** (pp, accuracy, play count, ranked/total score, level, SS/S/A counts, max combo,
   hit counts, play time) are rebuilt from TomYum's data on every play, so they never drift.
 - **Replays** aren't served by the site (TomYum keeps them); scores are marked as having none.
-- **Only new plays.** Scores from before accounts moved to osu-web aren't copied: they belong to
-  TomYum's old user ids, which in osu-web may be different people. Moving history needs a user-id
-  migration first (Phase B step 5).
+- **History** from before the switch is copied by `tools/MigrateToOsuWeb` (run before switching).
+  The server itself only mirrors new plays: it never guesses whose an old TomYum user id was.
+- **Session plugin** (`plugins/tomyum-session`) reads TomYum's own `users` table, so it doesn't see
+  osu-web accounts. The osu-web site has its own login; leave the plugin off in osu-web mode.
 
 ### Making yourself staff
 
@@ -220,6 +226,10 @@ Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_ba
    became which osu-web score. Best-effort: a failure is logged and never fails the submission.
    Beatmaps can become osu-web-only (and `RecalcPp` follow) once TomYum *reads* scores from osu-web.
 4. Achievements: `osu_user_achievements`, with TomYum's catalog mapped to osu-web achievement ids.
-5. Data migration: copy existing `tomyum` rows into osu-web's tables (then `RecalcPp --force`).
+5. ~~Data migration~~ **Done:** `tools/MigrateToOsuWeb` (`OsuWebAccountMigration` +
+   `OsuWebScoreMirror.CopyHistoryAsync`): creates or links osu-web accounts, renumbers TomYum's
+   scores/stats/medals to the osu-web ids (two-pass, one transaction), drops the Development seed
+   user, then copies maps, vanilla scores, stats and ranks and queues the scores for indexing.
+   Refuses to run on a server that already recorded plays with osu-web accounts; re-runnable.
 6. Lazer: osu-web already serves `/api/v2` and `/oauth/token`, which covers most of roadmap
    Phase 7; TomYum then only needs the realtime hubs.

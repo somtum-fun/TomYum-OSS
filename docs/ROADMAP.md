@@ -160,8 +160,9 @@ uses its tables. Human doc: `docs/osu-web.md`._
 - [x] **Phase B, scores + stats (mirror):** vanilla scores → osu-web `scores` (legacy format, `CL`),
       `osu_user_stats*` rebuilt per play, `rank_score_index` recomputed, scores queued for
       `osu-elastic-indexer`. Relax/autopilot stay TomYum-only.
-- [ ] **Phase B, rest:** user-id migration + history copy (old TomYum scores) → TomYum reads scores
-      from osu-web → beatmaps become osu-web-only (RecalcPp follows) → achievements
+- [x] **Phase B, migration:** `tools/MigrateToOsuWeb` moves an existing server's players to osu-web
+      accounts, renumbers TomYum's data and copies the history (maps, scores, stats, ranks).
+- [ ] **Phase B, rest:** TomYum reads scores from osu-web → beatmaps become osu-web-only (RecalcPp follows) → achievements
       (`osu_user_achievements`). Replaces the EF-migrations item in Phase 0 for these tables.
 - [ ] Phase 7 rescope: osu-web already serves `/api/v2` + `/oauth/token`; TomYum keeps the realtime hubs.
 

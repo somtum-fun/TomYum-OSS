@@ -80,7 +80,8 @@ else
 // Website sync (docs/osu-web.md): mirrors scores/stats to osu-web when accounts live there.
 if (databaseOptions.UseOsuWebAccounts)
 {
-    builder.Services.AddSingleton<OsuWebScoreIndexing>();
+    builder.Services.AddSingleton(sp => new OsuWebScoreIndexing(
+        sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>(), databaseOptions.OsuWebIndexPrefix));
     builder.Services.AddScoped<IOsuWebSync, OsuWebSync>();
 }
 else
