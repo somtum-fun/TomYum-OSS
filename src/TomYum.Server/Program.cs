@@ -144,6 +144,12 @@ builder.Services.AddHttpClient<IOsuApiClient, OsuApiClient>(http =>
     http.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddSingleton<BeatmapService>();
+// osu! API v2 (descriptions, nominators) when an OAuth application is configured.
+builder.Services.AddHttpClient<OsuApiV2Client>(http =>
+{
+    http.BaseAddress = new Uri("https://osu.ppy.sh/");
+    http.Timeout = TimeSpan.FromSeconds(15);
+});
 
 // --- Pluggable pp engine (ADR-0010) ---
 // RoutingPerformanceCalculator dispatches per gamemode to the configured backend (in-process

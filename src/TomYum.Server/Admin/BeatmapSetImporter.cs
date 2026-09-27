@@ -32,6 +32,7 @@ public sealed class BeatmapSetImporter
     private readonly IStaffLogRepository _log;
     private readonly TimeProvider _time;
     private readonly OsuWebInterop? _interop;
+    private readonly OsuApiV2Client? _apiV2;
     private readonly ILogger<BeatmapSetImporter> _logger;
 
     public BeatmapSetImporter(
@@ -40,7 +41,8 @@ public sealed class BeatmapSetImporter
         IStaffLogRepository log,
         TimeProvider time,
         ILogger<BeatmapSetImporter> logger,
-        OsuWebInterop? interop = null)
+        OsuWebInterop? interop = null,
+        OsuApiV2Client? apiV2 = null)
     {
         _beatmaps = beatmaps;
         _repository = repository;
@@ -48,6 +50,7 @@ public sealed class BeatmapSetImporter
         _time = time;
         _logger = logger;
         _interop = interop;
+        _apiV2 = apiV2;
     }
 
     /// <summary>
@@ -90,6 +93,19 @@ public sealed class BeatmapSetImporter
 
         if (_interop is { IsConfigured: true })
         {
+            // Description and nominators (osu! API v2), before indexing so the listing has them too.
+            if (_apiV2 is { IsConfigured: true } && await _apiV2.GetBeatmapsetExtrasAsync(setId, cancellationToken).ConfigureAwait(false) is { } extras)
+            {
+                try
+                {
+                    await _interop.SyncBeatmapsetExtrasAsync(setId, extras, cancellationToken).ConfigureAwait(false);
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.LogWarning(ex, "Imported beatmap set {SetId} but sending its description/nominators to osu-web failed.", setId);
+                }
+            }
+
             try
             {
                 await _interop.IndexBeatmapsetAsync(setId, cancellationToken).ConfigureAwait(false);
