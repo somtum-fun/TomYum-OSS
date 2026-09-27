@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using TomYum.Caching;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
@@ -6,6 +7,7 @@ using TomYum.Domain.Services;
 using TomYum.Performance;
 using TomYum.Persistence;
 using TomYum.Persistence.OsuWeb;
+using TomYum.Server.Admin;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
 using TomYum.Server.Bancho.Packets.Match;
@@ -88,6 +90,13 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddSingleton(interopOptions);
     builder.Services.AddHttpClient<OsuWebInterop>(http => http.Timeout = TimeSpan.FromSeconds(10));
     builder.Services.AddScoped<IOsuWebSync, OsuWebSync>();
+
+    // Admin API for osu-web's staff panels (signed with the same shared secret as InterOp).
+    builder.Services.TryAddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton<AdminAuthFilter>();
+    builder.Services.AddScoped<BeatmapSetImporter>();
+    builder.Services.AddSingleton<BeatmapImportRunner>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<BeatmapImportRunner>());
 }
 else
 {
@@ -250,7 +259,9 @@ if (app.Environment.IsDevelopment())
 {
     using var scope = app.Services.CreateScope();
     var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
-    if (!await users.SafeNameExistsAsync(User.MakeSafeName("TomYum")))
+    const string devEmail = "tomyum@tomyum.local";
+    // Also check the email: the account may have been renamed on the website since.
+    if (!await users.SafeNameExistsAsync(User.MakeSafeName("TomYum")) && !await users.EmailExistsAsync(devEmail))
     {
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         var bcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("faker123"));
@@ -263,12 +274,16 @@ if (app.Environment.IsDevelopment())
             Id = databaseOptions.UseOsuWebAccounts ? 0 : 2,
             Username = "TomYum",
             SafeName = User.MakeSafeName("TomYum"),
-            Email = "tomyum@tomyum.local",
+            Email = devEmail,
             PasswordBcrypt = bcrypt,
             Country = "th",
         });
     }
 }
+
+// Admin API bodies are signed; keep them re-readable for the signature check.
+if (databaseOptions.UseOsuWebAccounts)
+    app.UseAdminRequestBuffering();
 
 // Plugin-contributed HTTP routes (Session's frontend, etc.) — served before the bancho/web
 // endpoints; non-matching requests pass straight through.
@@ -301,6 +316,14 @@ app.MapBeatmapAssets(BanchoHosts.Beatmap(domain));
 
 // Static assets (assets. subdomain): medal icons for achievement-unlock popups.
 app.MapAssets(BanchoHosts.Assets(domain));
+
+// Admin API for osu-web's staff panels: internal host names only (Admin:Hosts).
+if (databaseOptions.UseOsuWebAccounts)
+{
+    app.MapAdmin(app.Configuration.GetSection("Admin:Hosts").Get<string[]>() is { Length: > 0 } adminHosts
+        ? adminHosts
+        : AdminEndpoints.DefaultHosts);
+}
 
 app.Run();
 
