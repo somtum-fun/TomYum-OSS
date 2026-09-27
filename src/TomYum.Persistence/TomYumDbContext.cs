@@ -30,6 +30,9 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Per-user unlocked achievements (medals).</summary>
     public DbSet<UserAchievement> UserAchievements => Set<UserAchievement>();
 
+    /// <summary>Actions taken from the staff panels.</summary>
+    public DbSet<StaffLogEntry> StaffLog => Set<StaffLogEntry>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

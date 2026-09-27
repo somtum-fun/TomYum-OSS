@@ -24,10 +24,30 @@ public static class SchemaGuard
         ) CHARACTER SET=utf8mb4;
         """;
 
+    // Staff panel action log. Matches StaffLogEntryConfiguration (EF's default index names).
+    private const string StaffLogDdl =
+        """
+        CREATE TABLE IF NOT EXISTS `staff_log` (
+          `Id` bigint NOT NULL AUTO_INCREMENT,
+          `CreatedAt` datetime(6) NOT NULL,
+          `ActorId` int NOT NULL,
+          `Action` varchar(64) NOT NULL,
+          `TargetId` bigint NULL,
+          `Summary` varchar(512) NOT NULL,
+          `Result` varchar(32) NULL,
+          `JobId` varchar(32) NULL,
+          PRIMARY KEY (`Id`),
+          KEY `IX_staff_log_Action_Id` (`Action`, `Id`),
+          KEY `IX_staff_log_TargetId` (`TargetId`),
+          KEY `IX_staff_log_JobId` (`JobId`)
+        ) CHARACTER SET=utf8mb4;
+        """;
+
     /// <summary>Applies the idempotent DDL for tables added after the initial <c>EnsureCreated</c> schema.</summary>
     public static async Task EnsureRuntimeTablesAsync(this TomYumDbContext db, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(db);
         await db.Database.ExecuteSqlRawAsync(UserAchievementsDdl, cancellationToken).ConfigureAwait(false);
+        await db.Database.ExecuteSqlRawAsync(StaffLogDdl, cancellationToken).ConfigureAwait(false);
     }
 }

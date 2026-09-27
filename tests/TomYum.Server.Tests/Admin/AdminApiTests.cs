@@ -61,35 +61,39 @@ public sealed class AdminApiTests
     [Fact]
     public async Task Import_StoresEveryDifficultyOfTheSet()
     {
-        var (services, repository) = Build(new FakeApi { Sets = { [7] = [Map(70, 7), Map(71, 7), Map(72, 7)] } });
+        var (services, repository, log) = Build(new FakeApi { Sets = { [7] = [Map(70, 7), Map(71, 7), Map(72, 7)] } });
 
         using var scope = services.CreateScope();
-        var result = await scope.ServiceProvider.GetRequiredService<BeatmapSetImporter>().ImportAsync(7);
+        var result = await scope.ServiceProvider.GetRequiredService<BeatmapSetImporter>().ImportAsync(7, actorId: 2);
 
         Assert.True(result.Found);
         Assert.Equal(3, result.Difficulties);
         Assert.Equal("Title 7", result.Title);
         Assert.Equal([70, 71, 72], repository.Stored.Select(b => b.Id).Order());
+        var entry = Assert.Single(log.Entries);
+        Assert.Equal(("beatmapset.import", 7L, "imported", 2), (entry.Action, entry.TargetId, entry.Result, entry.ActorId));
+        Assert.Equal("Artist 7 - Title 7 (3 difficulties)", entry.Summary);
     }
 
     [Fact]
     public async Task Import_ReportsSetsTheApiDoesntKnow()
     {
-        var (services, repository) = Build(new FakeApi());
+        var (services, repository, log) = Build(new FakeApi());
 
         using var scope = services.CreateScope();
-        var result = await scope.ServiceProvider.GetRequiredService<BeatmapSetImporter>().ImportAsync(404);
+        var result = await scope.ServiceProvider.GetRequiredService<BeatmapSetImporter>().ImportAsync(404, actorId: 2);
 
         Assert.False(result.Found);
         Assert.Empty(repository.Stored);
+        Assert.Equal("not_found", Assert.Single(log.Entries).Result);
     }
 
     [Fact]
     public async Task BulkImport_ByIds_CountsImportedAndMissingSets()
     {
-        var (services, repository) = Build(new FakeApi { Sets = { [1] = [Map(10, 1)], [2] = [Map(20, 2), Map(21, 2)] } });
+        var (services, repository, log) = Build(new FakeApi { Sets = { [1] = [Map(10, 1)], [2] = [Map(20, 2), Map(21, 2)] } });
         var runner = NewRunner(services);
-        var job = runner.Enqueue(new BulkImportRequest([1, 2, 3, 2, 0], null, null), "2");
+        var job = runner.Enqueue(new BulkImportRequest([1, 2, 3, 2, 0], null, null), 2);
 
         await runner.RunAsync(job, CancellationToken.None);
 
@@ -97,6 +101,9 @@ public sealed class AdminApiTests
         Assert.Equal(2, job.Imported);
         Assert.Equal(1, job.NotFound);
         Assert.Equal(3, repository.Stored.Count);
+        // Every set is in the staff log under the job.
+        Assert.Equal(3, log.Entries.Count(e => e.JobId == job.Id));
+        Assert.Equal(1, log.Entries.Count(e => e.Result == "not_found"));
     }
 
     [Fact]
@@ -109,10 +116,10 @@ public sealed class AdminApiTests
             api.Ranked.Add(Map(1000 + i, 1 + (i / 2), rankedAt: jan.AddMinutes(i)));
         foreach (var group in api.Ranked.GroupBy(b => b.SetId))
             api.Sets[group.Key] = group.ToList();
-        var (services, _) = Build(api);
+        var (services, _, _) = Build(api);
         var runner = NewRunner(services);
         // Up to the 550th difficulty: sets 1..275.
-        var job = runner.Enqueue(new BulkImportRequest(null, jan, jan.AddMinutes(549)), "2");
+        var job = runner.Enqueue(new BulkImportRequest(null, jan, jan.AddMinutes(549)), 2);
 
         await runner.RunAsync(job, CancellationToken.None);
 
@@ -124,25 +131,28 @@ public sealed class AdminApiTests
     [Fact]
     public async Task BulkImport_ByDate_NeedsAnApiKey()
     {
-        var (services, _) = Build(new FakeApi { SupportsSince = false });
+        var (services, _, _) = Build(new FakeApi { SupportsSince = false });
         var runner = NewRunner(services);
-        var job = runner.Enqueue(new BulkImportRequest(null, DateTimeOffset.UtcNow.AddDays(-1), null), "2");
+        var job = runner.Enqueue(new BulkImportRequest(null, DateTimeOffset.UtcNow.AddDays(-1), null), 2);
 
         var error = await Assert.ThrowsAsync<InvalidOperationException>(() => runner.RunAsync(job, CancellationToken.None));
         Assert.Contains("API key", error.Message, StringComparison.Ordinal);
     }
 
-    private static (ServiceProvider Services, RecordingBeatmapRepository Repository) Build(FakeApi api)
+    private static (ServiceProvider Services, RecordingBeatmapRepository Repository, RecordingStaffLog Log) Build(FakeApi api)
     {
         var repository = new RecordingBeatmapRepository();
+        var log = new RecordingStaffLog();
         var services = new ServiceCollection()
             .AddLogging()
             .AddSingleton<IOsuApiClient>(api)
             .AddSingleton<BeatmapService>()
             .AddSingleton<IBeatmapRepository>(repository)
+            .AddSingleton<IStaffLogRepository>(log)
+            .AddSingleton(TimeProvider.System)
             .AddScoped<BeatmapSetImporter>()
             .BuildServiceProvider();
-        return (services, repository);
+        return (services, repository, log);
     }
 
     private static BeatmapImportRunner NewRunner(ServiceProvider services) => new(
@@ -153,6 +163,7 @@ public sealed class AdminApiTests
         Id = id,
         SetId = setId,
         Md5 = $"md5-{id}",
+        Artist = $"Artist {setId}",
         Title = $"Title {setId}",
         Details = new BeatmapDetails { ApprovedDate = rankedAt },
     };
@@ -180,6 +191,30 @@ public sealed class AdminApiTests
             return Task.FromResult<IReadOnlyList<Beatmap>>(
                 Ranked.Where(b => b.Details!.ApprovedDate >= since).Take(500).ToList());
         }
+    }
+
+    private sealed class RecordingStaffLog : IStaffLogRepository
+    {
+        private readonly List<StaffLogEntry> _entries = [];
+
+        public IReadOnlyList<StaffLogEntry> Entries
+        {
+            get
+            {
+                lock (_entries)
+                    return _entries.ToList();
+            }
+        }
+
+        public Task AddAsync(StaffLogEntry entry, CancellationToken cancellationToken = default)
+        {
+            lock (_entries)
+                _entries.Add(entry);
+            return Task.CompletedTask;
+        }
+
+        public Task<IReadOnlyList<StaffLogEntry>> ListAsync(StaffLogQuery query, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<StaffLogEntry>>(Entries);
     }
 
     private sealed class RecordingBeatmapRepository : IBeatmapRepository
