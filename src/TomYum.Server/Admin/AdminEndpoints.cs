@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Globalization;
+using TomYum.Domain.Repositories;
 using TomYum.Server.Bancho;
 
 namespace TomYum.Server.Admin;
@@ -41,6 +43,9 @@ public static class AdminEndpoints
         admin.MapGet("/beatmapsets/import-jobs/{id}", (string id, BeatmapImportRunner runner) =>
             runner.Get(id) is { } job ? Results.Ok(job) : Results.NotFound());
 
+        admin.MapGet("/log", async (IStaffLogRepository log, string? action, long? targetId, string? jobId, long? before, int? limit, CancellationToken cancellationToken) =>
+            Results.Ok(await log.ListAsync(new StaffLogQuery(action, targetId, jobId, before, limit ?? 50), cancellationToken).ConfigureAwait(false)));
+
         admin.MapGet("/online", (PlayerRegistry players) => Results.Ok(
             players.All
                 .Where(p => p.UserId != BanchoBot.UserId)
@@ -64,9 +69,18 @@ public static class AdminEndpoints
         }));
     }
 
-    private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, CancellationToken cancellationToken)
+    /// <summary>The acting staff member's osu-web user id (0 when the request didn't say).</summary>
+    public static int ActorId(HttpContext context)
     {
-        var result = await importer.ImportAsync(setId, cancellationToken).ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(context);
+        return int.TryParse(context.Items[AdminAuthFilter.ActorItemKey] as string, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
+            ? id
+            : 0;
+    }
+
+    private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, HttpContext context, CancellationToken cancellationToken)
+    {
+        var result = await importer.ImportAsync(setId, ActorId(context), cancellationToken: cancellationToken).ConfigureAwait(false);
         return result.Found ? Results.Ok(result) : Results.NotFound(result);
     }
 
@@ -77,8 +91,7 @@ public static class AdminEndpoints
         if (request.RankedFrom is { } from && request.RankedTo is { } to && to < from)
             return Results.BadRequest(new { error = "The end date is before the start date." });
 
-        var actor = context.Items[AdminAuthFilter.ActorItemKey] as string ?? string.Empty;
-        var job = runner.Enqueue(request, actor);
+        var job = runner.Enqueue(request, ActorId(context));
         return Results.Accepted($"/_admin/beatmapsets/import-jobs/{job.Id}", job);
     }
 }

@@ -16,8 +16,8 @@ public sealed class BeatmapImportJob
 
     public required BulkImportRequest Request { get; init; }
 
-    /// <summary>osu-web user id of the staff member who started it.</summary>
-    public required string StartedBy { get; init; }
+
+    public required int StartedBy { get; init; }
 
     public DateTimeOffset CreatedAt { get; init; }
 
@@ -72,7 +72,7 @@ public sealed class BeatmapImportRunner : BackgroundService
     }
 
     /// <summary>Queues a job and returns it (its <see cref="BeatmapImportJob.Id"/> is for polling).</summary>
-    public BeatmapImportJob Enqueue(BulkImportRequest request, string startedBy)
+    public BeatmapImportJob Enqueue(BulkImportRequest request, int startedBy)
     {
         ArgumentNullException.ThrowIfNull(request);
 
@@ -147,7 +147,7 @@ public sealed class BeatmapImportRunner : BackgroundService
             {
                 using var scope = _scopes.CreateScope();
                 var result = await scope.ServiceProvider.GetRequiredService<BeatmapSetImporter>()
-                    .ImportAsync(setId, cancellationToken).ConfigureAwait(false);
+                    .ImportAsync(setId, job.StartedBy, job.Id, cancellationToken).ConfigureAwait(false);
                 if (result.Found)
                     job.Imported++;
                 else
