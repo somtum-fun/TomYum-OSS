@@ -79,13 +79,13 @@ public static class WebEndpoints
 
         var board = await scores.GetLeaderboardAsync(md5, gameMode, 50, cancellationToken).ConfigureAwait(false);
 
-        // Look up requesting player's personal best via token
+        // The requesting player's personal best. osu!stable sends its username as `us` (not the
+        // session token); personal bests are public (they're on the board too), so the name is enough.
         Score? personalBest = null;
-        var token = context.Request.Query["us"].ToString();
-        var requestingPlayer = string.IsNullOrEmpty(token) ? null : registry.GetByToken(token);
-        if (requestingPlayer is not null)
+        var requesterId = await ResolveRequesterIdAsync(context.Request.Query["us"].ToString(), registry, users, cancellationToken).ConfigureAwait(false);
+        if (requesterId is { } requester)
         {
-            personalBest = await scores.GetPersonalBestAsync(requestingPlayer.UserId, md5, gameMode, cancellationToken).ConfigureAwait(false);
+            personalBest = await scores.GetPersonalBestAsync(requester, md5, gameMode, cancellationToken).ConfigureAwait(false);
         }
 
         var sb = new System.Text.StringBuilder();
@@ -123,6 +123,22 @@ public static class WebEndpoints
         }
 
         return Results.Text(sb.ToString(), "text/plain");
+    }
+
+    /// <summary>
+    /// The user id behind the <c>us</c> (username) parameter of a stable <c>/web/</c> request: an
+    /// online player of that name, else the account. Null when unknown or empty.
+    /// </summary>
+    internal static async Task<int?> ResolveRequesterIdAsync(string username, PlayerRegistry registry, IUserRepository users, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(username))
+            return null;
+
+        if (registry.GetByUsername(username) is { } online)
+            return online.UserId;
+
+        var user = await users.GetBySafeNameAsync(User.MakeSafeName(username), cancellationToken).ConfigureAwait(false);
+        return user?.Id;
     }
 
     private static IResult HandleGetReplayAsync(HttpContext context, IConfiguration configuration)
