@@ -54,6 +54,12 @@ public sealed class DatabaseOptions
     /// </summary>
     public string? OsuWebName { get; set; }
 
+    /// <summary>
+    /// osu-web's Elasticsearch index prefix (its <c>ES_INDEX_PREFIX</c>, empty by default). New
+    /// scores are queued for osu-web's score indexer under this prefix.
+    /// </summary>
+    public string OsuWebIndexPrefix { get; set; } = string.Empty;
+
     /// <summary>Whether accounts are stored in osu-web's database (database enabled and <see cref="OsuWebName"/> set).</summary>
     public bool UseOsuWebAccounts => Enabled && !string.IsNullOrWhiteSpace(OsuWebName);
 

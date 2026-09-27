@@ -157,10 +157,12 @@ uses its tables. Human doc: `docs/osu-web.md`._
       website and in-game accounts are the same. No auto-Owner in this mode (staff via osu-web `admin`).
 - [x] **Phase B, beatmaps (mirror):** every map written to TomYum's table and osu-web's
       `osu_beatmapsets`/`osu_beatmaps`; startup copies missing ones. Raw osu! API status kept.
-- [ ] **Phase B, rest:** scores + stats (`solo_scores`, `osu_user_stats*`, queue for
-      `osu-elastic-indexer`) → beatmaps become osu-web-only (RecalcPp follows) → achievements
-      (`osu_user_achievements`) → migrate existing `tomyum` data. Replaces the EF-migrations item in
-      Phase 0 for these tables.
+- [x] **Phase B, scores + stats (mirror):** vanilla scores → osu-web `scores` (legacy format, `CL`),
+      `osu_user_stats*` rebuilt per play, `rank_score_index` recomputed, scores queued for
+      `osu-elastic-indexer`. Relax/autopilot stay TomYum-only.
+- [ ] **Phase B, rest:** user-id migration + history copy (old TomYum scores) → TomYum reads scores
+      from osu-web → beatmaps become osu-web-only (RecalcPp follows) → achievements
+      (`osu_user_achievements`). Replaces the EF-migrations item in Phase 0 for these tables.
 - [ ] Phase 7 rescope: osu-web already serves `/api/v2` + `/oauth/token`; TomYum keeps the realtime hubs.
 
 ## Achievements (medals) 🔒 (none) — done 2026-07-09

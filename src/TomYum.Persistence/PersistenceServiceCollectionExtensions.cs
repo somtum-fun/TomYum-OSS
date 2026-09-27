@@ -45,6 +45,9 @@ public static class PersistenceServiceCollectionExtensions
             services.AddScoped<BeatmapRepository>();
             services.AddScoped<OsuWebBeatmapMirror>();
             services.AddScoped<IBeatmapRepository, OsuWebMirroringBeatmapRepository>();
+
+            // Scores + stats: mirrored after each submission (the server's OsuWebSync drives it).
+            services.AddScoped<OsuWebScoreMirror>();
         }
         else
         {

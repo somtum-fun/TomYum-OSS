@@ -9,6 +9,11 @@
 -- Every column is kept so an insert that misses a NOT NULL column fails here as it would in
 -- osu-web. Groups are what osu-web's GroupSeeder creates.
 
+DROP TABLE IF EXISTS scores;
+DROP TABLE IF EXISTS osu_user_stats;
+DROP TABLE IF EXISTS osu_user_stats_taiko;
+DROP TABLE IF EXISTS osu_user_stats_fruits;
+DROP TABLE IF EXISTS osu_user_stats_mania;
 DROP TABLE IF EXISTS osu_beatmaps;
 DROP TABLE IF EXISTS osu_beatmapsets;
 DROP TABLE IF EXISTS phpbb_user_group;
@@ -266,4 +271,181 @@ CREATE TABLE osu_beatmaps (
   PRIMARY KEY (beatmap_id),
   KEY beatmapset_id (beatmapset_id),
   KEY checksum (checksum)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Scores: 2024_01_12 update_scores_table_final (verbatim DDL), 2024_01_31 renamed solo_scores ->
+-- scores, 2024_06_09 user_recent index.
+CREATE TABLE scores (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `ruleset_id` smallint unsigned NOT NULL,
+  `beatmap_id` mediumint unsigned NOT NULL,
+  `has_replay` tinyint NOT NULL DEFAULT '0',
+  `preserve` tinyint NOT NULL DEFAULT '0',
+  `ranked` tinyint NOT NULL DEFAULT '1',
+  `rank` char(2) NOT NULL DEFAULT '',
+  `passed` tinyint NOT NULL DEFAULT '0',
+  `accuracy` float NOT NULL DEFAULT '0',
+  `max_combo` int unsigned NOT NULL DEFAULT '0',
+  `total_score` int unsigned NOT NULL DEFAULT '0',
+  `data` json NOT NULL,
+  `pp` float DEFAULT NULL,
+  `legacy_score_id` bigint unsigned DEFAULT NULL,
+  `legacy_total_score` int unsigned NOT NULL DEFAULT '0',
+  `started_at` timestamp NULL DEFAULT NULL,
+  `ended_at` timestamp NOT NULL,
+  `unix_updated_at` int unsigned NOT NULL DEFAULT (unix_timestamp()),
+  `build_id` smallint unsigned DEFAULT NULL,
+  PRIMARY KEY (`id`,`preserve`,`unix_updated_at`),
+  KEY `user_ruleset_index` (`user_id`,`ruleset_id`),
+  KEY `beatmap_user_index` (`beatmap_id`,`user_id`),
+  KEY `legacy_score_lookup` (`ruleset_id`,`legacy_score_id`),
+  KEY `user_recent` (`user_id`, `id`)
+);
+
+-- Per-ruleset stats: base_tables (identical columns for all four), 2017_12_20 xh/sh rank
+-- counts, 2022_12_05 + 2025_03_14 rank_score_exp added then removed, 2025_03_18 index.
+
+CREATE TABLE osu_user_stats (
+  user_id mediumint NOT NULL,
+  count300 int NOT NULL DEFAULT 0,
+  count100 int NOT NULL DEFAULT 0,
+  count50 int NOT NULL DEFAULT 0,
+  countMiss int NOT NULL DEFAULT 0,
+  accuracy_total bigint unsigned NOT NULL,
+  accuracy_count bigint unsigned NOT NULL,
+  accuracy float NOT NULL,
+  playcount mediumint NOT NULL,
+  total_seconds_played bigint NOT NULL DEFAULT 0,
+  ranked_score bigint NOT NULL,
+  total_score bigint NOT NULL,
+  x_rank_count mediumint NOT NULL,
+  xh_rank_count mediumint NOT NULL DEFAULT 0,
+  s_rank_count mediumint NOT NULL,
+  sh_rank_count mediumint NOT NULL DEFAULT 0,
+  a_rank_count mediumint NOT NULL,
+  `rank` mediumint NOT NULL,
+  level float unsigned NOT NULL,
+  replay_popularity mediumint unsigned NOT NULL DEFAULT 0,
+  fail_count mediumint unsigned NOT NULL DEFAULT 0,
+  exit_count mediumint unsigned NOT NULL DEFAULT 0,
+  max_combo smallint unsigned NOT NULL DEFAULT 0,
+  country_acronym char(2) NOT NULL DEFAULT '',
+  rank_score float unsigned NOT NULL,
+  rank_score_index int unsigned NOT NULL,
+  accuracy_new float unsigned NOT NULL,
+  last_update timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  last_played timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id),
+  KEY ranked_score (ranked_score),
+  KEY rank_score (rank_score),
+  KEY country_ranked_score (country_acronym, ranked_score)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE osu_user_stats_taiko (
+  user_id mediumint NOT NULL,
+  count300 int NOT NULL DEFAULT 0,
+  count100 int NOT NULL DEFAULT 0,
+  count50 int NOT NULL DEFAULT 0,
+  countMiss int NOT NULL DEFAULT 0,
+  accuracy_total bigint unsigned NOT NULL,
+  accuracy_count bigint unsigned NOT NULL,
+  accuracy float NOT NULL,
+  playcount mediumint NOT NULL,
+  total_seconds_played bigint NOT NULL DEFAULT 0,
+  ranked_score bigint NOT NULL,
+  total_score bigint NOT NULL,
+  x_rank_count mediumint NOT NULL,
+  xh_rank_count mediumint NOT NULL DEFAULT 0,
+  s_rank_count mediumint NOT NULL,
+  sh_rank_count mediumint NOT NULL DEFAULT 0,
+  a_rank_count mediumint NOT NULL,
+  `rank` mediumint NOT NULL,
+  level float unsigned NOT NULL,
+  replay_popularity mediumint unsigned NOT NULL DEFAULT 0,
+  fail_count mediumint unsigned NOT NULL DEFAULT 0,
+  exit_count mediumint unsigned NOT NULL DEFAULT 0,
+  max_combo smallint unsigned NOT NULL DEFAULT 0,
+  country_acronym char(2) NOT NULL DEFAULT '',
+  rank_score float unsigned NOT NULL,
+  rank_score_index int unsigned NOT NULL,
+  accuracy_new float unsigned NOT NULL,
+  last_update timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  last_played timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id),
+  KEY ranked_score (ranked_score),
+  KEY rank_score (rank_score),
+  KEY country_ranked_score (country_acronym, ranked_score)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE osu_user_stats_fruits (
+  user_id mediumint NOT NULL,
+  count300 int NOT NULL DEFAULT 0,
+  count100 int NOT NULL DEFAULT 0,
+  count50 int NOT NULL DEFAULT 0,
+  countMiss int NOT NULL DEFAULT 0,
+  accuracy_total bigint unsigned NOT NULL,
+  accuracy_count bigint unsigned NOT NULL,
+  accuracy float NOT NULL,
+  playcount mediumint NOT NULL,
+  total_seconds_played bigint NOT NULL DEFAULT 0,
+  ranked_score bigint NOT NULL,
+  total_score bigint NOT NULL,
+  x_rank_count mediumint NOT NULL,
+  xh_rank_count mediumint NOT NULL DEFAULT 0,
+  s_rank_count mediumint NOT NULL,
+  sh_rank_count mediumint NOT NULL DEFAULT 0,
+  a_rank_count mediumint NOT NULL,
+  `rank` mediumint NOT NULL,
+  level float unsigned NOT NULL,
+  replay_popularity mediumint unsigned NOT NULL DEFAULT 0,
+  fail_count mediumint unsigned NOT NULL DEFAULT 0,
+  exit_count mediumint unsigned NOT NULL DEFAULT 0,
+  max_combo smallint unsigned NOT NULL DEFAULT 0,
+  country_acronym char(2) NOT NULL DEFAULT '',
+  rank_score float unsigned NOT NULL,
+  rank_score_index int unsigned NOT NULL,
+  accuracy_new float unsigned NOT NULL,
+  last_update timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  last_played timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id),
+  KEY ranked_score (ranked_score),
+  KEY rank_score (rank_score),
+  KEY country_ranked_score (country_acronym, ranked_score)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE osu_user_stats_mania (
+  user_id mediumint NOT NULL,
+  count300 int NOT NULL DEFAULT 0,
+  count100 int NOT NULL DEFAULT 0,
+  count50 int NOT NULL DEFAULT 0,
+  countMiss int NOT NULL DEFAULT 0,
+  accuracy_total bigint unsigned NOT NULL,
+  accuracy_count bigint unsigned NOT NULL,
+  accuracy float NOT NULL,
+  playcount mediumint NOT NULL,
+  total_seconds_played bigint NOT NULL DEFAULT 0,
+  ranked_score bigint NOT NULL,
+  total_score bigint NOT NULL,
+  x_rank_count mediumint NOT NULL,
+  xh_rank_count mediumint NOT NULL DEFAULT 0,
+  s_rank_count mediumint NOT NULL,
+  sh_rank_count mediumint NOT NULL DEFAULT 0,
+  a_rank_count mediumint NOT NULL,
+  `rank` mediumint NOT NULL,
+  level float unsigned NOT NULL,
+  replay_popularity mediumint unsigned NOT NULL DEFAULT 0,
+  fail_count mediumint unsigned NOT NULL DEFAULT 0,
+  exit_count mediumint unsigned NOT NULL DEFAULT 0,
+  max_combo smallint unsigned NOT NULL DEFAULT 0,
+  country_acronym char(2) NOT NULL DEFAULT '',
+  rank_score float unsigned NOT NULL,
+  rank_score_index int unsigned NOT NULL,
+  accuracy_new float unsigned NOT NULL,
+  last_update timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  last_played timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id),
+  KEY ranked_score (ranked_score),
+  KEY rank_score (rank_score),
+  KEY country_ranked_score (country_acronym, ranked_score)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
