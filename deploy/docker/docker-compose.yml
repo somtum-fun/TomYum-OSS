@@ -49,6 +49,9 @@ services:
       ASPNETCORE_URLS: http://+:8080
     ports:
       - "8080:8080"
+    volumes:
+      # Replays and the .osu cache; kept across rebuilds.
+      - server-data:/app/data
 
   # pp sidecar (relax/autopilot pp via akatsuki-pp-rs). The server routes relax/autopilot here
   # and falls back to the in-process official calc if it is down (Performance:Backends fallback).
@@ -84,3 +87,4 @@ volumes:
   mysql-data:
   redis-data:
   osu-cache:
+  server-data:
