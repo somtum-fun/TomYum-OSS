@@ -16,12 +16,14 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
 {
     private readonly BanchoBot _bot;
     private readonly ChatLog? _chatLog;
+    private readonly OsuWeb.OsuWebChatBridge? _website;
 
-    /// <summary>Creates the handler over the resident <see cref="BanchoBot"/> (DM command target) and the chat log.</summary>
-    public SendPrivateMessageHandler(BanchoBot bot, ChatLog? chatLog = null)
+    /// <summary>Creates the handler over the resident <see cref="BanchoBot"/> (DM command target), the chat log and the website chat link.</summary>
+    public SendPrivateMessageHandler(BanchoBot bot, ChatLog? chatLog = null, OsuWeb.OsuWebChatBridge? website = null)
     {
         _bot = bot;
         _chatLog = chatLog;
+        _website = website;
     }
 
     /// <inheritdoc />
@@ -69,6 +71,9 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         }
 
         // Relay to a real online recipient, if present.
+        // The website gets every PM too: the recipient may only be on the site (or read it there later).
+        _website?.ForwardPrivateMessage(context.Player.UserId, target, text);
+
         var recipient = FindByName(context, target);
         if (recipient is null)
         {

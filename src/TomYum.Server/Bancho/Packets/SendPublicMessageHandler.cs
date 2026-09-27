@@ -17,12 +17,14 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
 {
     private readonly BanchoBot _bot;
     private readonly ChatLog? _chatLog;
+    private readonly OsuWeb.OsuWebChatBridge? _website;
 
-    /// <summary>Creates the handler over the resident <see cref="BanchoBot"/> (for <c>!</c>commands) and the chat log.</summary>
-    public SendPublicMessageHandler(BanchoBot bot, ChatLog? chatLog = null)
+    /// <summary>Creates the handler over the resident <see cref="BanchoBot"/> (for <c>!</c>commands), the chat log and the website chat link.</summary>
+    public SendPublicMessageHandler(BanchoBot bot, ChatLog? chatLog = null, OsuWeb.OsuWebChatBridge? website = null)
     {
         _bot = bot;
         _chatLog = chatLog;
+        _website = website;
     }
 
     /// <inheritdoc />
@@ -84,6 +86,7 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
         var sender = context.Player.Presence.Username;
         var message = new BanchoMessage(sender, text, target, context.Player.UserId);
         _chatLog?.Record(context.Player.UserId, sender, target, text);
+        _website?.ForwardChannelMessage(context.Player.UserId, target, text);
 
         // Fan the message out to every other member of the channel.
         var writer = new BanchoPacketWriter(128);
