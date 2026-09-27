@@ -122,6 +122,8 @@ public sealed class OsuWebPerformanceWatcher : BackgroundService
                 if (!sync.Enabled)
                     continue;
 
+                await ReindexProcessedScoresAsync(scope.ServiceProvider, stoppingToken).ConfigureAwait(false);
+
                 foreach (var player in _registry.All)
                 {
                     var mode = player.Presence.GameMode;
@@ -142,5 +144,25 @@ public sealed class OsuWebPerformanceWatcher : BackgroundService
                 _logger.LogWarning(ex, "Syncing pp from the website failed; retrying next round.");
             }
         }
+    }
+
+    // Where the last round got to in score_process_history, and the scores already queued at that second.
+    private DateTime? _processedCursor;
+    private HashSet<ulong> _queuedAtCursor = [];
+
+    /// <summary>
+    /// Queues scores the processor finished since last round for the website's search index: it
+    /// doesn't re-index the scores it gives pp, and profiles and leaderboards read the index.
+    /// </summary>
+    private async Task ReindexProcessedScoresAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        var (ids, cursor) = await services.GetRequiredService<OsuWebScoreMirror>()
+            .GetProcessedSinceAsync(_processedCursor, cancellationToken).ConfigureAwait(false);
+        var fresh = ids.Where(id => !_queuedAtCursor.Contains(id)).ToList();
+        if (fresh.Count > 0)
+            await services.GetRequiredService<OsuWebScoreIndexing>().QueueAsync(fresh).ConfigureAwait(false);
+
+        _queuedAtCursor = cursor == _processedCursor ? [.. _queuedAtCursor, .. fresh] : [.. ids];
+        _processedCursor = cursor;
     }
 }

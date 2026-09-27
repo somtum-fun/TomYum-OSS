@@ -99,13 +99,14 @@ public sealed class OsuWebChatBridge : BackgroundService
         }
         else if (message.TargetId is { } targetId)
         {
-            var recipient = _players.GetByUserId(targetId);
+            // BanchoBot has a session nobody reads: it answers through AnswerWebsiteCommandAsync instead.
+            var recipient = targetId == BanchoBot.UserId ? null : _players.GetByUserId(targetId);
             if (recipient is not null)
             {
                 recipient.Enqueue(Frame(new BanchoMessage(message.Sender, text, recipient.Presence.Username, message.SenderId)));
                 delivered++;
             }
-            _chatLog.Record(message.SenderId, message.Sender, recipient?.Presence.Username ?? $"#{targetId}", message.Content, targetId);
+            _chatLog.Record(message.SenderId, message.Sender, recipient?.Presence.Username ?? (targetId == BanchoBot.UserId ? BanchoBot.Name : $"#{targetId}"), message.Content, targetId);
         }
 
         return delivered;
@@ -140,11 +141,70 @@ public sealed class OsuWebChatBridge : BackgroundService
         try
         {
             if (JsonSerializer.Deserialize<WebChatMessage>(value.ToString()) is { } message)
+            {
                 Deliver(message);
+                if (IsForBanchoBot(message))
+                    _ = AnswerWebsiteCommandAsync(message, CancellationToken.None);
+            }
         }
         catch (JsonException ex)
         {
             _logger.LogWarning(ex, "Ignoring an unreadable website chat message.");
+        }
+    }
+
+    /// <summary>Whether BanchoBot answers a website message: any PM to it, or a <c>!</c>command in a game channel.</summary>
+    internal bool IsForBanchoBot(WebChatMessage message) =>
+        message.SenderId != BanchoBot.UserId
+        && (message.TargetId == BanchoBot.UserId
+            || (message.Channel is { } channel && _channels.Get(channel) is not null && message.Content.StartsWith('!')));
+
+    /// <summary>
+    /// Runs a website user's command as them (with their in-game privileges; as their game session
+    /// when they're online, so e.g. <c>!mp</c> works) and posts BanchoBot's reply where they asked:
+    /// in the channel, in-game and on the website, or as a website PM. Returns the reply (for tests).
+    /// </summary>
+    public async Task<string?> AnswerWebsiteCommandAsync(WebChatMessage message, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(message);
+
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            var user = await scope.ServiceProvider.GetRequiredService<IUserRepository>()
+                .GetByIdAsync(message.SenderId, cancellationToken).ConfigureAwait(false);
+            if (user is null)
+                return null;
+
+            var privileges = PrivilegeMapper.ToBancho(user.Privileges);
+            var caller = _players.GetByUserId(user.Id)
+                ?? new OnlinePlayer("website", new BanchoPresence { UserId = user.Id, Username = user.Username, Privileges = privileges });
+            var reply = await scope.ServiceProvider.GetRequiredService<BanchoBot>()
+                .TryHandleCommandAsync(caller, message.Content, privileges, cancellationToken).ConfigureAwait(false);
+            if (message.TargetId == BanchoBot.UserId)
+                reply ??= "Hi! I only respond to commands — try !help.";
+            if (reply is null)
+                return null;
+
+            if (message.Channel is { } channelName && _channels.Get(channelName) is { } channel)
+            {
+                var framed = Frame(new BanchoMessage(BanchoBot.Name, reply, channel.Name, BanchoBot.UserId));
+                foreach (var member in channel.Members)
+                    member.Enqueue(framed);
+                _chatLog.Record(BanchoBot.UserId, BanchoBot.Name, channel.Name, reply);
+                ForwardChannelMessage(BanchoBot.UserId, channel.Name, reply);
+            }
+            else
+            {
+                _chatLog.Record(BanchoBot.UserId, BanchoBot.Name, user.Username, reply, user.Id);
+                ForwardPrivateMessage(BanchoBot.UserId, user.Username, reply);
+            }
+            return reply;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "BanchoBot couldn't answer website user {UserId}.", message.SenderId);
+            return null;
         }
     }
 

@@ -532,3 +532,12 @@ CREATE TABLE osu_beatmappacks_items (
   KEY pack_id (pack_id, beatmapset_id),
   KEY set_lookup (beatmapset_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- ppy's score processor's record of handled scores (a view over solo_scores_process_history on
+-- a real osu-web database; a plain table is enough here).
+CREATE TABLE score_process_history (
+  score_id bigint NOT NULL,
+  processed_version tinyint NOT NULL,
+  processed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (score_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

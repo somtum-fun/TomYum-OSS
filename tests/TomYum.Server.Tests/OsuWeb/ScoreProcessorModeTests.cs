@@ -120,6 +120,25 @@ public sealed class ScoreProcessorModeTests : OsuWebDatabaseTest
         Assert.Equal(1L, await ScalarAsync<long>("SELECT COUNT(*) FROM scores WHERE legacy_score_id IS NOT NULL AND pp = 100"));
     }
 
+    [MySqlFact]
+    public async Task ProcessedScores_AreFoundOnceFromACursor()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        var mirror = new OsuWebScoreMirror(tomyum, NewOsuWebContext(), Processor);
+        await ExecuteAsync("INSERT INTO score_process_history VALUES (1, 11, '2026-09-27 20:00:00')");
+
+        // Starting up: nothing is queued, the cursor starts at the newest.
+        var (none, start) = await mirror.GetProcessedSinceAsync(null);
+        Assert.Empty(none);
+        Assert.Equal(new DateTime(2026, 9, 27, 20, 0, 0), start);
+
+        await ExecuteAsync("INSERT INTO score_process_history VALUES (2, 11, '2026-09-27 20:00:05'), (3, 11, '2026-09-27 20:00:07')");
+        var (ids, next) = await mirror.GetProcessedSinceAsync(start);
+        Assert.Equal([1UL, 2UL, 3UL], ids); // the cursor's own second again: callers skip what they saw
+        Assert.Equal(new DateTime(2026, 9, 27, 20, 0, 7), next);
+        Assert.Equal([3UL], (await mirror.GetProcessedSinceAsync(next)).ScoreIds);
+    }
+
     private async Task<int> NewPlayerAsync()
     {
         var user = await new OsuWebUserRepository(NewOsuWebContext()).AddAsync(new User

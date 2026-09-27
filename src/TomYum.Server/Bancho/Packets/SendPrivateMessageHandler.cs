@@ -54,6 +54,9 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
             ChatEncoder.WriteMessage(
                 context.Response,
                 new BanchoMessage(BanchoBot.Name, reply, sender, BanchoBot.UserId));
+            // The conversation shows in the player's website chat too.
+            _website?.ForwardPrivateMessage(context.Player.UserId, BanchoBot.Name, text);
+            _website?.ForwardPrivateMessage(BanchoBot.UserId, sender, reply);
             return;
         }
 
