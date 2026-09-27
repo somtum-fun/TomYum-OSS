@@ -234,3 +234,10 @@ public sealed class OsuWebMirrorOptions
 
 /// <summary>A player's total pp and accuracy (0-1) on the website.</summary>
 public sealed record OsuWebPerformance(double Pp, float Accuracy);
+
+/// <summary>
+/// A stable score in lazer's scoring, as ppy stores stable scores on the website: the standardised
+/// <c>total_score</c> and the <c>data</c> column (mods with Classic, statistics, maximum statistics
+/// padded to the map's max combo). TomYum's pp engine computes it.
+/// </summary>
+public sealed record OsuWebStandardisedScore(long TotalScore, string DataJson);

@@ -73,6 +73,7 @@ public static class PerformanceServiceCollectionExtensions
             sp.GetRequiredService<ILogger<OsuFileCache>>()));
 
         services.AddTransient<OfficialPerformanceCalculator>(); // cheap; resolved per pp calc
+        services.AddSingleton<LegacyScoreConverter>();          // stable scores in lazer's scoring (website copies)
 
         services.AddSingleton<IPerformanceBackendRegistry, PerformanceBackendRegistry>();
         services.AddSingleton<IPerformanceCalculator, RoutingPerformanceCalculator>();

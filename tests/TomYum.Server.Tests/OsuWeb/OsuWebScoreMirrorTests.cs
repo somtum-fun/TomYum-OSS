@@ -19,6 +19,32 @@ public sealed class OsuWebScoreMirrorTests : OsuWebDatabaseTest
     private const int RankedMapId = 100, LovedMapId = 200;
 
     [MySqlFact]
+    public async Task WriteScore_InLazersScoring_KeepsTheStableScoreAsLegacyTotal()
+    {
+        await using var tomyum = await SeedAsync();
+        var score = await AddScoreAsync(tomyum, Play(userId: 2, RankedMapId, value: 1_734_072));
+        var mirror = new OsuWebScoreMirror(tomyum, NewOsuWebContext());
+        await mirror.EnsureLinkTableAsync();
+        var data = """{"mods":[{"acronym":"CL"}],"statistics":{"great":337},"maximum_statistics":{"great":364,"legacy_combo_increase":177}}""";
+
+        var id = await mirror.WriteScoreAsync(score, hasReplay: true, new OsuWebStandardisedScore(640_769, data));
+
+        var row = $"FROM scores WHERE id = {id}";
+        Assert.Equal(640_769L, await ScalarAsync<long>($"SELECT total_score {row}"));
+        Assert.Equal(1_734_072L, await ScalarAsync<long>($"SELECT legacy_total_score {row}"));
+        using var stored = JsonDocument.Parse(await ScalarAsync<string>($"SELECT data {row}"));
+        Assert.Equal(177, stored.RootElement.GetProperty("maximum_statistics").GetProperty("legacy_combo_increase").GetInt32());
+
+        // Copies from before conversion are found and rewritten.
+        await ExecuteAsync($"UPDATE scores SET total_score = legacy_total_score, legacy_score_id = 0 WHERE id = {id}");
+        var pending = Assert.Single(await mirror.GetUnconvertedScoresAsync(100));
+        Assert.Equal((score.Id, id!.Value), (pending.ScoreId, pending.OsuWebScoreId));
+        await mirror.ConvertScoreAsync(pending.ScoreId, pending.OsuWebScoreId, new OsuWebStandardisedScore(640_769, data));
+        Assert.Empty(await mirror.GetUnconvertedScoresAsync(100));
+        Assert.Equal(score.Id, await ScalarAsync<long>($"SELECT legacy_score_id {row}"));
+    }
+
+    [MySqlFact]
     public async Task WriteScore_StoresALegacyScoreOsuWebCanShow()
     {
         await using var tomyum = await SeedAsync();
@@ -28,7 +54,7 @@ public sealed class OsuWebScoreMirrorTests : OsuWebDatabaseTest
 
         Assert.NotNull(id);
         var row = $"FROM scores WHERE id = {id}";
-        Assert.Equal(0L, await ScalarAsync<long>($"SELECT legacy_score_id {row}"));             // legacy (stable) score
+        Assert.Equal(score.Id, await ScalarAsync<long>($"SELECT legacy_score_id {row}"));      // legacy (stable) score, TomYum's id
         Assert.Equal(1_234_567L, await ScalarAsync<long>($"SELECT legacy_total_score {row}"));
         Assert.Equal(1_234_567L, await ScalarAsync<long>($"SELECT total_score {row}"));
         Assert.Equal(1, await ScalarAsync<int>($"SELECT ranked {row}"));
