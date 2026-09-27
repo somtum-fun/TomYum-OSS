@@ -71,10 +71,12 @@ http://osu.{$DOMAIN} {
 	handle @tomyum {
 		import tomyum
 	}
+	# lazer sends the same User-Agent, but asks for JSON: its sign-up is the website's.
 	@stable_register {
 		method POST
 		path /users
 		header User-Agent osu!
+		not header Accept application/json
 	}
 	handle @stable_register {
 		import tomyum
