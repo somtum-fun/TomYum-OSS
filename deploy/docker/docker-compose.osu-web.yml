@@ -11,8 +11,9 @@
 #   docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.osu-web.yml \
 #     up -d server pp-sidecar
 #
-# Until TomYum's persistence is moved onto osu-web's tables (docs/osu-web.md, "Phase B"), TomYum
-# keeps its own `tomyum` database on osu-web's MySQL server; EnsureCreated creates it on first start.
+# Accounts are shared: TomYum reads/writes osu-web's phpbb_users (TOMYUM_DATABASE__OSUWEBNAME).
+# Scores, stats and beatmaps still live in TomYum's own `tomyum` database on the same server
+# (EnsureCreated creates it on first start) until they move too (docs/osu-web.md, "Phase B").
 services:
   server:
     # Don't pull in this stack's mysql/redis; osu-web's are used instead.
@@ -22,6 +23,8 @@ services:
       TOMYUM_DATABASE__HOST: db
       TOMYUM_DATABASE__PORT: "3306"
       TOMYUM_DATABASE__NAME: ${TOMYUM_DB_NAME:-tomyum}
+      # osu-web's database: accounts are shared with the website. Empty = TomYum's own table.
+      TOMYUM_DATABASE__OSUWEBNAME: ${OSU_WEB_DB_NAME-osu}
       # osu-web's dev database user (docker/development/db_user.sql): osuweb, empty password.
       # Development only — see docs/osu-web.md before exposing anything.
       TOMYUM_DATABASE__USER: ${OSU_WEB_DB_USER:-osuweb}

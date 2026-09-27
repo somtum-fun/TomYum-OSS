@@ -8,10 +8,11 @@ The two share one MySQL server and one Redis. The end state is that they share *
 osu-web owns the schema (its migrations), and TomYum reads and writes osu-web's tables. That is
 done in two phases:
 
-- **Phase A — side by side (this page, works today).** Both run on osu-web's MySQL/Redis behind one
-  Caddy. TomYum still uses its own `tomyum` database, so accounts and scores are **not yet shared**.
-- **Phase B — one database (planned, below).** TomYum's repositories are pointed at osu-web's
-  tables, so an account made on the site logs into the game and plays show up on the site.
+- **Phase A — side by side (works today).** Both run on osu-web's MySQL/Redis behind one Caddy.
+- **Phase B — one database (in progress, below).** TomYum's repositories are pointed at osu-web's
+  tables. **Accounts are done:** an account made on the website logs into the game and an in-game
+  registration shows up on the website. Scores, stats and beatmaps still live in TomYum's own
+  `tomyum` database, so plays don't show on the site yet.
 
 ---
 
@@ -38,6 +39,17 @@ Set these in osu-web's `.env` before first start:
 | `BANCHO_BOT_USER_ID` | `1` | osu-web defaults to user **3**; TomYum's BanchoBot is **1**. |
 | `CLIENT_CHECK_VERSION` | `false` | Already the default; keeps stable-client checks off. |
 
+Then, **once**, create osu-web's user groups. Its migrations don't, and both osu-web's own sign-up
+and TomYum need the `default` and `bot` groups (TomYum refuses to start without them and prints
+this command):
+
+```bash
+docker compose run --rm php artisan db:seed --class='Database\Seeders\ModelSeeders\GroupSeeder'
+```
+
+Only on a fresh database: the seeder truncates `phpbb_groups` first. Don't run the full
+`db:seed` — it also creates fake users, beatmaps and scores.
+
 ### 2. Start TomYum on osu-web's network
 
 ```bash
@@ -50,6 +62,33 @@ The overlay (`deploy/docker/docker-compose.osu-web.yml`) attaches `server` to os
 network (`osu-web_default`; override with `OSU_WEB_NETWORK` if your checkout directory has another
 name) and points it at osu-web's `db` and `redis`. **Don't start this stack's own `mysql`/`redis`**
 with the overlay — they would clash on ports 3306/6379 and on the `redis` hostname.
+
+It also sets `TOMYUM_DATABASE__OSUWEBNAME=osu`, which makes TomYum use osu-web's accounts
+(`OSU_WEB_DB_NAME=` empty turns that off). On start TomYum creates BanchoBot as user 1 in osu-web's
+`bot` group; nothing else is created or altered in osu-web's database. Outside Docker, set
+`TOMYUM_DATABASE__OSUWEBNAME` yourself (see `config/.env.example`).
+
+### Making yourself staff
+
+With shared accounts TomYum does **not** auto-grant Owner to "user id 3" as it does standalone:
+ids are shared with website sign-ups, and staff in TomYum means osu-web's `admin` group, which is
+full website admin. Register (on the site or in-game), then grant it in osu-web:
+
+```bash
+docker compose run --rm php artisan tinker
+>>> App\Models\User::where('username', 'YourName')->first()->addToGroup(app('groups')->byIdentifier('admin'));
+```
+
+After that, `!setpriv` in-game works for everyone else. TomYum maps its privileges to osu-web like
+this (other osu-web groups such as `nat` or `bng` are left alone):
+
+| TomYum | osu-web |
+|---|---|
+| Administrator | `admin` group |
+| Developer | `dev` group |
+| Moderator | `gmt` group |
+| Supporter | `phpbb_users.osu_subscriber = 1` |
+| Owner | all of the above |
 
 ### 3. Route one domain to both
 
@@ -80,7 +119,7 @@ running it publicly.
 
 ---
 
-## Phase B — one database (plan)
+## Phase B — one database
 
 Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_base_tables.php`,
 `app/Models/User.php`, `app/Libraries/User/PasswordHelper.php`, `config/osu.php`).
@@ -112,10 +151,9 @@ Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_ba
    `osu_beatmapsets.beatmapset_id` are `MEDIUMINT UNSIGNED` (max **16,777,215**), so
    `Beatmap.CustomIdFloor` moved from 100,000,000 to **10,000,000**. Custom ids are 10,000,000 –
    16,777,215; official ids stay below that. osu-web is left unmodified.
-2. **User ids.** `phpbb_users` auto-increments from 2. TomYum reserves 1 for BanchoBot and its dev
-   seed takes 2. Insert a real BanchoBot row with `user_id = 1` in osu-web's `bot` group
-   (`phpbb_groups.identifier = 'bot'`), set osu-web's `BANCHO_BOT_USER_ID=1`, and drop the
-   fixed-id dev seed.
+2. ~~**User ids.**~~ **Done:** `phpbb_users` auto-increments from 2. TomYum inserts BanchoBot as
+   `user_id = 1` in osu-web's `bot` group at startup (osu-web needs `BANCHO_BOT_USER_ID=1`), and in
+   osu-web mode the Development seed user takes the next free id instead of a fixed 2.
 3. **Search and leaderboards on the site.** osu-web's score listings go through Elasticsearch,
    filled by `osu-elastic-indexer` (`score-indexer` in osu-web's compose) from a Redis queue.
    TomYum's score submission must push new score ids onto that queue, or the site won't show
@@ -123,9 +161,12 @@ Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_ba
 
 ### Steps
 
-1. Users: new `OsuWebUserRepository` over `phpbb_users` behind `IUserRepository`; login and
-   registration work against it. Remove `EnsureCreated`/`SchemaGuard` for these tables — osu-web's
-   migrations own them.
+1. ~~Users~~ **Done:** `OsuWebUserRepository` (`src/TomYum.Persistence/OsuWeb/`) implements
+   `IUserRepository` over `phpbb_users` + groups; enabled by `Database:OsuWebName`. Usernames:
+   osu-web's `username_clean` keeps spaces, TomYum's safe name uses underscores — lookups accept
+   both. Countries are upper-case in osu-web and converted both ways. Tested against the real
+   table definitions (`tests/TomYum.Server.Tests/OsuWeb/`, run in CI with MySQL) and end-to-end
+   with the stable login/registration flow. TomYum's own `users` table is simply unused in this mode.
 2. Beatmaps: cache resolved maps into `osu_beatmaps`/`osu_beatmapsets`.
 3. Scores + stats: write `solo_scores` and `osu_user_stats*`; queue scores for the indexer.
 4. Achievements: `osu_user_achievements`, with TomYum's catalog mapped to osu-web achievement ids.

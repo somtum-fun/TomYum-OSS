@@ -16,6 +16,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- osu-web account tables for the OsuWebUserRepository integration tests. -->
+    <None Include="OsuWeb/*.sql" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="../../src/TomYum.Server/TomYum.Server.csproj" />
   </ItemGroup>
 

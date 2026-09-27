@@ -152,9 +152,10 @@ uses its tables. Human doc: `docs/osu-web.md`._
       in-game `POST /users` → TomYum; rest → osu-web). Accounts/scores not shared yet.
 - [x] Custom beatmap id floor → **10,000,000** (`Beatmap.CustomIdFloor`), so custom ids fit osu-web's
       `MEDIUMINT UNSIGNED` `beatmap_id`/`beatmapset_id` (max 16,777,215). Was 100,000,000.
-- [ ] BanchoBot as a real `phpbb_users` row (id 1, `bot` group) + osu-web `BANCHO_BOT_USER_ID=1`.
-- [ ] **Phase B — one database:** users (`phpbb_users`; password format already identical) →
-      beatmaps (`osu_beatmaps`/`osu_beatmapsets`) → scores + stats (`solo_scores`,
+- [x] BanchoBot as a real `phpbb_users` row (id 1, `bot` group) + osu-web `BANCHO_BOT_USER_ID=1`.
+- [x] **Phase B, accounts:** `OsuWebUserRepository` over `phpbb_users` + groups (`Database:OsuWebName`);
+      website and in-game accounts are the same. No auto-Owner in this mode (staff via osu-web `admin`).
+- [ ] **Phase B, rest:** beatmaps (`osu_beatmaps`/`osu_beatmapsets`) → scores + stats (`solo_scores`,
       `osu_user_stats*`, queue for `osu-elastic-indexer`) → achievements (`osu_user_achievements`)
       → migrate existing `tomyum` data. Replaces the EF-migrations item in Phase 0 for these tables.
 - [ ] Phase 7 rescope: osu-web already serves `/api/v2` + `/oauth/token`; TomYum keeps the realtime hubs.
