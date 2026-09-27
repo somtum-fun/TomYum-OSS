@@ -49,10 +49,12 @@ osu.example.com {
   @tomyum path /web/* /d/*
   # osu!stable in-game registration. osu-web also serves POST /users, so match the client's
   # User-Agent; TomYum owns account creation until persistence moves to osu-web's tables.
+  # lazer sends the same User-Agent, but asks for JSON: its sign-up is the website's.
   @stable_register {
     method POST
     path /users
     header User-Agent osu!
+    not header Accept application/json
   }
 
   handle @tomyum {
