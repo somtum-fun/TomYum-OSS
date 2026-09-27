@@ -131,6 +131,21 @@ public class OsuApiClientResolutionTests
         Assert.NotNull(details.ApprovedDate);
     }
 
+    [Fact]
+    public async Task GetById_PicksTheAskedForDifficulty_EvenWhenTheWholeSetComesBack()
+    {
+        var client = ClientReturning("""
+        [{"file_md5":"aaa","beatmapset_id":"355322","beatmap_id":"782310","approved":"1","version":"easy!"},
+         {"file_md5":"bbb","beatmapset_id":"355322","beatmap_id":"782311","approved":"1","version":"normal!"}]
+        """);
+
+        var beatmap = await client.GetByIdAsync(782311);
+
+        Assert.Equal((782311, 355322, "normal!"), (beatmap!.Id, beatmap.SetId, beatmap.Version));
+        Assert.Null(await client.GetByIdAsync(1));
+        Assert.Null(await client.GetByIdAsync(0));
+    }
+
     [Theory]
     [InlineData("\"S1082, S1086,TOOLONG\"", "S1082,S1086")]
     [InlineData("[\"S1\",\"P2\",\"S1\"]", "S1,P2")]

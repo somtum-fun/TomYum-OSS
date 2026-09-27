@@ -54,6 +54,11 @@ osu.localtest.me {
 	handle @stable_register {
 		reverse_proxy localhost:8080
 	}
+	# Lazer's spectator/multiplayer/metadata hubs when the client derives them from the API URL
+	# (<api>/signalr/<hub>): the spectator server, as on spectator.localtest.me below.
+	handle_path /signalr/* {
+		reverse_proxy localhost:8190
+	}
 	# Beatmap covers: osu-web links them under its own uploads, but TomYum never stores any; the
 	# official ones are on ppy's asset server at the same path.
 	@covers path_regexp covers ^/uploads/default/(beatmaps/[0-9]+/covers/.+)$
