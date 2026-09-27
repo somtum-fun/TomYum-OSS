@@ -145,6 +145,22 @@ public class RegistrationServiceTests
     }
 
     [Fact]
+    public async Task FirstRegistration_WithOsuWebAccounts_IsNotAutoGrantedOwner()
+    {
+        // Ids are shared with website sign-ups there, and Owner would mean osu-web admin.
+        var users = new InMemoryUserRepository();
+        var service = new RegistrationService(
+            users, new BcryptPasswordHasher(), NullLogger<RegistrationService>.Instance,
+            new TomYum.Persistence.DatabaseOptions { Enabled = true, OsuWebName = "osu" });
+
+        var result = await service.RegisterAsync(
+            "Owner", "owner@tomyum.dev", "s3cure-pass", create: true, country: "xx", CancellationToken.None);
+
+        Assert.Equal(RegistrationService.OwnerUserId, result.Created!.Id);
+        Assert.Equal(UserPrivileges.Normal, result.Created.Privileges);
+    }
+
+    [Fact]
     public async Task SecondRegistration_IsOnlyNormal()
     {
         var service = NewService(out _);

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using TomYum.Domain.Repositories;
+using TomYum.Persistence.OsuWeb;
 using TomYum.Persistence.Repositories;
 
 namespace TomYum.Persistence;
@@ -33,7 +34,17 @@ public static class PersistenceServiceCollectionExtensions
         var serverVersion = new MySqlServerVersion(new Version(8, 4, 0));
         services.AddDbContext<TomYumDbContext>(db => db.UseMySql(connectionString, serverVersion));
 
-        services.AddScoped<IUserRepository, UserRepository>();
+        // Accounts: osu-web's phpbb_users when configured (shared with the website), else our own table.
+        if (options.UseOsuWebAccounts)
+        {
+            services.AddDbContext<OsuWebDbContext>(db => db.UseMySql(options.BuildOsuWebConnectionString(), serverVersion));
+            services.AddScoped<OsuWebUserRepository>();
+            services.AddScoped<IUserRepository>(sp => sp.GetRequiredService<OsuWebUserRepository>());
+        }
+        else
+        {
+            services.AddScoped<IUserRepository, UserRepository>();
+        }
         services.AddScoped<IBeatmapRepository, BeatmapRepository>();
         services.AddScoped<IScoreRepository, ScoreRepository>();
         services.AddScoped<IUserStatsRepository, UserStatsRepository>();

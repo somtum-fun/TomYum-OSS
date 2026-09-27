@@ -4,6 +4,7 @@ using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 using TomYum.Performance;
 using TomYum.Persistence;
+using TomYum.Persistence.OsuWeb;
 using TomYum.Server.Bancho;
 using TomYum.Server.Bancho.Packets;
 using TomYum.Server.Bancho.Packets.Match;
@@ -195,6 +196,15 @@ if (databaseOptions.Enabled)
     await db.EnsureRuntimeTablesAsync();
 
     app.Logger.LogInformation("Database schema ensured ({Host}/{Name}).", databaseOptions.Host, databaseOptions.Name);
+
+    // Accounts live in osu-web (docs/osu-web.md): its migrations own that schema, so nothing is
+    // created there except BanchoBot's account row. Fails fast if osu-web's groups aren't seeded.
+    if (databaseOptions.UseOsuWebAccounts)
+    {
+        await scope.ServiceProvider.GetRequiredService<OsuWebUserRepository>()
+            .EnsureBotAsync(BanchoBot.UserId, BanchoBot.Name);
+        app.Logger.LogInformation("Accounts stored in osu-web database {OsuWebName}.", databaseOptions.OsuWebName);
+    }
 }
 
 // Seed a development test player (password "faker123") so the login handshake can be exercised
@@ -210,10 +220,11 @@ if (app.Environment.IsDevelopment())
         var bcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("faker123"));
         // Explicit id 2 keeps the id scheme aligned: 1 = BanchoBot (virtual), 2 = this dev
         // user, 3 = first real registration (granted Owner). MySQL accepts an explicit value
-        // for an AUTO_INCREMENT key and advances the counter past it.
+        // for an AUTO_INCREMENT key and advances the counter past it. With osu-web accounts the
+        // ids are shared with website sign-ups, so let osu-web assign it (2 may already be taken).
         await users.AddAsync(new User
         {
-            Id = 2,
+            Id = databaseOptions.UseOsuWebAccounts ? 0 : 2,
             Username = "TomYum",
             SafeName = User.MakeSafeName("TomYum"),
             Email = "tomyum@tomyum.local",

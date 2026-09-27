@@ -12,6 +12,21 @@ jobs:
   build-test:
     name: Build & test
     runs-on: ubuntu-latest
+    # MySQL for the osu-web account integration tests (skipped when TOMYUM_TEST_MYSQL is unset).
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -pci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TOMYUM_TEST_MYSQL: Server=127.0.0.1;Port=3306;User=root;Password=ci;AllowPublicKeyRetrieval=true;
     steps:
       - uses: actions/checkout@v4
 
