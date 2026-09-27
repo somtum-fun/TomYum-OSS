@@ -26,6 +26,16 @@ public interface IOsuApiClient
     /// fails — like <see cref="GetByMd5Async"/>, failures are logged rather than thrown.
     /// </summary>
     Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Up to 500 ranked/approved/qualified/loved difficulties with an approved date at or after
+    /// <paramref name="since"/>, oldest first. Only the official API supports this (it needs an API
+    /// key); empty otherwise or when the request fails.
+    /// </summary>
+    Task<IReadOnlyList<Beatmap>> GetSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default);
+
+    /// <summary>Whether <see cref="GetSinceAsync"/> is available (an API key is configured).</summary>
+    bool SupportsSince { get; }
 }
 
 /// <summary>
@@ -108,6 +118,31 @@ public sealed class OsuApiClient : IOsuApiClient
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
         {
             _logger.LogWarning(ex, "osu! API lookup failed for beatmap set {SetId}.", setId);
+            return [];
+        }
+    }
+
+    /// <inheritdoc />
+    public bool SupportsSince => !string.IsNullOrEmpty(_options.ApiKey);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<Beatmap>> GetSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default)
+    {
+        if (!SupportsSince)
+        {
+            return [];
+        }
+
+        var filter = string.Create(CultureInfo.InvariantCulture,
+            $"since={WebUtility.UrlEncode(since.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture))}&limit=500");
+        try
+        {
+            var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(Query(filter), JsonOptions, cancellationToken).ConfigureAwait(false);
+            return beatmaps?.Select(Map).Where(b => b.Id > 0 && b.SetId > 0).ToList() ?? [];
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
+        {
+            _logger.LogWarning(ex, "osu! API lookup failed for maps ranked since {Since}.", since);
             return [];
         }
     }

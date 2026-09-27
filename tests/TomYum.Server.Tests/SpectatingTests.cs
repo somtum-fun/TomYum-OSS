@@ -47,6 +47,11 @@ public class SpectatingTests
 
         public Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public Task<IReadOnlyList<Beatmap>> GetSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public bool SupportsSince => false;
     }
 
     /// <summary>Builds a SEND_PUBLIC_MESSAGE payload (sender + text + target + sender_id; sender fields ignored).</summary>

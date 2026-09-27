@@ -52,6 +52,17 @@ public sealed class OsuWebInterop
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Re-indexes a beatmap set in osu-web's search (<c>POST /_lio/index-beatmapset/{set}</c>), so
+    /// the beatmap listing shows it — the database mirror alone doesn't reach Elasticsearch.
+    /// </summary>
+    public async Task IndexBeatmapsetAsync(int beatmapsetId, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostAsync(string.Create(CultureInfo.InvariantCulture, $"/_lio/index-beatmapset/{beatmapsetId}"), cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>The signed URL for <paramref name="path"/> at the current time.</summary>
     public (Uri Url, string Signature) Sign(string path)
     {
