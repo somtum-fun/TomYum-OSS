@@ -43,18 +43,31 @@ SHARED_INTEROP_SECRET=pick-a-long-random-string   # TomYum uses the same value
 TRUSTED_PROXIES=PRIVATE_SUBNETS        # trust Caddy/nginx so the site knows it's on https
 REGISTRATION_MODE_WEB=true             # allow sign-up on the website (off by default)
 USER_BYPASS_VERIFICATION=true          # local only: no emailed login code
+USER_ACHIEVEMENT_ICON_PREFIX=https://assets.ppy.sh/medals/client/   # where medal icons actually are
 ```
+
+If `APP_KEY` ends in `=`, put it in quotes (`APP_KEY="base64:…="`): Laravel won't read the file otherwise.
 
 Then:
 
 ```bash
 docker compose up -d && docker compose restart      # pick up the new .env
 docker compose logs -f migrator                     # wait until it exits (database migrated)
-docker compose run --rm php artisan db:seed --class='Database\Seeders\ModelSeeders\GroupSeeder'
+docker compose run --rm php artisan tomyum:setup    # groups, genres, countries, forum, download mirror
+docker compose restart php
 ```
 
-The last command creates the user groups (`default`, `bot`, `admin`, …); TomYum won't start without
-them. Check <http://localhost:8180> shows the osu-web front page.
+`tomyum:setup` creates what the dev seeders leave out: the user groups with their badges (TomYum
+won't start without them), genres and languages (beatmap pages need them), countries, the forum that
+holds profile "me!" pages, and TomYum as the beatmap download mirror. It's safe to run again. The
+`scheduler` service (started by `docker compose up`) keeps rankings like Top Plays up to date.
+
+Check <http://localhost:8180> shows the osu-web front page.
+
+> **Don't run `php artisan cache:clear`.** osu-web's cache lives in the same Redis as the score
+> indexer's settings; clearing it stops `score-indexer`, and new scores stop reaching profiles and
+> leaderboards. To pick up config or group changes, `docker compose restart php` instead. If it
+> happened anyway: `docker compose up -d score-indexer`.
 
 ## 2. TomYum
 
@@ -62,7 +75,6 @@ them. Check <http://localhost:8180> shows the osu-web front page.
 cd ~/src
 git clone https://github.com/sundeiii/TomYum.git
 cd TomYum
-git checkout eager-ritchie       # until this work is merged
 cp config/.env.example config/.env
 ```
 
@@ -71,7 +83,9 @@ In `config/.env` set:
 ```ini
 TOMYUM_SERVER__DOMAIN=localtest.me
 TOMYUM_OSUWEB__INTEROPSECRET=pick-a-long-random-string   # same as osu-web's SHARED_INTEROP_SECRET
-TOMYUM_OSU__APIKEY=                    # optional; empty uses the osu.direct mirror
+TOMYUM_OSU__APIKEY=                    # recommended (https://osu.ppy.sh/home/account/edit#legacy-api):
+                                       # object counts, genre and language on beatmap pages, and bulk
+                                       # imports by date. Empty uses the keyless osu.direct mirror.
 ```
 
 (The database, Redis and osu-web settings in that file are overridden by the compose overlay.)
@@ -138,14 +152,21 @@ docker compose run --rm php artisan tinker
 >>> App\Models\User::where('username', 'YourName')->first()->addToGroup(app('groups')->byIdentifier('admin'));
 ```
 
-**Search and listings** (beatmap listing, user search) read Elasticsearch. New maps and players are
-reachable by URL straight away; to see them in listings run, from the osu-web folder:
+After that, everything else is in the **Staff panel** (user menu → Staff panel, or `/panel`): the BN
+panel imports and manages beatmap sets, the GMT panel restricts/silences players, shows reports and
+chat logs and removes scores, and the admin panel edits accounts, groups and supporter.
+
+**Search and listings** (beatmap listing, user search) read Elasticsearch. Maps TomYum imports are
+indexed as they're added; to (re)index everything, from the osu-web folder:
 
 ```bash
 docker compose run --rm php artisan es:index-documents --types=beatmapsets,users --inplace
 ```
 
 Scores on leaderboards and profiles are indexed automatically by osu-web's `score-indexer` service.
+
+**Chat**: the website's chat and in-game chat are linked (#osu, #english, #lobby, #help, #announce and
+private messages). On the website, join channels with "join channel".
 
 ## 6. TomYum's automated tests (optional)
 
@@ -164,7 +185,10 @@ Without the two variables the database tests are skipped, not failed.
 
 ## Troubleshooting
 
-- **TomYum exits with "osu-web group 'default' does not exist"** — step 1's `GroupSeeder` command.
+- **TomYum exits with "osu-web group 'default' does not exist"** — step 1's `tomyum:setup` command.
+- **New scores don't appear on profiles/leaderboards** — `score-indexer` stopped (usually after a
+  `cache:clear`): `docker compose up -d score-indexer` in the osu-web folder.
+- **A beatmap page errors / shows no genre** — run `tomyum:setup` (step 1).
 - **"address already in use" on 8080 / 3306 / 6379** — osu-web isn't on `NGINX_PORT=8180`, or this
   repo's own `mysql`/`redis` are running alongside osu-web's. Stop them: `docker compose -f
   deploy/docker/docker-compose.yml stop mysql redis`.
