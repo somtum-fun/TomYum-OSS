@@ -1,0 +1,12 @@
+# Keep host build output and local state out of the Docker build context (deploy/docker/Dockerfile).
+# Host bin/obj folders hold restore data for the host's paths and break the in-container build.
+**/bin/
+**/obj/
+.git/
+.github/
+data/
+config/.env
+config/tomyum.yaml
+tests/
+tools/
+docs/

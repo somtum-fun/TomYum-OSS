@@ -13,6 +13,7 @@ using TomYum.Domain.Services;
 using TomYum.Performance;
 using TomYum.Server.Achievements;
 using TomYum.Server.Bancho;
+using TomYum.Server.OsuWeb;
 
 namespace TomYum.Server.Beatmaps;
 
@@ -42,6 +43,7 @@ public static class ScoreSubmissionEndpoint
         IUserAchievementRepository achievements,
         IPerformanceCalculator pp,
         IScoreQueue scoreQueue,
+        IOsuWebSync osuWebSync,
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("TomYum.ScoreSubmission");
@@ -309,6 +311,16 @@ public static class ScoreSubmissionEndpoint
         stats = await userStats.UpdateAsync(stats, cancellationToken).ConfigureAwait(false);
         var globalRank = await userStats.GetGlobalRankAsync(user.Id, gameMode, cancellationToken).ConfigureAwait(false);
 
+        // Website (osu-web) copy of the score + stats. Best-effort: the game must not fail over it.
+        try
+        {
+            await osuWebSync.ScoreSubmittedAsync(score, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "osu-web sync failed for score {ScoreId}; submission continues", score.Id);
+        }
+
         if (player is not null)
         {
             var presence = player.Presence;
@@ -358,6 +370,17 @@ public static class ScoreSubmissionEndpoint
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Achievement check failed for user {UserId} on beatmap {BeatmapId}; submission continues", user.Id, beatmap.Id);
+            }
+        }
+        if (newMedals.Count > 0)
+        {
+            try
+            {
+                await osuWebSync.MedalsUnlockedAsync(user.Id, newMedals, beatmap.Id, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "osu-web medal sync failed for user {UserId}; submission continues", user.Id);
             }
         }
         var achievementsNew = MedalService.FormatAchievementsNew(newMedals);

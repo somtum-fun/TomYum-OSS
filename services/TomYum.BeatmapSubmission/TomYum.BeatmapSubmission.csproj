@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- Custom beatmap submission service. Server-local set/beatmap IDs >= 100000000. -->
+  <!-- Custom beatmap submission service. Server-local set/beatmap IDs >= 10000000 (Beatmap.CustomIdFloor). -->
   <ItemGroup>
     <ProjectReference Include="../../src/TomYum.Domain/TomYum.Domain.csproj" />
     <ProjectReference Include="../../src/TomYum.Persistence/TomYum.Persistence.csproj" />

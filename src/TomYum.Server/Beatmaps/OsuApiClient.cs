@@ -97,6 +97,7 @@ public sealed class OsuApiClient : IOsuApiClient
         Version = api.Version ?? string.Empty,
         Creator = api.Creator ?? string.Empty,
         Status = RankedStatusExtensions.FromOsuApi(ParseInt(api.Approved)),
+        OsuApiStatus = ParseInt(api.Approved),
         Mode = ParseInt(api.Mode),
         StarRating = ParseDouble(api.DifficultyRating),
         TotalLength = ParseInt(api.TotalLength),

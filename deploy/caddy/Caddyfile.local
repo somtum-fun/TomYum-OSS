@@ -1,0 +1,33 @@
+# Local testing (docs/local-testing.md): TomYum + osu-web on one machine, HTTPS from Caddy's own
+# local certificate authority. `localtest.me` and every subdomain of it resolve to 127.0.0.1 in
+# public DNS, so no hosts-file edits are needed. Run `caddy trust` once so Windows/macOS/Linux
+# (and therefore osu! and your browser) trust these certificates.
+#
+# TomYum.Server on localhost:8080, osu-web's nginx on localhost:8180 (NGINX_PORT=8180).
+{
+	local_certs
+}
+
+# Game endpoints (bancho, beatmap assets, medal icons).
+c.localtest.me, ce.localtest.me, c4.localtest.me, cho.localtest.me, b.localtest.me, assets.localtest.me, a.localtest.me {
+	reverse_proxy localhost:8080
+}
+
+# osu.: the client's /web/* and in-game registration go to TomYum, the website to osu-web.
+osu.localtest.me {
+	@tomyum path /web/* /d/*
+	@stable_register {
+		method POST
+		path /users
+		header User-Agent osu!
+	}
+	handle @tomyum {
+		reverse_proxy localhost:8080
+	}
+	handle @stable_register {
+		reverse_proxy localhost:8080
+	}
+	handle {
+		reverse_proxy localhost:8180
+	}
+}
