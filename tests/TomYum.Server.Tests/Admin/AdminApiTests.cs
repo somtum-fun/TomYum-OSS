@@ -2,6 +2,7 @@ using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Server.Admin;
 using TomYum.Server.Beatmaps;
@@ -89,6 +90,51 @@ public sealed class AdminApiTests
     }
 
     [Fact]
+    public async Task StatusChange_WholeSet_FreezesAppliesInGameAndLogs()
+    {
+        var (services, repository, log) = Build(new FakeApi { Sets = { [7] = [Map(70, 7), Map(71, 7)] } });
+        using var scope = services.CreateScope();
+        var beatmaps = services.GetRequiredService<BeatmapService>();
+
+        // Not stored yet: the change imports the set first.
+        var result = await scope.ServiceProvider.GetRequiredService<BeatmapStatusChanger>()
+            .ChangeAsync(7, RankedStatus.Loved, null, actorId: 2);
+
+        Assert.NotNull(result);
+        Assert.Equal("loved", result!.Status);
+        Assert.Equal(2, result.Changed.Count);
+        Assert.All(repository.Stored, b => Assert.Equal((RankedStatus.Loved, true), (b.Status, b.StatusFrozen)));
+        Assert.Equal(RankedStatus.Loved, beatmaps.GetStatusOverride(70));
+        var entry = Assert.Single(log.Entries, e => e.Action == BeatmapStatusChanger.LogAction);
+        Assert.Equal(("Artist 7 - Title 7: all difficulties → loved", 7L, 2), (entry.Summary, entry.TargetId, entry.ActorId));
+    }
+
+    [Fact]
+    public async Task StatusChange_SomeDifficulties_OnlyChangesThose()
+    {
+        var (services, repository, log) = Build(new FakeApi { Sets = { [7] = [Map(70, 7), Map(71, 7), Map(72, 7)] } });
+        using var scope = services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<BeatmapSetImporter>().ImportAsync(7, actorId: 2);
+
+        var result = await scope.ServiceProvider.GetRequiredService<BeatmapStatusChanger>()
+            .ChangeAsync(7, RankedStatus.Ranked, [71], actorId: 2);
+
+        Assert.Equal(["Normal 71"], result!.Changed);
+        Assert.Equal([false, true, false], repository.Stored.OrderBy(b => b.Id).Select(b => b.StatusFrozen));
+        Assert.Contains("[Normal 71] → ranked", log.Entries.Single(e => e.Action == BeatmapStatusChanger.LogAction).Summary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task StatusChange_UnknownSet_ReturnsNull()
+    {
+        var (services, _, log) = Build(new FakeApi());
+        using var scope = services.CreateScope();
+
+        Assert.Null(await scope.ServiceProvider.GetRequiredService<BeatmapStatusChanger>().ChangeAsync(404, RankedStatus.Ranked, null, 2));
+        Assert.Empty(log.Entries);
+    }
+
+    [Fact]
     public async Task BulkImport_ByIds_CountsImportedAndMissingSets()
     {
         var (services, repository, log) = Build(new FakeApi { Sets = { [1] = [Map(10, 1)], [2] = [Map(20, 2), Map(21, 2)] } });
@@ -151,6 +197,7 @@ public sealed class AdminApiTests
             .AddSingleton<IStaffLogRepository>(log)
             .AddSingleton(TimeProvider.System)
             .AddScoped<BeatmapSetImporter>()
+            .AddScoped<BeatmapStatusChanger>()
             .BuildServiceProvider();
         return (services, repository, log);
     }
@@ -164,6 +211,7 @@ public sealed class AdminApiTests
         SetId = setId,
         Md5 = $"md5-{id}",
         Artist = $"Artist {setId}",
+        Version = $"Normal {id}",
         Title = $"Title {setId}",
         Details = new BeatmapDetails { ApprovedDate = rankedAt },
     };
@@ -226,6 +274,19 @@ public sealed class AdminApiTests
 
         public Task<Beatmap?> GetByIdAsync(int id, CancellationToken cancellationToken = default) =>
             Task.FromResult(Stored.FirstOrDefault(b => b.Id == id));
+
+        public Task<IReadOnlyList<Beatmap>> GetBySetAsync(int setId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>(Stored.Where(b => b.SetId == setId).OrderBy(b => b.Id).ToList());
+
+        public Task<bool> SetStatusAsync(int beatmapId, RankedStatus status, CancellationToken cancellationToken = default)
+        {
+            var beatmap = Stored.FirstOrDefault(b => b.Id == beatmapId);
+            if (beatmap is null)
+                return Task.FromResult(false);
+            beatmap.Status = status;
+            beatmap.StatusFrozen = true;
+            return Task.FromResult(true);
+        }
 
         public Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
         {

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 
 namespace TomYum.Server.Beatmaps;
 
@@ -19,12 +20,43 @@ public sealed class BeatmapService
     private readonly IOsuApiClient _api;
     private readonly ConcurrentDictionary<string, Beatmap?> _byMd5 = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<int, byte> _fetchedSets = new();
+    private readonly ConcurrentDictionary<int, RankedStatus> _statusOverrides = new();
 
     /// <summary>Creates the service over the osu! API client.</summary>
     public BeatmapService(IOsuApiClient api) => _api = api;
 
     /// <summary>Number of MD5 hashes currently cached (including negative not-found entries).</summary>
     public int CachedCount => _byMd5.Count;
+
+    /// <summary>
+    /// Makes beatmap <paramref name="beatmapId"/> report <paramref name="status"/> (a staff override,
+    /// stored frozen in the database) instead of what the osu! API says — leaderboards and pp follow
+    /// it. Applies to cached lookups immediately.
+    /// </summary>
+    public void SetStatusOverride(int beatmapId, RankedStatus status)
+    {
+        _statusOverrides[beatmapId] = status;
+        foreach (var beatmap in _byMd5.Values)
+        {
+            if (beatmap?.Id == beatmapId)
+                ApplyOverride(beatmap);
+        }
+    }
+
+    /// <summary>The staff override for <paramref name="beatmapId"/>, if any.</summary>
+    public RankedStatus? GetStatusOverride(int beatmapId) =>
+        _statusOverrides.TryGetValue(beatmapId, out var status) ? status : null;
+
+    private Beatmap? ApplyOverride(Beatmap? beatmap)
+    {
+        if (beatmap is not null && _statusOverrides.TryGetValue(beatmap.Id, out var status))
+        {
+            beatmap.Status = status;
+            beatmap.StatusFrozen = true;
+            beatmap.OsuApiStatus = null; // the API's value no longer describes this map
+        }
+        return beatmap;
+    }
 
     /// <summary>
     /// Resolves a beatmap by its <c>.osu</c> MD5 hash. Returns <c>null</c> when the map is unknown
@@ -43,7 +75,7 @@ public sealed class BeatmapService
             return cached;
         }
 
-        var resolved = await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
+        var resolved = ApplyOverride(await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false));
         _byMd5[md5] = resolved;
         return resolved;
     }
@@ -97,7 +129,7 @@ public sealed class BeatmapService
         // The set's difficulties are now known: later lookups of them skip the API.
         foreach (var beatmap in set)
         {
-            _byMd5[beatmap.Md5] = beatmap;
+            _byMd5[beatmap.Md5] = ApplyOverride(beatmap);
         }
         return set;
     }

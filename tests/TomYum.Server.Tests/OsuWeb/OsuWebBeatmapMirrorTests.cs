@@ -141,6 +141,41 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task StaffStatus_IsFrozen_AndTheSetTakesTheBestDifficultyStatus()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        var repository = NewRepository(tomyum);
+        await repository.UpsertAsync(Map(700, 70, RankedStatus.Pending, api: -2, version: "Easy"));
+        await repository.UpsertAsync(Map(701, 70, RankedStatus.Pending, api: -2, version: "Hard"));
+
+        Assert.True(await repository.SetStatusAsync(701, RankedStatus.Loved));
+
+        Assert.Equal(4, await ScalarAsync<int>("SELECT approved FROM osu_beatmaps WHERE beatmap_id = 701"));
+        Assert.Equal(-2, await ScalarAsync<int>("SELECT approved FROM osu_beatmaps WHERE beatmap_id = 700"));
+        Assert.Equal(4, await ScalarAsync<int>("SELECT approved FROM osu_beatmapsets WHERE beatmapset_id = 70"));
+        Assert.NotNull(await ScalarAsync<DateTime?>("SELECT approved_date FROM osu_beatmapsets WHERE beatmapset_id = 70"));
+
+        // A later refresh from the osu! API keeps the staff status.
+        await repository.UpsertAsync(Map(701, 70, RankedStatus.Pending, api: -2, version: "Hard"));
+        var stored = await new BeatmapRepository(tomyum).GetByIdAsync(701);
+        Assert.Equal((RankedStatus.Loved, true), (stored!.Status, stored.StatusFrozen));
+        Assert.Equal(4, await ScalarAsync<int>("SELECT approved FROM osu_beatmaps WHERE beatmap_id = 701"));
+
+        Assert.False(await repository.SetStatusAsync(999, RankedStatus.Ranked));
+        Assert.Equal([700, 701], (await repository.GetBySetAsync(70)).Select(b => b.Id).Order());
+    }
+
+    [Theory]
+    [InlineData(new sbyte[] { -2, 4, 0 }, 4)]
+    [InlineData(new sbyte[] { 3, 1 }, 1)]
+    [InlineData(new sbyte[] { 3, 4 }, 4)]
+    [InlineData(new sbyte[] { -2, -1 }, -1)]
+    public void SetStatus_FollowsOsuPrecedence(sbyte[] difficulties, int expected)
+    {
+        Assert.Equal((sbyte)expected, OsuWebBeatmaps.SetStatusFor(difficulties));
+    }
+
+    [MySqlFact]
     public async Task ReserveCustomSetId_SkipsIdsTakenOnOsuWeb()
     {
         await using var tomyum = await NewTomYumContextAsync();
