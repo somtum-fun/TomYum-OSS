@@ -425,6 +425,35 @@ public sealed class OsuWebScoreMirror
             .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>A processed score and when (the database's clock).</summary>
+    private sealed class ProcessedAtRow
+    {
+        public ulong ScoreId { get; set; }
+        public DateTime ProcessedAt { get; set; }
+    }
+
+    /// <summary>
+    /// Website scores the processor finished at or after <paramref name="cursor"/> (its <c>processed_at</c>, whole seconds, so callers skip ones they saw),
+    /// and the cursor to pass next time. A null cursor starts from now (returns no scores). The
+    /// processor doesn't re-index the scores it gives pp, so the caller queues these for the search
+    /// index, or lazer scores would show on profiles without pp.
+    /// </summary>
+    public async Task<(IReadOnlyList<ulong> ScoreIds, DateTime? Cursor)> GetProcessedSinceAsync(DateTime? cursor, CancellationToken cancellationToken = default)
+    {
+        if (cursor is not { } since)
+        {
+            var latest = await _osuWeb.Database
+                .SqlQuery<DateTime?>($"SELECT MAX(processed_at) AS Value FROM score_process_history")
+                .SingleAsync(cancellationToken).ConfigureAwait(false);
+            return ([], latest ?? DateTime.MinValue);
+        }
+
+        var rows = await _osuWeb.Database
+            .SqlQuery<ProcessedAtRow>($"SELECT score_id AS ScoreId, processed_at AS ProcessedAt FROM score_process_history WHERE processed_at >= {since} ORDER BY processed_at LIMIT 1000")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Count == 0 ? ([], since) : (rows.Select(r => r.ScoreId).ToList(), rows[^1].ProcessedAt);
+    }
+
     /// <summary>
     /// Waits until the processor has handled website score <paramref name="osuWebScoreId"/> (its
     /// <c>score_process_history</c> row exists), up to <paramref name="timeout"/>. False on timeout.

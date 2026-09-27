@@ -112,6 +112,7 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             {
                 member.Enqueue(botFramed);
             }
+            _website?.ForwardChannelMessage(BanchoBot.UserId, target, reply);
         }
     }
 
