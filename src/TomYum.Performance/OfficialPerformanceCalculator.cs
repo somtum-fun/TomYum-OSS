@@ -42,14 +42,13 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
     public async Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
     {
         var ruleset = GetRuleset(request.RulesetId);
-        var mods = ruleset.ConvertFromLegacyMods((LegacyMods)request.Mods).ToArray();
+        var mods = StableMods(ruleset, request.Mods);
 
-        var diffAttribs = await DifficultyAsync(request.BeatmapId, request.RulesetId, request.Mods, ruleset, mods, cancellationToken).ConfigureAwait(false);
-
-        if (diffAttribs is null)
+        var difficulty = await DifficultyAsync(request.BeatmapId, request.RulesetId, request.Mods, ruleset, mods, cancellationToken).ConfigureAwait(false);
+        if (difficulty?.Attributes is not { } diffAttribs)
             return 0.0;
 
-        var scoreInfo = BuildScoreInfo(request, ruleset, mods);
+        var scoreInfo = BuildScoreInfo(request, ruleset, mods, difficulty.Beatmap);
         var perfAttribs = ruleset.CreatePerformanceCalculator()?.Calculate(scoreInfo, diffAttribs);
         var pp = perfAttribs?.Total ?? 0.0;
 
@@ -76,12 +75,10 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
             return null;
 
         var ruleset = GetRuleset(0);
-        var modList = ruleset.ConvertFromLegacyMods((LegacyMods)mods).ToArray();
-        if (await DifficultyAsync(beatmapId, 0, mods, ruleset, modList, cancellationToken).ConfigureAwait(false)
-            is not osu.Game.Rulesets.Osu.Difficulty.OsuDifficultyAttributes attributes)
-        {
+        var modList = StableMods(ruleset, mods);
+        var difficulty = await DifficultyAsync(beatmapId, 0, mods, ruleset, modList, cancellationToken).ConfigureAwait(false);
+        if (difficulty?.Attributes is not osu.Game.Rulesets.Osu.Difficulty.OsuDifficultyAttributes attributes)
             return null;
-        }
 
         var objects = attributes.HitCircleCount + attributes.SliderCount + attributes.SpinnerCount;
         var calculator = ruleset.CreatePerformanceCalculator();
@@ -94,24 +91,41 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
             // acc = (300·n300 + 100·n100) / (300·n)  =>  n100 = 1.5·n·(1 − acc)
             var n100 = (int)Math.Clamp(Math.Round(1.5 * objects * (1 - Math.Clamp(accuracy, 0, 1))), 0, objects);
             var request = new PerformanceRequest(beatmapId, 0, mods, attributes.MaxCombo, objects - n100, n100, 0, 0, 0, 0, Passed: true);
-            results.Add(calculator.Calculate(BuildScoreInfo(request, ruleset, modList), attributes).Total);
+            results.Add(calculator.Calculate(BuildScoreInfo(request, ruleset, modList, difficulty.Beatmap), attributes).Total);
         }
         return results;
     }
 
-    private Task<DifficultyAttributes?> DifficultyAsync(int beatmapId, int rulesetId, int legacyMods, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods, CancellationToken cancellationToken) =>
+    /// <summary>A map's difficulty attributes, and the map itself (the pp formula reads its AR/OD/CS/HP).</summary>
+    private sealed record Difficulty(DifficultyAttributes Attributes, BeatmapInfo Beatmap);
+
+    private Task<Difficulty?> DifficultyAsync(int beatmapId, int rulesetId, int legacyMods, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods, CancellationToken cancellationToken) =>
         _cache.GetOrCreateAsync($"diff:official:{beatmapId}:{rulesetId}:{legacyMods}", async entry =>
         {
             entry.SlidingExpiration = TimeSpan.FromMinutes(30);
             var bytes = await _files.GetAsync(beatmapId, cancellationToken).ConfigureAwait(false);
             using var stream = new MemoryStream(bytes, writable: false);
             var working = new StreamedWorkingBeatmap(stream, ruleset);
-            return ruleset.CreateDifficultyCalculator(working).Calculate(mods);
+            return new Difficulty(ruleset.CreateDifficultyCalculator(working).Calculate(mods), working.BeatmapInfo);
         });
 
-    internal static ScoreInfo BuildScoreInfo(PerformanceRequest req, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods)
+    /// <summary>
+    /// A stable score's mods as lazer's calculators must see them: the legacy bits plus Classic, as
+    /// ppy's score processor gives every stable score. Without Classic the osu! calculator expects
+    /// lazer's slider-end and tick judgements, which stable scores don't have, and treats them as
+    /// missed (an SS of a 7★ map came out at 460pp instead of 598pp).
+    /// </summary>
+    internal static osu.Game.Rulesets.Mods.Mod[] StableMods(Ruleset ruleset, int legacyMods) =>
+        ruleset.ConvertFromLegacyMods((LegacyMods)legacyMods).Append(ruleset.CreateMod<osu.Game.Rulesets.Mods.ModClassic>()!).ToArray();
+
+    /// <remarks>
+    /// <paramref name="beatmap"/> must be the played map: the pp formula reads its approach rate,
+    /// overall difficulty and so on from the score's map, and a score without one is scored as a
+    /// default AR5/OD5 map (far too little pp on most maps).
+    /// </remarks>
+    internal static ScoreInfo BuildScoreInfo(PerformanceRequest req, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods, BeatmapInfo beatmap)
     {
-        var scoreInfo = new ScoreInfo
+        var scoreInfo = new ScoreInfo(beatmap, ruleset.RulesetInfo)
         {
             Ruleset = ruleset.RulesetInfo,
             Mods = mods,
