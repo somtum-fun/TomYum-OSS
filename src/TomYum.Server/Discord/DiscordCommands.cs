@@ -79,7 +79,7 @@ public sealed partial class DiscordCommands
                 return DiscordReply.Text("Unlinked.", isPrivate: true);
 
             case "online":
-                return Online();
+                return await OnlineAsync(scope.ServiceProvider.GetService<OsuWebCommunity>(), cancellationToken).ConfigureAwait(false);
 
             case "staff":
                 return await StaffAsync(links, options, callerId, cancellationToken).ConfigureAwait(false);
@@ -201,7 +201,7 @@ public sealed partial class DiscordCommands
             return DiscordReply.Text("Nobody is ranked there yet.", isPrivate: true);
 
         var lines = ranking.Select(r => string.Create(CultureInfo.InvariantCulture,
-            $"**{r.Position}.** {DiscordFormat.Flag(r.Country)} [{DiscordFormat.Escape(r.Username)}]({_format.ProfileIn(r.UserId, ruleset)}) ▸ **{DiscordFormat.Pp(r.Pp)}** ▸ {r.Accuracy.ToString("0.00", CultureInfo.InvariantCulture)}%"));
+            $"**{r.Position}.** {DiscordFormat.Flag(r.Country)} [{DiscordFormat.LinkLabel(r.Username)}]({_format.ProfileIn(r.UserId, ruleset)}) ▸ **{DiscordFormat.Pp(r.Pp)}** ▸ {r.Accuracy.ToString("0.00", CultureInfo.InvariantCulture)}%"));
         return new DiscordReply(new DiscordPost(Embed: new DiscordEmbed
         {
             Title = $"{DiscordFormat.Ruleset(ruleset)} ranking{(country is null ? string.Empty : $" in {country}")}",
@@ -224,7 +224,7 @@ public sealed partial class DiscordCommands
 
         var first = scores[0];
         var lines = scores.Select((s, i) => string.Create(CultureInfo.InvariantCulture,
-            $"**{i + 1}.** [{DiscordFormat.Escape(s.Username)}]({_format.Profile(s.UserId)}) {DiscordFormat.Mods(s.Mods)} ▸ {DiscordFormat.Number(s.TotalScore)} ▸ {DiscordFormat.Percent(s.Accuracy)} ▸ {(s.Pp is { } pp ? DiscordFormat.Pp(pp) : "-")}"));
+            $"**{i + 1}.** [{DiscordFormat.LinkLabel(s.Username)}]({_format.Profile(s.UserId)}) {DiscordFormat.Mods(s.Mods)} ▸ {DiscordFormat.Number(s.TotalScore)} ▸ {DiscordFormat.Percent(s.Accuracy)} ▸ {(s.Pp is { } pp ? DiscordFormat.Pp(pp) : "-")}"));
         return new DiscordReply(new DiscordPost(Embed: new DiscordEmbed
         {
             Title = $"{first.MapName} {DiscordFormat.Stars(first.StarRating)}",
@@ -236,19 +236,36 @@ public sealed partial class DiscordCommands
         }));
     }
 
-    private DiscordReply Online()
+    /// <summary>Who's in-game on stable, and who else the website shows online (lazer, or browsing).</summary>
+    private async Task<DiscordReply> OnlineAsync(OsuWebCommunity? community, CancellationToken cancellationToken)
     {
-        var online = _players.All
+        var stable = _players.All
             .Where(p => p.UserId != BanchoBot.UserId && !p.IsRestricted)
-            .Select(p => p.Presence.Username)
-            .Order(StringComparer.OrdinalIgnoreCase)
+            .Select(p => (p.UserId, p.Presence.Username))
             .ToList();
-        if (online.Count == 0)
-            return DiscordReply.Text("Nobody is in-game right now.");
+        var inGame = stable.Select(p => p.UserId).ToHashSet();
+        var elsewhere = community is null ? [] : (await community.GetOnlineAsync(cancellationToken).ConfigureAwait(false))
+            .Where(p => !inGame.Contains(p.UserId))
+            .ToList();
+        if (stable.Count + elsewhere.Count == 0)
+            return DiscordReply.Text("Nobody is online right now.");
 
-        var names = string.Join(", ", online.Take(60).Select(DiscordFormat.Escape));
-        var more = online.Count > 60 ? string.Create(CultureInfo.InvariantCulture, $" and {online.Count - 60} more") : string.Empty;
-        return DiscordReply.Text(string.Create(CultureInfo.InvariantCulture, $"**{online.Count}** in-game: {names}{more}"));
+        static string Names(IEnumerable<(int UserId, string Username)> players, int max)
+        {
+            var sorted = players.Select(p => p.Username).Order(StringComparer.OrdinalIgnoreCase).ToList();
+            var more = sorted.Count > max ? string.Create(CultureInfo.InvariantCulture, $" and {sorted.Count - max} more") : string.Empty;
+            return string.Join(", ", sorted.Take(max).Select(DiscordFormat.Escape)) + more;
+        }
+
+        var lines = new List<string>
+        {
+            string.Create(CultureInfo.InvariantCulture, $"**{stable.Count + elsewhere.Count}** online"),
+        };
+        if (stable.Count > 0)
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"▸ **stable** ({stable.Count}): {Names(stable, 40)}"));
+        if (elsewhere.Count > 0)
+            lines.Add(string.Create(CultureInfo.InvariantCulture, $"▸ **lazer / website** ({elsewhere.Count}): {Names(elsewhere, 40)}"));
+        return DiscordReply.Text(string.Join('\n', lines));
     }
 
     private async Task<DiscordReply> StaffAsync(IDiscordLinkRepository links, IReadOnlyDictionary<string, string> options, ulong callerId, CancellationToken cancellationToken)

@@ -114,11 +114,29 @@ public sealed class DiscordFormat
         return string.Join(' ', new[] { score.MapName, Mods(score.Mods), Stars(score.StarRating) }.Where(part => part.Length > 0));
     }
 
+    /// <summary>
+    /// Text for inside a link's [label]. Discord shows backslash escapes there literally, so nothing
+    /// is escaped: balanced brackets (a difficulty name) work as they are, and only brackets that
+    /// would end the label early become parentheses.
+    /// </summary>
+    public static string LinkLabel(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var depth = 0;
+        foreach (var c in text)
+        {
+            depth += c == '[' ? 1 : c == ']' ? -1 : 0;
+            if (depth < 0)
+                break;
+        }
+        return depth == 0 ? text : text.Replace('[', '(').Replace(']', ')');
+    }
+
     /// <summary>A linked map title.</summary>
     public string MapLink(ScoreCard score)
     {
         ArgumentNullException.ThrowIfNull(score);
-        return $"[{Escape(score.MapName)}]({Beatmap(score.BeatmapId)})";
+        return $"[{LinkLabel(score.MapName)}]({Beatmap(score.BeatmapId)})";
     }
 
     /// <summary>Two lines about a score: pp · accuracy · grade, then score · combo · hits.</summary>
