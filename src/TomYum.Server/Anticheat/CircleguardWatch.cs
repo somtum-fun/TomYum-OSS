@@ -141,7 +141,7 @@ public sealed class CircleguardWatch : BackgroundService
 
     private async Task CheckAsync(IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, CancellationToken cancellationToken)
     {
-        var replay = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+        var replay = await PlayAsync(services, community, score, path, cancellationToken).ConfigureAwait(false);
         byte[]? beatmap = null;
         try
         {
@@ -161,7 +161,10 @@ public sealed class CircleguardWatch : BackgroundService
                 if (references.Count >= 5 || top.UserId == score.UserId || top.ScoreId == score.ScoreId)
                     continue;
                 if (await ReplayPathAsync(community, top, cancellationToken).ConfigureAwait(false) is { } topPath && File.Exists(topPath))
-                    references.Add(new CircleguardReference((long)top.ScoreId, top.Username, 0, await File.ReadAllBytesAsync(topPath, cancellationToken).ConfigureAwait(false), FramesOnly: false));
+                {
+                    var play = await PlayAsync(services, community, top, topPath, cancellationToken).ConfigureAwait(false);
+                    references.Add(new CircleguardReference((long)top.ScoreId, top.Username, play.Mods, play.Data, play.FramesOnly));
+                }
             }
             if (_options.CompareOfficial && score.BeatmapId < Beatmap.CustomIdFloor)
                 references.AddRange(await _official.TopAsync(score.BeatmapId, score.Ruleset, cancellationToken).ConfigureAwait(false));
@@ -176,6 +179,24 @@ public sealed class CircleguardWatch : BackgroundService
             restricted = await RestrictAsync(services, score, verdict, cancellationToken).ConfigureAwait(false);
         if (verdict.RiskScore >= _options.ReportAt && _discord is not null)
             await _discord.CircleguardAsync(score, verdict, restricted, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// A score's replay as circleguard takes it: lazer's files are whole <c>.osr</c>s; stable's are the
+    /// frames the client uploaded, so their details come from TomYum's own score.
+    /// </summary>
+    private static async Task<CircleguardPlay> PlayAsync(IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, CancellationToken cancellationToken)
+    {
+        var data = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
+        if (!score.IsStable
+            || await community.GetStableScoreAsync(score.ScoreId, cancellationToken).ConfigureAwait(false) is not { } stable
+            || services.GetService<TomYum.Persistence.TomYumDbContext>() is not { } db
+            || await db.Scores.FindAsync([stable.StableScoreId], cancellationToken).ConfigureAwait(false) is not { } own)
+            return new CircleguardPlay(data, FramesOnly: false);
+
+        return new CircleguardPlay(
+            data, FramesOnly: true, Ruleset: own.Mode % 4, Mods: own.Mods, Username: score.Username, MaxCombo: own.MaxCombo,
+            Count300: own.Count300, Count100: own.Count100, Count50: own.Count50, CountGeki: own.CountGeki, CountKatu: own.CountKatu, CountMiss: own.CountMiss);
     }
 
     /// <summary>Restricts the player as BanchoBot, like the GMT panel would (not staff: they're only reported).</summary>
