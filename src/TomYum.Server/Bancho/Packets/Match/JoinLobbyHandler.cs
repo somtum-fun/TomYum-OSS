@@ -13,6 +13,14 @@ public sealed class JoinLobbyHandler : IClientPacketHandler
     public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+
+        // Restricted players see an empty lobby (and get no lobby updates), with the reason.
+        if (context.Player.IsRestricted)
+        {
+            context.Response.WriteStringPacket(ServerPacketId.Notification, ModerationPackets.NoMultiplayer);
+            return Task.CompletedTask;
+        }
+
         context.Player.InLobby = true;
 
         foreach (var match in context.Matches.All)

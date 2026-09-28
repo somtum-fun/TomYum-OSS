@@ -8,6 +8,9 @@ namespace TomYum.Server.Bancho;
 public sealed class InMemoryScoreRepository : IScoreRepository
 {
     private readonly ConcurrentDictionary<long, Score> _scores = new();
+    private readonly TomYum.Domain.Services.RestrictedUsers? _restricted;
+
+    public InMemoryScoreRepository(TomYum.Domain.Services.RestrictedUsers? restricted = null) => _restricted = restricted;
     private long _nextId = 1;
 
     public Task<Score> AddAsync(Score score, CancellationToken cancellationToken = default)
@@ -49,10 +52,11 @@ public sealed class InMemoryScoreRepository : IScoreRepository
         return Task.FromResult(best);
     }
 
-    public Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId = null, CancellationToken cancellationToken = default)
     {
         var filtered = _scores.Values
-            .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best);
+            .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)
+            .Where(s => _restricted is null || s.UserId == viewerId || !_restricted.Contains(s.UserId));
 
         // Relax/Autopilot leaderboards rank by pp; vanilla ranks by score (bancho.py's rule).
         var ordered = GameMode.UsesPpLeaderboard(mode)

@@ -55,11 +55,12 @@ _All packet IDs exist (`AccountRestricted=104`, `UserSilenced=94`, `SilenceEnd=9
 Model matches bancho.py: **restricted = shadow-ban** (still logs in, hidden from others, own scores
 only visible to self); **banned ≡ restricted** (no hard login reject); **silence = orthogonal timed mute**._
 
-- [ ] State model: `User.SilenceEnd` (unix), restriction via a privilege bit + `Verified` bit;
-      migration + a moderation **audit-log** table.
-- [ ] Login enforcement: restricted → `ACCOUNT_RESTRICTED(104)` + bot DM + one-way presence +
+- [x] State model: `User.SilenceEnd` (unix), restriction via a privilege bit + `Verified` bit;
+      migration + a moderation **audit-log** table. _(Done as: the website's restriction/silence rows,
+      `verified_users`, `staff_log`.)_
+- [x] Login enforcement: restricted → `ACCOUNT_RESTRICTED(104)` + bot DM + one-way presence +
       resume real silence countdown; grant `Verified` on first in-game login.
-- [ ] Enforcement points: presence hiding (stats/presence/logout broadcasts skip restricted),
+- [x] Enforcement points: presence hiding (stats/presence/logout broadcasts skip restricted),
       chat silence gate (`TargetIsSilenced`/`UserDmBlocked`), multiplayer block, **shadow leaderboard**
       (restricted scores hidden from others, visible to self — the subtle carve-out), force-logout on restrict.
 - [x] Commands: `!restrict` / `!unrestrict` (= un-ban) / `!ban` (alias) / `!silence` / `!unsilence` /

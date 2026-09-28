@@ -15,6 +15,12 @@ public sealed class JoinMatchHandler : IClientPacketHandler
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        if (context.Player.IsRestricted)
+        {
+            ModerationPackets.WriteNoMultiplayer(context.Response);
+            return Task.CompletedTask;
+        }
+
         var reader   = new BanchoPacketReader(context.Payload.Span);
         var matchId  = (ushort)reader.ReadInt32();
         var password = reader.ReadString();

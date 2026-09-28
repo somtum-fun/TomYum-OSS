@@ -30,6 +30,17 @@ public static class ModerationPackets
     }
 
     /// <summary>The reply to a message from a silenced player.</summary>
+    /// <summary>What a restricted player is told when they try multiplayer.</summary>
+    public const string NoMultiplayer = "Multiplayer isn't available while your account is restricted.";
+
+    /// <summary>Refuses a restricted player's match create/join: the notice, then MATCH_JOIN_FAIL.</summary>
+    public static void WriteNoMultiplayer(BanchoPacketWriter writer)
+    {
+        ArgumentNullException.ThrowIfNull(writer);
+        writer.WriteStringPacket(ServerPacketId.Notification, NoMultiplayer);
+        writer.WritePacket(ServerPacketId.MatchJoinFail, null);
+    }
+
     public static string SilencedReply(uint secondsLeft)
     {
         var left = TimeSpan.FromSeconds(secondsLeft);
