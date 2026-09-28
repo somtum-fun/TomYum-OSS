@@ -59,7 +59,8 @@ public sealed class OnlinePlayers
         {
             var lazer = (await _lazer.GetOnlineAsync().ConfigureAwait(false)).Where(p => p.UserId != BanchoBot.UserId && !seen.Contains(p.UserId)).ToList();
             var names = await community.GetVisibleNamesAsync(lazer.Select(p => p.UserId).ToList(), cancellationToken).ConfigureAwait(false);
-            var now = DateTime.UtcNow;
+            // Active right now; a moment back, so a clock a second ahead elsewhere doesn't say "in a few seconds".
+            var now = DateTime.UtcNow.AddSeconds(-5);
             foreach (var player in lazer.Where(p => names.ContainsKey(p.UserId)).OrderBy(p => names[p.UserId], StringComparer.OrdinalIgnoreCase))
             {
                 online.Add(new OnlineEntry(player.UserId, names[player.UserId], OnlineClient.Lazer,
