@@ -117,32 +117,25 @@ _TomYum already **serves** status; it can't **accept uploads** yet. Split status
 - [ ] Sunrise-style `[ChatCommand(name, prefix, priv, isGlobal, isHidden)]` + reflection discovery;
       unify core + plugin commands into one registry; `(bool toPlayer, string response)` reply shape.
 
-## Phase 7 — osu!lazer support 🔒 Phase 1 (shared presence/chat), Phase 0 (migrations)
-_Lazer edge is a stub. No reference serves **both** stable + lazer in one process → the shared-account /
-shared-`#osu` / shared-BanchoBot model is **net-new design**. Client `client_id=5` / secret is fixed & known._
+## Phase 7 — osu!lazer support ✅ (done differently: ppy's own services + osu-web)
+_The plan below was to build lazer's server inside TomYum. Instead lazer runs on ppy's open-source
+services next to osu-web (docs/lazer.md): osu-web is the API, OAuth and chat; ppy's spectator server
+does multiplayer/spectating/presence; ppy's score processor does lazer pp and stats. TomYum shares the
+accounts, chat and leaderboards with them._
 
-- [ ] ⚖️ **Reconcile identity scheme** — BanchoBot id (TomYum=1 vs osu-web=2) and `AUTO_INCREMENT` policy;
-      dev seed currently puts a real user at id=2. Must fix before lazer or identities collide.
-- [ ] Shared presence/chat refactor — lift `PlayerRegistry`/`ChannelRegistry`/`OnlinePlayer`/`BanchoBot`
-      off the stable byte-queue into a transport-neutral model with stable + lazer projections.
-- [ ] **OAuth2 `/oauth/token`** (password + refresh grants) — HS256 JWT + opaque refresh, DB-backed
-      revocation; `JwtBearer` scheme + SignalR user-id provider. Anti-spoof: validate client version hash.
-- [ ] **`/api/v2`** read surface — me/users/friends/beatmaps/beatmapsets/rankings/leaderboards/chat.
-- [ ] **Two-phase solo score submit** (`POST` token → `PUT` SoloScoreInfo) → funnel into the **same**
-      Domain score path (pp, Best/Submitted, weighted stats) + Redis score-statistics stream.
-- [ ] **SignalR hubs** in-process — `/spectator` + `/multiplayer` (MessagePack), `/metadata` (Newtonsoft
-      JSON); reuse `ppy.osu.Game` DTOs; port `EntityStore`/`StatefulUserHub`/`ConcurrentConnectionLimiter`
-      from the MIT `osu-server-spectator`. (Skip g0v0's `/_lio` bridge — we're single-stack.)
-- [ ] **Notification websocket** (raw WS, not SignalR) for chat + notifications; `GET /api/v2/notifications`
-      returns its URL.
-- [ ] Minimum bar: one account logs into **both** clients · shared BanchoBot · shared `#osu` cross-client
-      chat · osu! beatmap status works · custom beatmap status works.
-- [ ] Stretch: shared leaderboard (stable scores in lazer), lazer score submission, lazer beatmap submission.
-- [ ] For stable scores shown in lazer: simulate score numbers as faithfully as possible; relax uses
-      akatsuki-pp (as stable does) — may need to port akatsuki-pp to the client.
-- [ ] **Deployment prereq (not server code):** lazer only ships Production/Development endpoints → reaching
-      TomYum needs a patched client build **or** DNS + trusted-TLS spoofing of `osu.ppy.sh` +
-      `spectator.osu.ppy.sh`. Document in `docs/lazer-client.md`.
+- [x] Identity scheme — one account table (osu-web's); BanchoBot is user 1 on both.
+- [x] Shared presence/chat — stable ↔ website chat bridge (lazer chats through the website), BanchoBot
+      answers on both, `/np` from both.
+- [x] OAuth2, `/api/v2`, score submission, SignalR hubs, notification websocket — ppy's services
+      (osu-web, osu-server-spectator, osu-queue-score-statistics, notification-server).
+- [x] Minimum bar: one account logs into **both** clients · shared BanchoBot · shared `#osu` cross-client
+      chat · osu! beatmap status works.
+- [ ] Minimum bar, last item: **custom beatmap status in lazer** — needs custom sets served to lazer
+      (Phase 5: local serving + lazer beatmap submission).
+- [x] Shared leaderboards (stable scores standardised for lazer; lazer scores for stable's website view),
+      lazer score submission. Lazer beatmap submission: Phase 5.
+- [ ] Relax on lazer — lazer ranks relax scores differently; stable relax stays TomYum-only.
+- [x] Deployment — players use the stock lazer client with the injection ruleset (docs/lazer.md).
 
 ## osu-web website 🔒 Phase A: none · Phase B: decisions below
 _osu-web (ppy's Laravel site) runs unmodified as the website; long-term it owns the schema and TomYum

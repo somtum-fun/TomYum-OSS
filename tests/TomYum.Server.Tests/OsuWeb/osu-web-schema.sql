@@ -509,6 +509,32 @@ CREATE TABLE osu_user_beatmap_playcount (
   PRIMARY KEY (user_id, beatmap_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- Notifications (medal unlocks among them): as on a current osu-web database.
+CREATE TABLE notifications (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  notifiable_type varchar(255) NOT NULL,
+  notifiable_id bigint unsigned NOT NULL,
+  source_user_id int unsigned DEFAULT NULL,
+  priority int NOT NULL DEFAULT 0,
+  name varchar(255) NOT NULL,
+  details json NOT NULL,
+  created_at timestamp NULL DEFAULT NULL,
+  updated_at timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE user_notifications (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  notification_id bigint unsigned NOT NULL,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  is_read tinyint(1) NOT NULL DEFAULT 0,
+  delivery tinyint unsigned NOT NULL DEFAULT 1,
+  created_at timestamp NULL DEFAULT NULL,
+  updated_at timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY unique_user_notification (user_id, notification_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
 -- Rank history (profile rank graph) and the counters naming its current column: base_tables +
 -- 2022_10_18 highest rank.
 CREATE TABLE osu_counts (

@@ -86,27 +86,52 @@ public static class AdminEndpoints
         admin.MapGet("/chat",async (int? userId, string? target, long? before, int? limit, IChatLogRepository chat, CancellationToken cancellationToken) =>
             Results.Ok(await chat.ListAsync(new ChatLogQuery(userId, target, before, limit ?? 100), cancellationToken).ConfigureAwait(false)));
 
-        admin.MapGet("/online", (PlayerRegistry players) => Results.Ok(
-            players.All
-                .Where(p => p.UserId != BanchoBot.UserId)
-                .OrderBy(p => p.Presence.Username, StringComparer.OrdinalIgnoreCase)
-                .Select(p => new
-                {
-                    p.UserId,
-                    p.Presence.Username,
-                    p.Presence.Mode,
-                    p.Presence.Action,
-                    p.Presence.ActionInfo,
-                    p.Presence.BeatmapId,
-                    LastActivity = p.LastActivityUtc,
-                })));
+        admin.MapGet("/online", async (PlayerRegistry players, IServiceProvider services, CancellationToken cancellationToken) =>
+            Results.Ok(await OnlineAsync(players, services, cancellationToken).ConfigureAwait(false)));
 
-        admin.MapGet("/stats", (PlayerRegistry players, TomYumVersion version) => Results.Ok(new
+        admin.MapGet("/stats", async (PlayerRegistry players, TomYumVersion version, IServiceProvider services, CancellationToken cancellationToken) =>
         {
-            Version = version.Display,
-            Online = players.All.Count(p => p.UserId != BanchoBot.UserId),
-            StartedAt = new DateTimeOffset(Process.GetCurrentProcess().StartTime.ToUniversalTime(), TimeSpan.Zero),
-        }));
+            var online = await OnlineAsync(players, services, cancellationToken).ConfigureAwait(false);
+            return Results.Ok(new
+            {
+                Version = version.Display,
+                Online = online.Count,
+                OnlineStable = online.Count(p => p.Client == "stable"),
+                OnlineElsewhere = online.Count(p => p.Client != "stable"),
+                StartedAt = new DateTimeOffset(Process.GetCurrentProcess().StartTime.ToUniversalTime(), TimeSpan.Zero),
+            });
+        });
+    }
+
+    /// <summary>An online player for the admin panel.</summary>
+    public sealed record OnlineEntry(int UserId, string Username, int Mode, int Action, string ActionInfo, int BeatmapId, DateTime LastActivity, string Client);
+
+    /// <summary>
+    /// Everyone online: stable players in-game, then (with the website) those it shows online and
+    /// who aren't in stable: on lazer, or browsing the website. Their mode and activity aren't known
+    /// here (ppy's spectator server keeps lazer presence to itself), so they show as idle.
+    /// </summary>
+    public static async Task<IReadOnlyList<OnlineEntry>> OnlineAsync(PlayerRegistry players, IServiceProvider services, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(players);
+        ArgumentNullException.ThrowIfNull(services);
+
+        var online = players.All
+            .Where(p => p.UserId != BanchoBot.UserId)
+            .OrderBy(p => p.Presence.Username, StringComparer.OrdinalIgnoreCase)
+            .Select(p => new OnlineEntry(p.UserId, p.Presence.Username, p.Presence.Mode, p.Presence.Action, p.Presence.ActionInfo,
+                p.Presence.BeatmapId, p.LastActivityUtc.UtcDateTime, "stable"))
+            .ToList();
+
+        using var scope = services.CreateScope();
+        if (scope.ServiceProvider.GetService<TomYum.Persistence.OsuWeb.OsuWebCommunity>() is { } community)
+        {
+            var inGame = online.Select(p => p.UserId).ToHashSet();
+            online.AddRange((await community.GetOnlineSinceAsync(cancellationToken).ConfigureAwait(false))
+                .Where(p => !inGame.Contains(p.UserId))
+                .Select(p => new OnlineEntry(p.UserId, p.Username, 0, 0, "on lazer or the website", 0, p.LastSeen, "lazer/website")));
+        }
+        return online;
     }
 
     /// <summary>The acting staff member's osu-web user id (0 when the request didn't say).</summary>
