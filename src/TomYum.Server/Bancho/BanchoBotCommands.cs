@@ -16,11 +16,14 @@ namespace TomYum.Server.Bancho;
 /// <summary>
 /// The chat-command surface for <see cref="BanchoBot"/>: parses <c>!</c>-prefixed messages and
 /// produces the bot's reply. Kept separate from <see cref="BanchoBot"/> (which owns the bot's
-/// identity/presence) so the command set can grow without bloating the player object — add a case
-/// here, not there.
+/// identity/presence). A command is a method with a <see cref="ChatCommandAttribute"/> (name, usage,
+/// help note, who may run it): it's found by reflection and listed in <c>!help</c> automatically.
+/// Plugins' commands (<see cref="PluginCommandRegistry"/>) come after the built-in ones.
 /// </summary>
 public sealed class BanchoBotCommands
 {
+    private static readonly ChatCommandTable<BanchoBotCommands> Table = new();
+
     private readonly TomYumVersion _version;
     private readonly PlayerRegistry _players;
     private readonly ChannelRegistry _channels;
@@ -73,31 +76,74 @@ public sealed class BanchoBotCommands
             return null;
 
         var command = parts[0].ToLowerInvariant();
-        return command switch
-        {
-            "help"    => Help(privileges),
-            "ping"    => "pong!",
-            "version" => string.Create(CultureInfo.InvariantCulture, $"TomYum {_version.Display} (@{_version.Commit})"),
-            "roll"    => Roll(caller.Presence.Username, parts),
-            "stats"   => IsStaff(privileges) ? Stats() : StaffOnly,
-            "setpriv" => IsStaff(privileges)
-                ? await SetPrivAsync(parts, cancellationToken).ConfigureAwait(false)
-                : StaffOnly,
-            "mp" => await MpAsync(caller, parts, privileges, cancellationToken).ConfigureAwait(false),
-            "plugins" => ListPlugins(),
-            "link" => await LinkDiscordAsync(caller, parts, cancellationToken).ConfigureAwait(false),
-            "report" => await ReportAsync(caller, parts, cancellationToken).ConfigureAwait(false),
-            "map" => _maps is null
-                ? "Status changes aren't available on this server."
-                : await _maps.RunAsync(caller, parts[1..], cancellationToken).ConfigureAwait(false),
-            _ when ModerationCommands.Handles(command) => _moderation is null
-                ? "Moderation isn't available on this server."
-                : await _moderation.RunAsync(caller.UserId, command, parts[1..], cancellationToken).ConfigureAwait(false),
-            _ => await FallbackToPluginAsync(caller, command, parts, message, cancellationToken).ConfigureAwait(false),
-        };
+        var context = new ChatCommandContext(caller, command, parts, message, privileges, cancellationToken);
+        if (Table.All.FirstOrDefault(c => c.Name == command) is { Access: CommandAccess.Staff } && !IsStaff(privileges))
+            return StaffOnly;
+        var (found, reply) = await Table.RunAsync(this, context).ConfigureAwait(false);
+        return found ? reply : await FallbackToPluginAsync(caller, command, parts, message, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>The built-in commands' names (plugins can't take these).</summary>
+    public static IReadOnlyList<string> BuiltIn => Table.All.Select(c => c.Name).ToList();
+
+    // ---- simple commands ----
+
+    [ChatCommand("help")]
+    private string HelpCommand(ChatCommandContext context) =>
+        Table.Help(IsStaff(context.Privileges), _pluginCommands.Commands.OrderBy(c => c.Name, StringComparer.Ordinal)
+            .Select(c => "!" + c.Name + (c.Description.Length > 0 ? $" ({c.Description})" : string.Empty)));
+
+    [ChatCommand("ping", Hidden = true)]
+    private static string Ping(ChatCommandContext context) => "pong!";
+
+    [ChatCommand("roll", Usage = "[max]")]
+    private static string RollCommand(ChatCommandContext context) => Roll(context.Caller.Presence.Username, context.Parts);
+
+    [ChatCommand("version")]
+    private string Version(ChatCommandContext context) =>
+        string.Create(CultureInfo.InvariantCulture, $"TomYum {_version.Display} (@{_version.Commit})");
+
+    [ChatCommand("plugins", Hidden = true)]
+    private string PluginsCommand(ChatCommandContext context) => ListPlugins();
+
+    [ChatCommand("mp", Usage = "<start|abort|countdown|host|kick>")]
+    private Task<string?> Mp(ChatCommandContext context) =>
+        MpAsync(context.Caller, context.Parts, context.Privileges, context.CancellationToken);
+
+    [ChatCommand("map", Usage = "<rank|love|qualify|unrank|reset> [set|map]", Help = "BN, after /np")]
+    private async Task<string?> MapCommand(ChatCommandContext context) => _maps is null
+        ? "Status changes aren't available on this server."
+        : await _maps.RunAsync(context.Caller, context.Args, context.CancellationToken).ConfigureAwait(false);
+
+    [ChatCommand("stats", Access = CommandAccess.Staff)]
+    private string StatsCommand(ChatCommandContext context) => Stats();
+
+    [ChatCommand("setpriv", Usage = "<user> <role>", Access = CommandAccess.Staff)]
+    private Task<string> SetPriv(ChatCommandContext context) => SetPrivAsync(context.Parts, context.CancellationToken);
+
+    // ---- moderation (ModerationCommands checks the caller: moderators count as staff there) ----
+
+    [ChatCommand("restrict", Usage = "<user> <reason>", Access = CommandAccess.StaffCheckedByCommand)]
+    [ChatCommand("ban", Usage = "<user> <reason>", Access = CommandAccess.StaffCheckedByCommand, Hidden = true)]
+    [ChatCommand("unrestrict", Usage = "<user> <reason>", Access = CommandAccess.StaffCheckedByCommand)]
+    [ChatCommand("unban", Usage = "<user> <reason>", Access = CommandAccess.StaffCheckedByCommand, Hidden = true)]
+    [ChatCommand("silence", Usage = "<user> <10m|1h|1d|1w> <reason>", Access = CommandAccess.StaffCheckedByCommand)]
+    [ChatCommand("unsilence", Usage = "<user> [reason]", Access = CommandAccess.StaffCheckedByCommand)]
+    [ChatCommand("alert", Usage = "<message>", Access = CommandAccess.StaffCheckedByCommand)]
+    [ChatCommand("alertu", Usage = "<user> <message>", Access = CommandAccess.StaffCheckedByCommand)]
+    [ChatCommand("alts", Usage = "<user>", Access = CommandAccess.StaffCheckedByCommand)]
+    [ChatCommand("verify", Usage = "<user>", Access = CommandAccess.StaffCheckedByCommand)]
+    private async Task<string?> Moderate(ChatCommandContext context) => _moderation is null
+        ? "Moderation isn't available on this server."
+        : await _moderation.RunAsync(context.Caller.UserId, context.Name, context.Args, context.CancellationToken).ConfigureAwait(false);
+
     /// <summary><c>!link &lt;code&gt;</c>: links the caller's account to the Discord account that asked for the code.</summary>
+    [ChatCommand("link", Usage = "<code>", Help = "Discord")]
+    private Task<string> Link(ChatCommandContext context) => LinkDiscordAsync(context.Caller, context.Parts, context.CancellationToken);
+
+    [ChatCommand("report", Usage = "<player> <reason>")]
+    private Task<string> Report(ChatCommandContext context) => ReportAsync(context.Caller, context.Parts, context.CancellationToken);
+
     private async Task<string> LinkDiscordAsync(OnlinePlayer caller, string[] parts, CancellationToken cancellationToken)
     {
         if (_discordCodes is null)
@@ -195,12 +241,6 @@ public sealed class BanchoBotCommands
 
     private static bool IsStaff(BanchoPrivileges privileges) =>
         privileges.HasFlag(BanchoPrivileges.Owner) || privileges.HasFlag(BanchoPrivileges.Developer);
-
-    private static string Help(BanchoPrivileges privileges) => IsStaff(privileges)
-        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !report <player> <reason>, !map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np), !stats (staff), !setpriv <user> <role> (staff). "
-          + "Moderation (staff): !restrict/!ban <user> <reason>, !unrestrict/!unban <user> <reason>, !silence <user> <10m|1h|1d|1w> <reason>, "
-          + "!unsilence <user> [reason], !alert <message>, !alertu <user> <message>, !alts <user>, !verify <user>. Names with spaces: use _."
-        : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !report <player> <reason>, !map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np).";
 
     private static string Roll(string sender, string[] parts)
     {
