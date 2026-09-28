@@ -44,7 +44,7 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         var sender = context.Player.Presence.Username;
         var nowPlaying = NowPlaying.TryParse(text);
         if (nowPlaying is not null)
-            context.Player.LastNowPlaying = nowPlaying;
+            context.Services.GetService<NowPlayingStore>()?.Set(context.Player.UserId, nowPlaying);
 
         // A DM to BanchoBot: answer back to the sender rather than routing to a real session.
         // Always allowed, also for silenced/restricted players (commands like !help keep working).

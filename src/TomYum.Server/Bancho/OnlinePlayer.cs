@@ -50,9 +50,6 @@ public sealed class OnlinePlayer
     /// <summary>Restricted by staff: invisible to other players and can't chat in public channels.</summary>
     public bool IsRestricted { get; set; }
 
-    /// <summary>The map the player last shared with <c>/np</c> (for BanchoBot's <c>!map</c>), if any.</summary>
-    public NowPlaying? LastNowPlaying { get; set; }
-
     /// <summary>When this player's chat silence ends (UTC); null when not silenced.</summary>
     public DateTimeOffset? SilenceEndUtc { get; set; }
 

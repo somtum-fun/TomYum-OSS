@@ -48,6 +48,7 @@ public sealed class OsuWebChatBridge : BackgroundService
     private readonly ChatLog _chatLog;
     private readonly ILogger<OsuWebChatBridge> _logger;
     private readonly IConnectionMultiplexer? _redis;
+    private readonly NowPlayingStore? _nowPlaying;
 
     public OsuWebChatBridge(
         IServiceScopeFactory scopes,
@@ -55,7 +56,8 @@ public sealed class OsuWebChatBridge : BackgroundService
         ChannelRegistry channels,
         ChatLog chatLog,
         ILogger<OsuWebChatBridge> logger,
-        IConnectionMultiplexer? redis = null)
+        IConnectionMultiplexer? redis = null,
+        NowPlayingStore? nowPlaying = null)
     {
         _scopes = scopes;
         _players = players;
@@ -63,18 +65,49 @@ public sealed class OsuWebChatBridge : BackgroundService
         _chatLog = chatLog;
         _logger = logger;
         _redis = redis;
+        _nowPlaying = nowPlaying;
     }
+
+    /// <summary>osu-web's default chat message limit (<c>CHAT_MESSAGE_LENGTH_LIMIT</c>); longer ones are refused.</summary>
+    public const int WebsiteMessageLimit = 450;
 
     /// <summary>Queues an in-game channel message for website chat (only the registry's public channels exist there).</summary>
     public void ForwardChannelMessage(int senderId, string channel, string text)
     {
-        if (_channels.Get(channel) is not null)
-            _outbound.Writer.TryWrite(new Outbound(senderId, channel, null, text));
+        if (_channels.Get(channel) is null)
+            return;
+        foreach (var part in SplitForWebsite(text))
+            _outbound.Writer.TryWrite(new Outbound(senderId, channel, null, part));
     }
 
     /// <summary>Queues an in-game PM to <paramref name="targetName"/> for website chat.</summary>
-    public void ForwardPrivateMessage(int senderId, string targetName, string text) =>
-        _outbound.Writer.TryWrite(new Outbound(senderId, null, targetName, text));
+    public void ForwardPrivateMessage(int senderId, string targetName, string text)
+    {
+        foreach (var part in SplitForWebsite(text))
+            _outbound.Writer.TryWrite(new Outbound(senderId, null, targetName, part));
+    }
+
+    /// <summary>
+    /// Splits a message into pieces the website accepts (<see cref="WebsiteMessageLimit"/>), at the
+    /// last space before the limit where there is one. In-game chat has no such limit.
+    /// </summary>
+    public static IReadOnlyList<string> SplitForWebsite(string text, int limit = WebsiteMessageLimit)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var parts = new List<string>();
+        var rest = text.Trim();
+        while (rest.Length > limit)
+        {
+            var cut = rest.LastIndexOf(' ', limit);
+            if (cut <= limit / 2)
+                cut = limit;
+            parts.Add(rest[..cut].TrimEnd());
+            rest = rest[cut..].TrimStart();
+        }
+        if (rest.Length > 0)
+            parts.Add(rest);
+        return parts;
+    }
 
     /// <summary>Delivers a website message in-game (public for tests). Returns how many sessions got it.</summary>
     public int Deliver(WebChatMessage message)
@@ -83,6 +116,10 @@ public sealed class OsuWebChatBridge : BackgroundService
 
         var text = message.IsAction ? $"{ActionPrefix}{message.Content}\u0001" : message.Content;
         var delivered = 0;
+
+        // A lazer /np (an action message) sets the player's map for BanchoBot's !map.
+        if (message.IsAction && NowPlaying.TryParseAction(message.Content) is { } nowPlaying)
+            _nowPlaying?.Set(message.SenderId, nowPlaying);
 
         if (message.Channel is { } channelName)
         {
@@ -179,8 +216,12 @@ public sealed class OsuWebChatBridge : BackgroundService
             var privileges = PrivilegeMapper.ToBancho(user.Privileges);
             var caller = _players.GetByUserId(user.Id)
                 ?? new OnlinePlayer("website", new BanchoPresence { UserId = user.Id, Username = user.Username, Privileges = privileges });
-            var reply = await scope.ServiceProvider.GetRequiredService<BanchoBot>()
-                .TryHandleCommandAsync(caller, message.Content, privileges, cancellationToken).ConfigureAwait(false);
+            // A /np sent to BanchoBot gets the map's details; anything else is a command.
+            var nowPlaying = message.IsAction ? NowPlaying.TryParseAction(message.Content) : null;
+            var reply = nowPlaying is not null && scope.ServiceProvider.GetService<MapCommands>() is { } maps
+                ? await maps.DescribeAsync(nowPlaying, cancellationToken).ConfigureAwait(false)
+                : await scope.ServiceProvider.GetRequiredService<BanchoBot>()
+                    .TryHandleCommandAsync(caller, message.Content, privileges, cancellationToken).ConfigureAwait(false);
             if (message.TargetId == BanchoBot.UserId)
                 reply ??= "Hi! I only respond to commands — try !help.";
             if (reply is null)
