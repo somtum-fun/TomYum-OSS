@@ -164,4 +164,22 @@ public sealed class DiscordFormat
         var mods = score.Mods.Count > 0 ? $" {Mods(score.Mods)}" : string.Empty;
         return $"{prefix}{MapLink(score)}{mods} {Stars(score.StarRating)}\n{ScoreDetails(score)}\n▸ {client} ▸ {Relative(score.EndedAt)}";
     }
+
+    /// <summary>Restrict / Silence 1 day / Dismiss / Profile, for staff posts about a player.</summary>
+    public IReadOnlyList<DiscordButton> ModerationButtons(int userId, string reason, int profileId)
+    {
+        ArgumentNullException.ThrowIfNull(reason);
+        // Button ids are split on ':' and capped at 100 characters.
+        var safe = reason.Replace(':', ' ');
+        if (safe.Length > 60)
+            safe = safe[..59] + "…";
+        var user = userId.ToString(CultureInfo.InvariantCulture);
+        return
+        [
+            new DiscordButton("Restrict", DiscordButtonStyle.Danger, $"mod:restrict:{user}:{safe}"),
+            new DiscordButton("Silence 1 day", DiscordButtonStyle.Primary, $"mod:silence:{user}:{safe}"),
+            new DiscordButton("Dismiss", DiscordButtonStyle.Secondary, $"mod:dismiss:{user}:-"),
+            new DiscordButton("Profile", DiscordButtonStyle.Link, Url: Profile(profileId)),
+        ];
+    }
 }

@@ -74,9 +74,10 @@ public sealed class BanEvasionTests
     }
 
     [Fact]
-    public async Task VerifiedAccount_IsNotCheckedAgain()
+    public async Task VerifiedAccount_GetsIn_ButStaffAreToldOnce()
     {
-        var (handler, registry, users, _) = NewLogin();
+        var staffLog = new RecordingStaffLog();
+        var (handler, registry, users, _) = NewLogin(staffLog);
         var cheater = await AddUserAsync(users, "Cheater");
         var regular = await AddUserAsync(users, "Regular");
         registry.Remove((await LogInAsync(handler, "Regular", Other, Other, Other)).Token!);
@@ -88,6 +89,15 @@ public sealed class BanEvasionTests
 
         Assert.NotNull(outcome.Token);
         Assert.NotNull(registry.GetByUserId(regular.Id));
+        var alert = Assert.Single(staffLog.Entries);
+        Assert.Equal((BanchoLoginHandler.SharedMachineAction, regular.Id, cheater.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)),
+            (alert.Action, (int)alert.TargetId!, alert.Result));
+        Assert.Contains("same machine as restricted Cheater", alert.Summary, StringComparison.Ordinal);
+
+        // Once per pair: logging in again says nothing new.
+        registry.Remove(outcome.Token!);
+        Assert.NotNull((await LogInAsync(handler, "Regular", AdaptersA, UninstallA, DiskA)).Token);
+        Assert.Single(staffLog.Entries);
     }
 
     [Theory]
@@ -162,13 +172,13 @@ public sealed class BanEvasionTests
         Assert.NotNull((await LogInAsync(handler, "Fresh", AdaptersA, Other, Other)).Token);
     }
 
-    private static (BanchoLoginHandler, PlayerRegistry, InMemoryUserRepository, InMemoryClientHashRepository) NewLogin()
+    private static (BanchoLoginHandler, PlayerRegistry, InMemoryUserRepository, InMemoryClientHashRepository) NewLogin(IStaffLogRepository? staffLog = null)
     {
         var users = new InMemoryUserRepository();
         var registry = new PlayerRegistry();
         var hashes = new InMemoryClientHashRepository();
         var handler = new BanchoLoginHandler(users, new BcryptPasswordHasher(), new InMemoryUserStatsRepository(), registry,
-            new ChannelRegistry(), NullLogger<BanchoLoginHandler>.Instance, clientHashes: hashes);
+            new ChannelRegistry(), NullLogger<BanchoLoginHandler>.Instance, clientHashes: hashes, staffLog: staffLog);
         return (handler, registry, users, hashes);
     }
 
@@ -240,6 +250,8 @@ public sealed class BanEvasionTests
         }
 
         public Task<IReadOnlyList<StaffLogEntry>> ListAsync(StaffLogQuery query, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<StaffLogEntry>>(Entries);
+            Task.FromResult<IReadOnlyList<StaffLogEntry>>(Entries
+                .Where(e => (query.Action is null || e.Action == query.Action) && (query.TargetId is null || e.TargetId == query.TargetId))
+                .Reverse().Take(query.Limit).ToList());
     }
 }
