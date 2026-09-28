@@ -84,6 +84,7 @@ else
     builder.Services.AddSingleton<IScoreRepository, InMemoryScoreRepository>();
     builder.Services.AddSingleton<IUserStatsRepository, InMemoryUserStatsRepository>();
     builder.Services.AddSingleton<IUserAchievementRepository, InMemoryUserAchievementRepository>();
+    builder.Services.AddSingleton<IClientHashRepository, InMemoryClientHashRepository>();
 }
 // Website sync (docs/osu-web.md): mirrors scores/stats to osu-web when accounts live there.
 if (databaseOptions.UseOsuWebAccounts)

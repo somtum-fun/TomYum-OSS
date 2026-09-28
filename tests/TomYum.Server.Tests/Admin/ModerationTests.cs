@@ -51,7 +51,7 @@ public sealed class ModerationTests
 
         Assert.Contains((ushort)ServerPacketId.AccountRestricted, PacketIds(outcome.Body));
         Assert.DoesNotContain((ushort)ServerPacketId.UserPresence, PacketIds(watcher.DequeueAll()));
-        Assert.True(registry.GetByUserId(users.GetBySafeNameAsync("cheater").Result!.Id)!.IsRestricted);
+        Assert.True(registry.GetByUserId((await users.GetBySafeNameAsync("cheater"))!.Id)!.IsRestricted);
     }
 
     [Fact]

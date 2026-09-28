@@ -29,6 +29,20 @@ public static class LoginResponseBuilder
     }
 
     /// <summary>
+    /// A failed login that also tells the player why: a NOTIFICATION (id 24) with
+    /// <paramref name="notice"/>, then the USER_ID failure packet (bancho.py's order).
+    /// </summary>
+    public static byte[] BuildFailure(LoginFailureReason reason, string notice)
+    {
+        ArgumentNullException.ThrowIfNull(notice);
+
+        var writer = new BanchoPacketWriter(32 + (notice.Length * 2));
+        writer.WriteStringPacket(ServerPacketId.Notification, notice);
+        writer.WriteInt32Packet(ServerPacketId.UserId, (int)reason);
+        return writer.ToArray();
+    }
+
+    /// <summary>
     /// Builds the successful-login burst for <paramref name="self"/>: protocol version,
     /// the user id, privileges, a welcome notification, the visible channel list, the main
     /// menu icon, friends list, silence-end, and the player's own presence + stats.
