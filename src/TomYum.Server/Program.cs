@@ -282,9 +282,10 @@ if (databaseOptions.Enabled)
         // Records which TomYum score became which osu-web score (lives in TomYum's database).
         var scoreMirror = scope.ServiceProvider.GetRequiredService<OsuWebScoreMirror>();
         await scoreMirror.EnsureLinkTableAsync();
-        // Play counts ("Most Played Beatmaps", beatmap play/pass counts) from TomYum's scores.
+        // Stable play counts ("Most Played Beatmaps", "Play History", map/set counts) from TomYum's scores.
         var playCounts = await scoreMirror.RebuildPlayCountsAsync();
-        app.Logger.LogInformation("osu-web play counts rebuilt for {Count} player/beatmap pair(s).", playCounts);
+        if (playCounts > 0)
+            app.Logger.LogInformation("osu-web play counts brought up to date for {Count} player/beatmap pair(s).", playCounts);
         // Replays: website scores copied before replays were linked.
         var replaysMarked = await scoreMirror.MarkReplaysAsync(scoreId => ReplayFiles.Exists(app.Configuration, scoreId));
         if (replaysMarked > 0)

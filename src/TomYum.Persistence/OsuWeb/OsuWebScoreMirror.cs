@@ -51,6 +51,32 @@ public sealed class OsuWebScoreMirror
         ) CHARACTER SET=utf8mb4;
         """;
 
+    /// <summary>
+    /// The stable plays TomYum has added to osu-web's per-player map counts and monthly play
+    /// history. Those rows also hold lazer plays (counted by the score processor), so TomYum only
+    /// ever adds or removes its own share, never rewrites them.
+    /// </summary>
+    private const string WrittenPlaysTableDdl =
+        """
+        CREATE TABLE IF NOT EXISTS `osu_web_plays_written` (
+          `UserId` int NOT NULL,
+          `BeatmapId` int NOT NULL,
+          `Plays` int NOT NULL,
+          `Passes` int NOT NULL,
+          PRIMARY KEY (`UserId`, `BeatmapId`)
+        ) CHARACTER SET=utf8mb4;
+        """;
+
+    private const string WrittenMonthPlaysTableDdl =
+        """
+        CREATE TABLE IF NOT EXISTS `osu_web_month_plays_written` (
+          `UserId` int NOT NULL,
+          `YearMonth` char(4) NOT NULL,
+          `Plays` int NOT NULL,
+          PRIMARY KEY (`UserId`, `YearMonth`)
+        ) CHARACTER SET=utf8mb4;
+        """;
+
     private readonly TomYumDbContext _tomyum;
     private readonly OsuWebDbContext _osuWeb;
     private readonly OsuWebMirrorOptions _options;
@@ -70,7 +96,32 @@ public sealed class OsuWebScoreMirror
     {
         await _tomyum.Database.ExecuteSqlRawAsync(LinkTableDdl, cancellationToken).ConfigureAwait(false);
         await _tomyum.Database.ExecuteSqlRawAsync(WrittenStatsTableDdl, cancellationToken).ConfigureAwait(false);
+        await _tomyum.Database.ExecuteSqlRawAsync(WrittenMonthPlaysTableDdl, cancellationToken).ConfigureAwait(false);
+        if (!await TomYumTableExistsAsync("osu_web_plays_written", cancellationToken).ConfigureAwait(false))
+        {
+            // Earlier versions rebuilt the map counts from TomYum's scores at every start, so a
+            // website with counts already holds exactly those: record them as written rather than
+            // adding them twice. (A website without any gets them all from the next rebuild.)
+            await _tomyum.Database.ExecuteSqlRawAsync(WrittenPlaysTableDdl, cancellationToken).ConfigureAwait(false);
+            var counted = await _osuWeb.Database
+                .SqlQuery<long>($"SELECT COUNT(*) AS Value FROM osu_user_beatmap_playcount")
+                .SingleAsync(cancellationToken).ConfigureAwait(false) > 0;
+            foreach (var chunk in (counted ? await StablePlaysAsync(cancellationToken).ConfigureAwait(false) : []).Chunk(500))
+            {
+                var rows = string.Join(",", chunk.Select(p => string.Create(CultureInfo.InvariantCulture,
+                    $"({p.UserId},{p.BeatmapId},{Math.Min(p.Plays, 65535)},{p.Passes})")));
+#pragma warning disable EF1002 // numbers formatted invariantly, not user text
+                await _tomyum.Database.ExecuteSqlRawAsync(
+                    $"INSERT INTO osu_web_plays_written (UserId, BeatmapId, Plays, Passes) VALUES {rows}", cancellationToken).ConfigureAwait(false);
+#pragma warning restore EF1002
+            }
+        }
     }
+
+    private async Task<bool> TomYumTableExistsAsync(string table, CancellationToken cancellationToken) =>
+        await _tomyum.Database
+            .SqlQuery<long>($"SELECT COUNT(*) AS Value FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = {table}")
+            .SingleAsync(cancellationToken).ConfigureAwait(false) > 0;
 
     /// <summary>
     /// Writes <paramref name="score"/> to osu-web's <c>scores</c>. Returns the osu-web score id, or
@@ -608,8 +659,9 @@ public sealed class OsuWebScoreMirror
 
     /// <summary>
     /// Counts a play on osu-web: the player's play count for the map ("Most Played Beatmaps" on
-    /// profiles), the map's play/pass counts and its set's play count. Once per submitted score,
-    /// passed or failed; vanilla rulesets only, like the rest of the mirror.
+    /// profiles) and for the month ("Play History"), the map's play/pass counts and its set's play
+    /// count. Once per submitted score, passed or failed; vanilla rulesets only, like the rest of the
+    /// mirror. Lazer plays go to the same rows through the score processor.
     /// </summary>
     public async Task RecordPlayAsync(Score score, CancellationToken cancellationToken = default)
     {
@@ -618,71 +670,147 @@ public sealed class OsuWebScoreMirror
             return;
 
         var beatmapId = (uint)score.BeatmapId;
-        var setId = await _osuWeb.Beatmaps.AsNoTracking().Where(b => b.BeatmapId == beatmapId)
-            .Select(b => b.BeatmapsetId).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
-        if (setId is null)
+        if (!await _osuWeb.Beatmaps.AsNoTracking().AnyAsync(b => b.BeatmapId == beatmapId, cancellationToken).ConfigureAwait(false))
             return; // the map isn't on the website
 
-        var userId = (uint)score.UserId;
-        var passed = score.Passed ? 1 : 0;
-        await _osuWeb.Database.ExecuteSqlInterpolatedAsync(
-            $"INSERT INTO osu_user_beatmap_playcount (user_id, beatmap_id, playcount) VALUES ({userId}, {beatmapId}, 1) ON DUPLICATE KEY UPDATE playcount = LEAST(playcount + 1, 65535)",
-            cancellationToken).ConfigureAwait(false);
-        await _osuWeb.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE osu_beatmaps SET playcount = playcount + 1, passcount = passcount + {passed} WHERE beatmap_id = {beatmapId}",
-            cancellationToken).ConfigureAwait(false);
-        await _osuWeb.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE osu_beatmapsets SET play_count = play_count + 1 WHERE beatmapset_id = {setId}",
-            cancellationToken).ConfigureAwait(false);
+        var play = new StablePlays(score.UserId, score.BeatmapId, 1, score.Passed ? 1 : 0);
+        await AddMapPlaysAsync(play, cancellationToken).ConfigureAwait(false);
+        await RecordWrittenAsync(play, cancellationToken).ConfigureAwait(false);
+        var month = YearMonth(score.SubmittedAt);
+        await AddMonthPlaysAsync(score.UserId, month, 1, cancellationToken).ConfigureAwait(false);
+        await RecordWrittenMonthAsync(score.UserId, month, 1, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Rebuilds every osu-web play count from TomYum's scores (the source of truth), so plays from
-    /// before counting existed show up. Returns how many player/map pairs were written. Run at startup.
+    /// Brings osu-web's play counts in line with TomYum's scores (the source of truth for stable
+    /// plays): whatever differs from what TomYum last added (plays from before counting existed,
+    /// removed scores, maps that reached the website later) is added or taken away. Lazer's plays in
+    /// the same rows are untouched. Returns how many player/map pairs changed. Run at startup.
     /// </summary>
     public async Task<int> RebuildPlayCountsAsync(CancellationToken cancellationToken = default)
+    {
+        await EnsureLinkTableAsync(cancellationToken).ConfigureAwait(false);
+
+        var now = (await StablePlaysAsync(cancellationToken).ConfigureAwait(false))
+            .ToDictionary(p => (p.UserId, p.BeatmapId));
+        var written = (await _tomyum.Database
+                .SqlQuery<WrittenPlays>($"SELECT UserId, BeatmapId, Plays, Passes FROM osu_web_plays_written")
+                .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToDictionary(p => (p.UserId, p.BeatmapId));
+
+        var changed = 0;
+        foreach (var key in now.Keys.Union(written.Keys).ToList())
+        {
+            var plays = (now.GetValueOrDefault(key)?.Plays ?? 0) - (written.GetValueOrDefault(key)?.Plays ?? 0);
+            var passes = (now.GetValueOrDefault(key)?.Passes ?? 0) - (written.GetValueOrDefault(key)?.Passes ?? 0);
+            if (plays == 0 && passes == 0)
+                continue;
+
+            var difference = new StablePlays(key.UserId, key.BeatmapId, plays, passes);
+            await AddMapPlaysAsync(difference, cancellationToken).ConfigureAwait(false);
+            await RecordWrittenAsync(difference, cancellationToken).ConfigureAwait(false);
+            changed++;
+        }
+
+        // The monthly play history, the same way.
+        var onWebsite = await WebsiteBeatmapIdsAsync(cancellationToken).ConfigureAwait(false);
+        var months = (await _tomyum.Scores.AsNoTracking()
+                .Where(s => s.Mode >= 0 && s.Mode < GameMode.RelaxOffset && s.UserId > 0 && s.BeatmapId > 0)
+                .Select(s => new { s.UserId, s.BeatmapId, s.SubmittedAt })
+                .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .Where(s => onWebsite.Contains((uint)s.BeatmapId))
+            .GroupBy(s => (s.UserId, Month: YearMonth(s.SubmittedAt)))
+            .ToDictionary(g => g.Key, g => g.Count());
+        var writtenMonths = (await _tomyum.Database
+                .SqlQuery<WrittenMonth>($"SELECT UserId, YearMonth, Plays FROM osu_web_month_plays_written")
+                .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .ToDictionary(m => (m.UserId, Month: m.YearMonth), m => m.Plays);
+        foreach (var key in months.Keys.Union(writtenMonths.Keys).ToList())
+        {
+            var difference = months.GetValueOrDefault(key) - writtenMonths.GetValueOrDefault(key);
+            if (difference == 0)
+                continue;
+            await AddMonthPlaysAsync(key.UserId, key.Month, difference, cancellationToken).ConfigureAwait(false);
+            await RecordWrittenMonthAsync(key.UserId, key.Month, difference, cancellationToken).ConfigureAwait(false);
+        }
+
+        return changed;
+    }
+
+    /// <summary>osu-web's <c>year_month</c> key: <c>yyMM</c> in UTC, as ppy's processor writes it.</summary>
+    public static string YearMonth(DateTimeOffset at) => at.UtcDateTime.ToString("yyMM", CultureInfo.InvariantCulture);
+
+    /// <summary>TomYum's stable plays per player and map, for the maps on the website.</summary>
+    private async Task<List<StablePlays>> StablePlaysAsync(CancellationToken cancellationToken)
     {
         var plays = await _tomyum.Scores.AsNoTracking()
             .Where(s => s.Mode >= 0 && s.Mode < GameMode.RelaxOffset && s.UserId > 0 && s.BeatmapId > 0)
             .GroupBy(s => new { s.UserId, s.BeatmapId })
             .Select(g => new { g.Key.UserId, g.Key.BeatmapId, Plays = g.Count(), Passes = g.Count(s => s.Passed) })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var onWebsite = await WebsiteBeatmapIdsAsync(cancellationToken).ConfigureAwait(false);
+        return plays.Where(p => onWebsite.Contains((uint)p.BeatmapId))
+            .Select(p => new StablePlays(p.UserId, p.BeatmapId, p.Plays, p.Passes))
+            .ToList();
+    }
 
-        var onWebsite = (await _osuWeb.Beatmaps.AsNoTracking().Select(b => b.BeatmapId).ToListAsync(cancellationToken).ConfigureAwait(false))
-            .ToHashSet();
-        plays = plays.Where(p => onWebsite.Contains((uint)p.BeatmapId)).ToList();
+    private async Task<HashSet<uint>> WebsiteBeatmapIdsAsync(CancellationToken cancellationToken) =>
+        (await _osuWeb.Beatmaps.AsNoTracking().Select(b => b.BeatmapId).ToListAsync(cancellationToken).ConfigureAwait(false)).ToHashSet();
 
-        await _osuWeb.Database.ExecuteSqlRawAsync("DELETE FROM osu_user_beatmap_playcount", cancellationToken).ConfigureAwait(false);
-        await _osuWeb.Database.ExecuteSqlRawAsync("UPDATE osu_beatmaps SET playcount = 0, passcount = 0 WHERE playcount <> 0 OR passcount <> 0", cancellationToken).ConfigureAwait(false);
-        await _osuWeb.Database.ExecuteSqlRawAsync("UPDATE osu_beatmapsets SET play_count = 0 WHERE play_count <> 0", cancellationToken).ConfigureAwait(false);
-
-        foreach (var chunk in plays.Chunk(500))
-        {
-            var rows = string.Join(",", chunk.Select(p => string.Create(CultureInfo.InvariantCulture,
-                $"({(uint)p.UserId},{(uint)p.BeatmapId},{Math.Min(p.Plays, 65535)})")));
-#pragma warning disable EF1002 // numbers formatted invariantly, not user text
-            await _osuWeb.Database.ExecuteSqlRawAsync(
-                $"INSERT INTO osu_user_beatmap_playcount (user_id, beatmap_id, playcount) VALUES {rows}", cancellationToken).ConfigureAwait(false);
-#pragma warning restore EF1002
-        }
-
-        foreach (var map in plays.GroupBy(p => p.BeatmapId))
-        {
-            var beatmapId = (uint)map.Key;
-            var total = map.Sum(p => p.Plays);
-            var passes = map.Sum(p => p.Passes);
-            await _osuWeb.Database.ExecuteSqlInterpolatedAsync(
-                $"UPDATE osu_beatmaps SET playcount = {total}, passcount = {passes} WHERE beatmap_id = {beatmapId}", cancellationToken).ConfigureAwait(false);
-        }
-
-        await _osuWeb.Database.ExecuteSqlRawAsync(
-            """
-            UPDATE osu_beatmapsets s
-            JOIN (SELECT beatmapset_id, SUM(playcount) AS plays FROM osu_beatmaps GROUP BY beatmapset_id) b ON b.beatmapset_id = s.beatmapset_id
-            SET s.play_count = b.plays
+    /// <summary>Adds (or, when negative, takes away) plays on a player's map count, the map and its set.</summary>
+    private async Task AddMapPlaysAsync(StablePlays play, CancellationToken cancellationToken)
+    {
+        var userId = (uint)play.UserId;
+        var beatmapId = (uint)play.BeatmapId;
+        await _osuWeb.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO osu_user_beatmap_playcount (user_id, beatmap_id, playcount) VALUES ({userId}, {beatmapId}, {Math.Clamp(play.Plays, 0, 65535)})
+            ON DUPLICATE KEY UPDATE playcount = LEAST(GREATEST(0, CAST(playcount AS SIGNED) + {play.Plays}), 65535)
             """, cancellationToken).ConfigureAwait(false);
+        await _osuWeb.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE osu_beatmaps SET playcount = GREATEST(0, CAST(playcount AS SIGNED) + {play.Plays}),
+              passcount = GREATEST(0, CAST(passcount AS SIGNED) + {play.Passes})
+            WHERE beatmap_id = {beatmapId}
+            """, cancellationToken).ConfigureAwait(false);
+        await _osuWeb.Database.ExecuteSqlInterpolatedAsync($"""
+            UPDATE osu_beatmapsets s JOIN osu_beatmaps b ON b.beatmapset_id = s.beatmapset_id
+            SET s.play_count = GREATEST(0, CAST(s.play_count AS SIGNED) + {play.Plays})
+            WHERE b.beatmap_id = {beatmapId}
+            """, cancellationToken).ConfigureAwait(false);
+    }
 
-        return plays.Count;
+    private Task<int> RecordWrittenAsync(StablePlays play, CancellationToken cancellationToken) =>
+        _tomyum.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO osu_web_plays_written (UserId, BeatmapId, Plays, Passes) VALUES ({play.UserId}, {play.BeatmapId}, {play.Plays}, {play.Passes})
+            ON DUPLICATE KEY UPDATE Plays = Plays + {play.Plays}, Passes = Passes + {play.Passes}
+            """, cancellationToken);
+
+    private Task<int> AddMonthPlaysAsync(int userId, string month, int plays, CancellationToken cancellationToken) =>
+        _osuWeb.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO osu_user_month_playcount (`year_month`, user_id, playcount) VALUES ({month}, {(uint)userId}, {Math.Clamp(plays, 0, 65535)})
+            ON DUPLICATE KEY UPDATE playcount = LEAST(GREATEST(0, CAST(playcount AS SIGNED) + {plays}), 65535)
+            """, cancellationToken);
+
+    private Task<int> RecordWrittenMonthAsync(int userId, string month, int plays, CancellationToken cancellationToken) =>
+        _tomyum.Database.ExecuteSqlInterpolatedAsync($"""
+            INSERT INTO osu_web_month_plays_written (UserId, YearMonth, Plays) VALUES ({userId}, {month}, {plays})
+            ON DUPLICATE KEY UPDATE Plays = Plays + {plays}
+            """, cancellationToken);
+
+    private sealed record StablePlays(int UserId, int BeatmapId, int Plays, int Passes);
+
+    private sealed class WrittenPlays
+    {
+        public int UserId { get; set; }
+        public int BeatmapId { get; set; }
+        public int Plays { get; set; }
+        public int Passes { get; set; }
+    }
+
+    private sealed class WrittenMonth
+    {
+        public int UserId { get; set; }
+        public string YearMonth { get; set; } = string.Empty;
+        public int Plays { get; set; }
     }
 
     /// <summary>The TomYum score an osu-web score is a copy of (for replay downloads), or null.</summary>
