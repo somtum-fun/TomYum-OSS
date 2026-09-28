@@ -77,6 +77,7 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
         Assert.Contains("osu file format v14", sent, StringComparison.Ordinal);
         Assert.Contains("top play", sent, StringComparison.Ordinal);
         Assert.Contains("\"username\":\"Top\"", sent, StringComparison.Ordinal);
+        Assert.Contains("\"frames_only\":true,\"ruleset\":0,\"mods\":8,\"username\":\"Cheater\",\"max_combo\":400,\"count_300\":300", sent, StringComparison.Ordinal);
         Assert.Equal(2, service.Requests.Count); // the top play was checked too, and was clean
 
         Assert.Equal(1L, await ScalarAsync<long>($"SELECT user_warnings FROM phpbb_users WHERE user_id = {cheater}"));
@@ -99,6 +100,7 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
             .AddSingleton(configuration)
             .AddSingleton(TimeProvider.System)
             .AddScoped(_ => new OsuWebCommunity(NewOsuWebContext()))
+            .AddScoped(_ => NewTomYumContext())
             .AddScoped(_ => new OsuWebModeration(NewOsuWebContext()))
             .AddScoped<IUserRepository>(_ => new OsuWebUserRepository(NewOsuWebContext()))
             .AddScoped<IStaffLogRepository>(_ => new StaffLogRepository(NewTomYumContext()))
@@ -124,6 +126,12 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
             """));
         var id = await ScalarAsync<ulong>("SELECT MAX(id) FROM scores");
         var legacy = await ScalarAsync<long>($"SELECT legacy_score_id FROM scores WHERE id = {id}");
+        // TomYum's own row: the stable client uploads only frames, so the details come from here.
+        await using (var tomyum = NewTomYumContext())
+        {
+            tomyum.Scores.Add(new Score { Id = legacy, UserId = userId, BeatmapId = 100, BeatmapMd5 = "a", Mode = 0, MaxCombo = 400, Count300 = 300, Mods = 8, Passed = true, Grade = "S", SubmittedAt = DateTimeOffset.UtcNow });
+            await tomyum.SaveChangesAsync();
+        }
         Directory.CreateDirectory(replays);
         await File.WriteAllTextAsync(Path.Combine(replays, legacy.ToString(CultureInfo.InvariantCulture) + ".osr"), replay);
         return id;
