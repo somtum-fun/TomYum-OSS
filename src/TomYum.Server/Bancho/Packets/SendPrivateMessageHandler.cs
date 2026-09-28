@@ -76,6 +76,8 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         // Relay to a real online recipient, if present.
         // The website gets every PM too: the recipient may only be on the site (or read it there later).
         _website?.ForwardPrivateMessage(context.Player.UserId, target, text);
+        if (context.Services.GetService<TomYum.Plugins.Abstractions.IEventBus>() is { } events)
+            await events.PublishAsync(new TomYum.Plugins.Abstractions.ChatMessageEvent(context.Player.UserId, sender, null, text), cancellationToken).ConfigureAwait(false);
 
         var recipient = FindByName(context, target);
         if (recipient is null)

@@ -27,6 +27,7 @@ public sealed class BanchoLoginHandler
     private readonly PlayerRegistry _registry;
     private readonly ChannelRegistry _channels;
     private readonly ILogger<BanchoLoginHandler> _logger;
+    private readonly TomYum.Plugins.Abstractions.IEventBus? _events;
 
     /// <summary>Creates the handler over the user repository, password hasher, online-player registry, and channel registry.</summary>
     public BanchoLoginHandler(
@@ -35,7 +36,8 @@ public sealed class BanchoLoginHandler
         IUserStatsRepository userStats,
         PlayerRegistry registry,
         ChannelRegistry channels,
-        ILogger<BanchoLoginHandler> logger)
+        ILogger<BanchoLoginHandler> logger,
+        TomYum.Plugins.Abstractions.IEventBus? events = null)
     {
         _users = users;
         _passwordHasher = passwordHasher;
@@ -43,6 +45,7 @@ public sealed class BanchoLoginHandler
         _registry = registry;
         _channels = channels;
         _logger = logger;
+        _events = events;
     }
 
     /// <summary>The outcome of a login attempt: the framed response body and the new token (if any).</summary>
@@ -112,6 +115,10 @@ public sealed class BanchoLoginHandler
         var player = _registry.Add(presence);
         player.IsRestricted = user.IsRestricted;
         player.SilenceEndUtc = user.SilenceEndUtc;
+
+        // Plugins (welcome messages, per-login state). A plugin fault is logged, never breaks login.
+        if (_events is not null)
+            await _events.PublishAsync(new TomYum.Plugins.Abstractions.PlayerLoginEvent(user.Id, user.Username, resolvedCountry ?? string.Empty), cancellationToken).ConfigureAwait(false);
         var welcome = string.Create(CultureInfo.InvariantCulture, $"Welcome to TomYum, {user.Username}!");
 
         // Auto-join the player to the auto-join channels (e.g. #osu) so they can chat immediately,

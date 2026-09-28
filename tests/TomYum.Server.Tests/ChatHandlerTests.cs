@@ -112,6 +112,32 @@ public class ChatHandlerTests
     }
 
     [Fact]
+    public async Task Messages_ReachPlugins_OnTheEventBus()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var sender = AddPlayer(registry, 2, "Sender");
+        AddPlayer(registry, 3, "Friend");
+        channels.Get("#osu")!.Join(sender);
+        var bus = new Plugins.EventBus(Microsoft.Extensions.Logging.Abstractions.NullLogger<Plugins.EventBus>.Instance);
+        var seen = new List<TomYum.Plugins.Abstractions.ChatMessageEvent>();
+        using var subscription = bus.Subscribe<TomYum.Plugins.Abstractions.ChatMessageEvent>((e, _) =>
+        {
+            seen.Add(e);
+            return Task.CompletedTask;
+        });
+        var services = new ServiceCollection().AddSingleton<TomYum.Plugins.Abstractions.IEventBus>(bus).BuildServiceProvider();
+
+        await new SendPublicMessageHandler(NewBot()).HandleAsync(
+            new ClientPacketContext(sender, registry, channels, new MatchRegistry(), services, MessagePayload("hi all", "#osu"), new BanchoPacketWriter(64)));
+        await new SendPrivateMessageHandler(NewBot()).HandleAsync(
+            new ClientPacketContext(sender, registry, channels, new MatchRegistry(), services, MessagePayload("psst", "Friend"), new BanchoPacketWriter(64)));
+
+        Assert.Equal([("#osu", "hi all"), (null, "psst")], seen.Select(e => (e.Channel, e.Text)));
+        Assert.All(seen, e => Assert.Equal((2L, "Sender"), (e.SenderUserId, e.SenderUsername)));
+    }
+
+    [Fact]
     public async Task PublicMessage_NonMember_IsDropped()
     {
         var registry = new PlayerRegistry();

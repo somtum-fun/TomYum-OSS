@@ -87,6 +87,8 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
         var message = new BanchoMessage(sender, text, target, context.Player.UserId);
         _chatLog?.Record(context.Player.UserId, sender, target, text);
         _website?.ForwardChannelMessage(context.Player.UserId, target, text);
+        if (context.Services.GetService<TomYum.Plugins.Abstractions.IEventBus>() is { } events)
+            await events.PublishAsync(new TomYum.Plugins.Abstractions.ChatMessageEvent(context.Player.UserId, sender, target, text), cancellationToken).ConfigureAwait(false);
 
         // Fan the message out to every other member of the channel.
         var writer = new BanchoPacketWriter(128);
