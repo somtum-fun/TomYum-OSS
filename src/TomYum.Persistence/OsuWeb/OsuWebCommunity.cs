@@ -342,6 +342,18 @@ public sealed class OsuWebCommunity
     public async Task<IReadOnlyList<(int UserId, string Username)>> GetOnlineAsync(CancellationToken cancellationToken = default) =>
         (await GetOnlineSinceAsync(cancellationToken).ConfigureAwait(false)).Select(o => (o.UserId, o.Username)).ToList();
 
+    /// <summary>Names of these players, leaving out unknown, banned and restricted ones.</summary>
+    public async Task<IReadOnlyDictionary<int, string>> GetVisibleNamesAsync(IReadOnlyCollection<int> userIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(userIds);
+        if (userIds.Count == 0)
+            return new Dictionary<int, string>();
+        var ids = userIds.Select(id => (uint)id).ToList();
+        return await _db.Users.AsNoTracking()
+            .Where(u => ids.Contains(u.UserId) && u.UserType != 1 && !u.UserWarnings)
+            .ToDictionaryAsync(u => (int)u.UserId, u => u.Username, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>Like <see cref="GetOnlineAsync"/>, with when each was last seen.</summary>
     public async Task<IReadOnlyList<(int UserId, string Username, DateTime LastSeen)>> GetOnlineSinceAsync(CancellationToken cancellationToken = default)
     {

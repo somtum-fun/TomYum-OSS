@@ -112,10 +112,10 @@ public sealed class OsuWebInterop
         return true;
     }
 
-    /// <summary>Creates the game's public channels in website chat (the fork's <c>/_lio/tomyum/chat-channels</c>).</summary>
     /// <summary>
     /// Gives a set on the website its osu! description (BBCode; the site keeps it as the set's
-    /// description post) and nominators (osu! users, shown with links to their osu! profiles).
+    /// description post), nominators (osu! users, shown with links to their osu! profiles) and
+    /// featured artist track (the "featured artist" badge and listing filter).
     /// </summary>
     public async Task SyncBeatmapsetExtrasAsync(int beatmapsetId, BeatmapsetExtras extras, CancellationToken cancellationToken = default)
     {
@@ -124,10 +124,12 @@ public sealed class OsuWebInterop
         {
             description = extras.DescriptionBbcode,
             nominators = extras.Nominators.Select(n => new { id = n.OsuUserId, username = n.Username, rulesets = n.Rulesets }),
+            track_id = extras.TrackId,
         }, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>Creates the game's public channels in website chat (the fork's <c>/_lio/tomyum/chat-channels</c>).</summary>
     public async Task EnsureChatChannelsAsync(IEnumerable<(string Name, string Description, bool Moderated)> channels, CancellationToken cancellationToken = default)
     {
         using var response = await PostJsonAsync("/_lio/tomyum/chat-channels", new

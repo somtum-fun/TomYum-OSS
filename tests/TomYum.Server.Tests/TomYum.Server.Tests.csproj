@@ -24,4 +24,9 @@
     <ProjectReference Include="../../src/TomYum.Server/TomYum.Server.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Database test classes run in parallel, each with its own databases: 8 at a time stays under MySQL's default 151 connections. -->
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

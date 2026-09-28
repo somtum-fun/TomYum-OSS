@@ -10,12 +10,14 @@ public sealed record OsuNominator(int OsuUserId, string Username, IReadOnlyList<
 /// <summary>What the website shows about a set that the v1 API doesn't have.</summary>
 /// <param name="DescriptionBbcode">The description as its author wrote it (BBCode); null when the set has none.</param>
 /// <param name="Nominators">The current nominators (empty for sets nobody nominated, e.g. loved or graveyard).</param>
-public sealed record BeatmapsetExtras(string? DescriptionBbcode, IReadOnlyList<OsuNominator> Nominators);
+/// <param name="TrackId">The featured artist track the set is of (osu!'s track id), or null when it isn't a featured artist song.</param>
+public sealed record BeatmapsetExtras(string? DescriptionBbcode, IReadOnlyList<OsuNominator> Nominators, int? TrackId = null);
 
 /// <summary>
 /// The osu! API v2, with the client credentials of an OAuth application (<c>Osu:ClientId</c> /
 /// <c>Osu:ClientSecret</c>, public scope). Used for what the v1 API lacks: beatmapset descriptions
-/// (the first post of the set's forum thread, as BBCode) and current nominators.
+/// (the first post of the set's forum thread, as BBCode), current nominators, and whether the song is
+/// a featured artist's.
 /// </summary>
 public sealed class OsuApiV2Client
 {
@@ -53,6 +55,8 @@ public sealed class OsuApiV2Client
                 return null;
 
             var (nominators, topicId) = ParseBeatmapset(set.RootElement);
+            int? trackId = set.RootElement.TryGetProperty("track_id", out var track) && track.ValueKind == JsonValueKind.Number
+                && track.TryGetInt32(out var id) && id > 0 ? id : null;
             string? description = null;
             if (topicId is { } topic)
             {
@@ -60,7 +64,7 @@ public sealed class OsuApiV2Client
                 if (thread is not null)
                     description = DescriptionFromTopic(thread.RootElement);
             }
-            return new BeatmapsetExtras(description, nominators);
+            return new BeatmapsetExtras(description, nominators, trackId);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {

@@ -187,10 +187,12 @@ public sealed class DiscordDatabaseTests : OsuWebDatabaseTest
             .AddScoped(_ => new OsuWebCommunity(NewOsuWebContext()))
             .AddSingleton<IDiscordLinkRepository>(new InMemoryDiscordLinkRepository())
             .BuildServiceProvider();
-        var commands = new DiscordCommands(services.GetRequiredService<IServiceScopeFactory>(), players, new DiscordLinkCodes(), new DiscordFormat("https://osu.test", "https://a.test"));
+        var scopes = services.GetRequiredService<IServiceScopeFactory>();
+        var commands = new DiscordCommands(scopes, players, new DiscordLinkCodes(), new DiscordFormat("https://osu.test", "https://a.test"),
+            online: new TomYum.Server.OsuWeb.OnlinePlayers(players, scopes));
 
         var online = await commands.RunAsync("online", new Dictionary<string, string>(), 1);
-        Assert.Equal("**2** online\n▸ **stable** (1): StablePlayer\n▸ **lazer / website** (1): Alpha", online.Post.Content);
+        Assert.Equal("**2** online\n▸ **stable** (1): StablePlayer\n▸ **website** (1): Alpha", online.Post.Content);
     }
 
     [MySqlFact]

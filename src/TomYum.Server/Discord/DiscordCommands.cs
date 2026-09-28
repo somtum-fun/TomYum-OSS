@@ -75,9 +75,11 @@ public sealed partial class DiscordCommands
     private readonly DiscordLinkCodes _codes;
     private readonly DiscordFormat _format;
     private readonly ModerationCommands? _moderation;
+    private readonly OsuWeb.OnlinePlayers? _online;
 
-    public DiscordCommands(IServiceScopeFactory scopes, PlayerRegistry players, DiscordLinkCodes codes, DiscordFormat format, ModerationCommands? moderation = null)
+    public DiscordCommands(IServiceScopeFactory scopes, PlayerRegistry players, DiscordLinkCodes codes, DiscordFormat format, ModerationCommands? moderation = null, OsuWeb.OnlinePlayers? online = null)
     {
+        _online = online;
         _scopes = scopes;
         _players = players;
         _codes = codes;
@@ -112,7 +114,7 @@ public sealed partial class DiscordCommands
                 return DiscordReply.Text("Unlinked.", isPrivate: true);
 
             case "online":
-                return await OnlineAsync(scope.ServiceProvider.GetService<OsuWebCommunity>(), cancellationToken).ConfigureAwait(false);
+                return await OnlineAsync(cancellationToken).ConfigureAwait(false);
 
             case var staff when StaffArguments.ContainsKey(staff):
                 return await StaffAsync(scope.ServiceProvider, links, staff, options, callerId, cancellationToken).ConfigureAwait(false);
@@ -269,35 +271,31 @@ public sealed partial class DiscordCommands
         }));
     }
 
-    /// <summary>Who's in-game on stable, and who else the website shows online (lazer, or browsing).</summary>
-    private async Task<DiscordReply> OnlineAsync(OsuWebCommunity? community, CancellationToken cancellationToken)
+    /// <summary>Who's online: in stable, on lazer (with what they're doing), and on the website.</summary>
+    private async Task<DiscordReply> OnlineAsync(CancellationToken cancellationToken)
     {
-        var stable = _players.All
-            .Where(p => p.UserId != BanchoBot.UserId && !p.IsRestricted)
-            .Select(p => (p.UserId, p.Presence.Username))
-            .ToList();
-        var inGame = stable.Select(p => p.UserId).ToHashSet();
-        var elsewhere = community is null ? [] : (await community.GetOnlineAsync(cancellationToken).ConfigureAwait(false))
-            .Where(p => !inGame.Contains(p.UserId))
-            .ToList();
-        if (stable.Count + elsewhere.Count == 0)
+        IReadOnlyList<OsuWeb.OnlineEntry> online = _online is not null
+            ? await _online.GetAsync(cancellationToken).ConfigureAwait(false)
+            : _players.All.Where(p => p.UserId != BanchoBot.UserId && !p.IsRestricted)
+                .Select(p => new OsuWeb.OnlineEntry(p.UserId, p.Presence.Username, OsuWeb.OnlineClient.Stable, null, null, null, DateTime.UtcNow, false))
+                .ToList();
+        if (online.Count == 0)
             return DiscordReply.Text("Nobody is online right now.");
 
-        static string Names(IEnumerable<(int UserId, string Username)> players, int max)
+        static string Names(IEnumerable<OsuWeb.OnlineEntry> players, int max)
         {
-            var sorted = players.Select(p => p.Username).Order(StringComparer.OrdinalIgnoreCase).ToList();
+            var sorted = players.OrderBy(p => p.Username, StringComparer.OrdinalIgnoreCase).ToList();
             var more = sorted.Count > max ? string.Create(CultureInfo.InvariantCulture, $" and {sorted.Count - max} more") : string.Empty;
-            return string.Join(", ", sorted.Take(max).Select(DiscordFormat.Escape)) + more;
+            return string.Join(", ", sorted.Take(max).Select(p => p.Playing ? $"{DiscordFormat.Escape(p.Username)} (playing)" : DiscordFormat.Escape(p.Username))) + more;
         }
 
-        var lines = new List<string>
+        var lines = new List<string> { string.Create(CultureInfo.InvariantCulture, $"**{online.Count}** online") };
+        foreach (var (client, label) in new[] { (OsuWeb.OnlineClient.Stable, "stable"), (OsuWeb.OnlineClient.Lazer, "lazer"), (OsuWeb.OnlineClient.Website, "website") })
         {
-            string.Create(CultureInfo.InvariantCulture, $"**{stable.Count + elsewhere.Count}** online"),
-        };
-        if (stable.Count > 0)
-            lines.Add(string.Create(CultureInfo.InvariantCulture, $"▸ **stable** ({stable.Count}): {Names(stable, 40)}"));
-        if (elsewhere.Count > 0)
-            lines.Add(string.Create(CultureInfo.InvariantCulture, $"▸ **lazer / website** ({elsewhere.Count}): {Names(elsewhere, 40)}"));
+            var group = online.Where(p => p.Client == client).ToList();
+            if (group.Count > 0)
+                lines.Add(string.Create(CultureInfo.InvariantCulture, $"▸ **{label}** ({group.Count}): {Names(group, 40)}"));
+        }
         return DiscordReply.Text(string.Join('\n', lines));
     }
 

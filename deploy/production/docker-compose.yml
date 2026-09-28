@@ -30,6 +30,8 @@ x-osu-web: &osu-web
     OSU_API_KEY: ${OSU_API_KEY:-}
     # Medal icons from TomYum's asset host (it caches osu!'s icons, and serves custom ones).
     USER_ACHIEVEMENT_ICON_PREFIX: https://assets.${DOMAIN}/medals/client/
+    # The red "development instance" banner: DEVELOPMENT_BANNER=true in .env shows it.
+    IS_DEVELOPMENT_DEPLOY: ${DEVELOPMENT_BANNER:-false}
   volumes:
     - osu-web-uploads:/app/public/uploads
     - osu-web-storage:/app/storage

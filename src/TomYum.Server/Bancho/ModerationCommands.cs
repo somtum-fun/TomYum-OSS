@@ -69,15 +69,14 @@ public sealed class ModerationCommands
 
                 // Lazer (and website) players get it as a message from BanchoBot: that's what reaches them.
                 var elsewhere = 0;
-                if (scope.ServiceProvider.GetService<OsuWebCommunity>() is { } community && _website is not null)
+                if (_website is not null && scope.ServiceProvider.GetService<OsuWeb.OnlinePlayers>() is { } online)
                 {
-                    var stable = inGame.Select(p => p.UserId).ToHashSet();
-                    foreach (var (userId, username) in await community.GetOnlineAsync(cancellationToken).ConfigureAwait(false))
+                    foreach (var player in await online.GetAsync(cancellationToken).ConfigureAwait(false))
                     {
                         // The sender gets the reply instead.
-                        if (stable.Contains(userId) || userId == callerId)
+                        if (player.Client == OsuWeb.OnlineClient.Stable || player.UserId == callerId)
                             continue;
-                        _website.ForwardPrivateMessage(BanchoBot.UserId, username, WebsiteAlert(text));
+                        _website.ForwardPrivateMessage(BanchoBot.UserId, player.Username, WebsiteAlert(text));
                         elsewhere++;
                     }
                 }
