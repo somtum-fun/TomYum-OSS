@@ -109,7 +109,11 @@ public static class BanchoEndpoints
         using var reader = new StreamReader(context.Request.Body);
         var body = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
-        var countryIso = context.Request.Headers["CF-IPCountry"].ToString();
+        // Cloudflare's country, else the address's (GeoIP), else the account's own (the handler's fallback).
+        var header = context.Request.Headers["CF-IPCountry"].ToString();
+        var countryIso = IpCountry.FromHeader(header)
+                         ?? context.RequestServices.GetService<IpCountry>()?.Lookup(LoginIps.ClientAddress(context))
+                         ?? string.Empty;
         var outcome = await loginHandler.HandleAsync(body, countryIso, cancellationToken).ConfigureAwait(false);
 
         // Where they logged in from, for staff (a failed login has no session).
