@@ -111,6 +111,10 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
             Assert.Equal(difficulty.Md5, (await resolver.GetByMd5Async(difficulty.Md5))!.Md5);
         }
         Assert.Equal([0, 0, 3], (await repository.GetBySetAsync(result.SetId)).Select(b => b.Mode).Order());
+        // The owner and ids are kept, so the mapper can update it from the game later.
+        var sets = new CustomBeatmapSetRepository(NewTomYumContext());
+        Assert.Equal(mapper.Id, (await sets.GetAsync(result.SetId))!.OwnerId);
+        Assert.Equal(result.Difficulties.Select(d => d.BeatmapId), await sets.GetSlotsAsync(result.SetId));
 
         // The download is the uploaded set with the rewritten difficulties.
         using (var download = ZipFile.OpenRead(store.OszPath(result.SetId)))
@@ -262,7 +266,7 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
         var calculator = new OfficialPerformanceCalculator(files, new MemoryCache(new MemoryCacheOptions()), NullLogger<OfficialPerformanceCalculator>.Instance);
         var resolver = new BeatmapService(new NoMapsApi());
         var importer = new CustomBeatmapImporter(repository, users, store, files, TimeProvider.System, NullLogger<CustomBeatmapImporter>.Instance,
-            calculator, website: new OsuWebCustomSets(NewOsuWebContext()), resolver: resolver);
+            calculator, website: new OsuWebCustomSets(NewOsuWebContext()), resolver: resolver, sets: new CustomBeatmapSetRepository(NewTomYumContext()));
         return (importer, repository, store, files, resolver);
     }
 

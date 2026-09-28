@@ -103,14 +103,20 @@ _Clean-room reimplementation from `memories/features/dan-mode.md` + `session.md`
   - [ ] Ship compiled `.dll` variant (net10.0 lib ref Abstractions + BCrypt.Net-Next).
 
 ## Phase 5 — Custom beatmaps 🔒 Phase 0 (storage/migrations); `!map` needs none
-_Custom sets are uploaded as `.osz` from the BN panel and served everywhere (docs/custom-beatmaps.md).
-Left: the stable client's own submission (`.osz2`) and lazer's._
+_Custom sets are uploaded as `.osz` from the BN panel, or submitted from either game's editor, and
+served everywhere (docs/custom-beatmaps.md)._
 
 - [x] **`!map` rank/love/unrank/qualified** + `/np` last-map tracking — status-only, no osz2. `/np` to BanchoBot answers with the map, status and pp at 95–100%.
-- [ ] Custom-status model: `mapsets` table (ownership, `frozen`, `prod_only`), per-mode override,
-      set-vs-diff granularity; exclude custom maps from osu!api re-sync.
-- [ ] ⚖️ **osz2 codec** — the single biggest build item. Decide: clean-room C# vs a sidecar (like the
-      pp sidecar) wrapping an existing lib. Then the 3 stable submit endpoints + download-side osz2 endpoints.
+- [x] Custom-set model: `custom_beatmapsets` (owner, WIP/pending) + `custom_beatmap_slots` (ids handed
+      out); custom maps are never re-synced from the osu! API. 2026-09-28
+- [x] **osz2 reader** (C#, ported from MIT osz2-go) + the stable editor's getid/upload/post endpoints;
+      always full uploads, so no bsdiff. 2026-09-28
+- [x] **Lazer beatmap submission** (`/beatmap-submission`, ppy's protocol and rules; lazer's JWT checked
+      against the website's Passport key). 2026-09-28
+- [ ] Download-side osz2 endpoints (`osu-gethashes.php`, `osu-osz2-getfileinfo.php`, …): stable's
+      in-place map updates. Without them the client downloads the whole set again.
+- [ ] Graveyard: sets untouched for four weeks still show as pending (they only stop counting toward
+      the quota).
 - [x] Local serving — `/d/{setId}`, osu!direct search/set info, `b.*` thumbnails and previews, the
       website's covers and audio preview come from TomYum for sets from 10,000,000. `.osu` files are kept
       for pp (TomYum's and ppy's processor). 2026-09-28
@@ -135,10 +141,10 @@ accounts, chat and leaderboards with them._
       (osu-web, osu-server-spectator, osu-queue-score-statistics, notification-server).
 - [x] Minimum bar: one account logs into **both** clients · shared BanchoBot · shared `#osu` cross-client
       chat · osu! beatmap status works.
-- [ ] Minimum bar, last item: **custom beatmap status in lazer** — needs custom sets served to lazer
-      (Phase 5: local serving + lazer beatmap submission).
+- [x] Minimum bar, last item: **custom beatmap status in lazer** — custom sets served locally, submitted
+      from lazer's editor (Phase 5). 2026-09-28
 - [x] Shared leaderboards (stable scores standardised for lazer; lazer scores for stable's website view),
-      lazer score submission. Lazer beatmap submission: Phase 5.
+      lazer score submission, lazer beatmap submission.
 - [ ] Relax on lazer — lazer ranks relax scores differently; stable relax stays TomYum-only.
 - [x] Deployment — players use the stock lazer client with the injection ruleset (docs/lazer.md).
 

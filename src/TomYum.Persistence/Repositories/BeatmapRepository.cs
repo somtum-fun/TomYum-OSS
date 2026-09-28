@@ -97,8 +97,14 @@ public sealed class BeatmapRepository : IBeatmapRepository
             .Select(b => (int?)b.SetId)
             .MaxAsync(cancellationToken)
             .ConfigureAwait(false);
+        // Sets handed out to a mapper but not uploaded yet have no beatmaps.
+        var maxReserved = await _db.CustomBeatmapSets
+            .Select(s => (int?)s.SetId)
+            .MaxAsync(cancellationToken)
+            .ConfigureAwait(false);
 
-        return maxCustom is null ? Beatmap.CustomIdFloor : maxCustom.Value + 1;
+        var max = Math.Max(maxCustom ?? 0, maxReserved ?? 0);
+        return max < Beatmap.CustomIdFloor ? Beatmap.CustomIdFloor : max + 1;
     }
 
     /// <inheritdoc />
@@ -109,7 +115,12 @@ public sealed class BeatmapRepository : IBeatmapRepository
             .Select(b => (int?)b.Id)
             .MaxAsync(cancellationToken)
             .ConfigureAwait(false);
+        var maxReserved = await _db.CustomBeatmapSlots
+            .Select(s => (int?)s.BeatmapId)
+            .MaxAsync(cancellationToken)
+            .ConfigureAwait(false);
 
-        return maxCustom is null ? Beatmap.CustomIdFloor : maxCustom.Value + 1;
+        var max = Math.Max(maxCustom ?? 0, maxReserved ?? 0);
+        return max < Beatmap.CustomIdFloor ? Beatmap.CustomIdFloor : max + 1;
     }
 }

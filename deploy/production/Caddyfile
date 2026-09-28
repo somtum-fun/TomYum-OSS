@@ -68,7 +68,8 @@ http://osu.{$DOMAIN} {
 		respond 404
 	}
 
-	@tomyum path /web/* /d/*
+	# /beatmap-submission: lazer's beatmap submission (its default, under the API URL).
+	@tomyum path /web/* /d/* /beatmap-submission/*
 	handle @tomyum {
 		import tomyum
 	}

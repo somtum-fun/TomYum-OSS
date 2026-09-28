@@ -68,6 +68,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IChatLogRepository, ChatLogRepository>();
         services.AddScoped<IClientHashRepository, ClientHashRepository>();
         services.AddScoped<IDiscordLinkRepository, DiscordLinkRepository>();
+        services.AddScoped<ICustomBeatmapSetRepository, CustomBeatmapSetRepository>();
 
         return services;
     }
