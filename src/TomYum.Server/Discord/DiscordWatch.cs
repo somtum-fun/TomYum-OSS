@@ -216,19 +216,8 @@ public sealed class DiscordWatch
         { Buttons = buttons }, cancellationToken);
     }
 
-    private IReadOnlyList<DiscordButton> ModerationButtons(int userId, string reason, int profileId)
-    {
-        // Button ids are split on ':' and capped at 100 characters.
-        var safe = Shorten(reason.Replace(':', ' '), 60);
-        var user = userId.ToString(CultureInfo.InvariantCulture);
-        return
-        [
-            new DiscordButton("Restrict", DiscordButtonStyle.Danger, $"mod:restrict:{user}:{safe}"),
-            new DiscordButton("Silence 1 day", DiscordButtonStyle.Primary, $"mod:silence:{user}:{safe}"),
-            new DiscordButton("Dismiss", DiscordButtonStyle.Secondary, $"mod:dismiss:{user}:-"),
-            new DiscordButton("Profile", DiscordButtonStyle.Link, Url: _format.Profile(profileId)),
-        ];
-    }
+    private IReadOnlyList<DiscordButton> ModerationButtons(int userId, string reason, int profileId) =>
+        _format.ModerationButtons(userId, reason, profileId);
 
     private async Task CheckMilestonesAsync(PlayerCard player, CancellationToken cancellationToken)
     {

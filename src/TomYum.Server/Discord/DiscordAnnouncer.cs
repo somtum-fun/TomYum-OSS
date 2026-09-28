@@ -269,6 +269,15 @@ public sealed class DiscordAnnouncer : BackgroundService
         {
             _staffMark = entry.Id;
             var actor = entry.ActorId > 0 ? await users.GetByIdAsync(entry.ActorId, cancellationToken).ConfigureAwait(false) : null;
+            if (entry.Action == BanchoLoginHandler.SharedMachineAction && entry.TargetId is { } suspect)
+            {
+                // An alert for staff to act on: the reports channel, with the moderation buttons.
+                await _gateway.PostAsync(_options.ReportsChannel, StaffPost(entry, actor) with
+                {
+                    Buttons = _format.ModerationButtons((int)suspect, "Same machine as a restricted account", (int)suspect),
+                }, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
             var channel = entry.Action.StartsWith("user.", StringComparison.Ordinal) ? _options.UserLogChannelId : _options.ServerLogChannelId;
             await _gateway.PostAsync(channel, StaffPost(entry, actor), cancellationToken).ConfigureAwait(false);
 
@@ -288,6 +297,7 @@ public sealed class DiscordAnnouncer : BackgroundService
         var color = entry.Action switch
         {
             "user.restrict" or "user.evasion_blocked" or "user.ban" or "user.delete" => DiscordFormat.Danger,
+            BanchoLoginHandler.SharedMachineAction => 0xF39C12u,
             "user.silence" => 0xFEE75Cu,
             "user.unrestrict" or "user.unsilence" or "user.verify" or "user.clear_standing" or "user.badge_add" => 0x57F287u,
             _ => DiscordFormat.Staff,

@@ -70,6 +70,9 @@ only visible to self); **banned ≡ restricted** (no hard login reject); **silen
 - [x] **Multi-account / ban-evasion gate** — at first login (unverified), reject if any HWID match
       is a restricted account: `USER_ID(-1)` + `"Please contact staff directly to create an account."`
       Guards: `runningunderwine` → uninstall-only; exclude `md5("0")` disk id.
+- [x] **Shared-machine alert** — a verified account that logs in from a restricted account's machine
+      (restricted after the alt got in, or verified by hand) gets in, but staff get one Discord alert
+      per pair in the reports channel with Restrict / Silence buttons (`user.shared_machine`). 2026-09-29
 - [ ] Presence geolocation — IP→country enrichment (have `CF-IPCountry`; add a fallback lookup).
 
 ## Phase 3 — Stable spectating 🔒 (none) — prereq for DAN

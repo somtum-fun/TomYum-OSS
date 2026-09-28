@@ -34,6 +34,13 @@ public sealed class BanchoLoginHandler
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
 
+    /// <summary>
+    /// The staff log action for an account that got in earlier and now logs in from the machine of a
+    /// restricted account (it was restricted later, or the account was verified by hand); staff are
+    /// alerted on Discord once per pair.
+    /// </summary>
+    public const string SharedMachineAction = "user.shared_machine";
+
     /// <summary>Creates the handler over the user repository, password hasher, online-player registry, and channel registry.</summary>
     public BanchoLoginHandler(
         IUserRepository users,
@@ -199,9 +206,10 @@ public sealed class BanchoLoginHandler
     }
 
     /// <summary>
-    /// Records the login's hashes, then for an unverified account checks whether any other account
-    /// on the same machine is restricted. Staff and BanchoBot are never checked. An account that gets
-    /// in is verified, so the check happens once (staff can verify one by hand with <c>!verify</c>).
+    /// Records the login's hashes and looks for restricted accounts on the same machine (staff and
+    /// BanchoBot are never checked). An unverified account is refused when there's one, else it's
+    /// verified (staff can verify one by hand with <c>!verify</c>). A verified account gets in, but
+    /// staff are told once per restricted account it shares the machine with.
     /// </summary>
     private async Task<bool> IsEvadingAsync(User user, ClientHashes hashes, CancellationToken cancellationToken)
     {
@@ -216,18 +224,25 @@ public sealed class BanchoLoginHandler
             LatestTime = now,
         }, cancellationToken).ConfigureAwait(false);
 
-        if (user.Id == BanchoBot.UserId || ModerationCommands.IsStaff(user.Privileges)
-            || await _clientHashes.IsVerifiedAsync(user.Id, cancellationToken).ConfigureAwait(false))
-        {
+        if (user.Id == BanchoBot.UserId || ModerationCommands.IsStaff(user.Privileges))
             return false;
-        }
 
+        var verified = await _clientHashes.IsVerifiedAsync(user.Id, cancellationToken).ConfigureAwait(false);
         var query = ClientHashMatch.For(hashes.AdaptersStr, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5);
-        foreach (var otherId in await _clientHashes.FindOtherUsersAsync(user.Id, query, cancellationToken: cancellationToken).ConfigureAwait(false))
+        var others = query.IsEmpty
+            ? []
+            : await _clientHashes.FindOtherUsersAsync(user.Id, query, cancellationToken: cancellationToken).ConfigureAwait(false);
+        foreach (var otherId in others)
         {
             var other = await _users.GetByIdAsync(otherId, cancellationToken).ConfigureAwait(false);
             if (other is not { IsRestricted: true })
                 continue;
+            if (verified)
+            {
+                if (!user.IsRestricted)
+                    await AlertSharedMachineAsync(user, other, now, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
 
             _logger.LogWarning("Login refused: {Username} (id {UserId}) shares a machine with restricted {Other} (id {OtherId}).",
                 user.Username, user.Id, other.Username, other.Id);
@@ -244,7 +259,30 @@ public sealed class BanchoLoginHandler
             return true;
         }
 
-        await _clientHashes.VerifyAsync(user.Id, 0, now, cancellationToken).ConfigureAwait(false);
+        if (!verified)
+            await _clientHashes.VerifyAsync(user.Id, 0, now, cancellationToken).ConfigureAwait(false);
         return false;
+    }
+
+    /// <summary>Tells staff (once per pair) that a verified account shares a machine with a restricted one.</summary>
+    private async Task AlertSharedMachineAsync(User user, User restricted, DateTime now, CancellationToken cancellationToken)
+    {
+        if (_staffLog is null)
+            return;
+        var pair = restricted.Id.ToString(CultureInfo.InvariantCulture);
+        var earlier = await _staffLog.ListAsync(new StaffLogQuery(Action: SharedMachineAction, TargetId: user.Id, Limit: 200), cancellationToken).ConfigureAwait(false);
+        if (earlier.Any(e => e.Result == pair))
+            return;
+
+        _logger.LogWarning("{Username} (id {UserId}) logged in from the same machine as restricted {Other} (id {OtherId}).",
+            user.Username, user.Id, restricted.Username, restricted.Id);
+        await _staffLog.AddAsync(new StaffLogEntry
+        {
+            CreatedAt = now,
+            Action = SharedMachineAction,
+            TargetId = user.Id,
+            Summary = $"{user.Username} (id {user.Id.ToString(CultureInfo.InvariantCulture)}) logged in from the same machine as restricted {restricted.Username} (id {pair}). They got in before that account was restricted, or were verified by hand; nothing was done to them.",
+            Result = pair,
+        }, cancellationToken).ConfigureAwait(false);
     }
 }
