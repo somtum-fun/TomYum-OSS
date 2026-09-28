@@ -509,6 +509,14 @@ CREATE TABLE osu_user_beatmap_playcount (
   PRIMARY KEY (user_id, beatmap_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- A player's plays per month ("Play History"): as on a current osu-web database.
+CREATE TABLE osu_user_month_playcount (
+  user_id int unsigned NOT NULL DEFAULT 0,
+  `year_month` char(4) NOT NULL,
+  playcount smallint unsigned NOT NULL,
+  PRIMARY KEY (user_id, `year_month`)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
 -- Beatmap packs and their sets: as on a current osu-web database.
 CREATE TABLE osu_beatmappacks (
   pack_id smallint NOT NULL AUTO_INCREMENT,

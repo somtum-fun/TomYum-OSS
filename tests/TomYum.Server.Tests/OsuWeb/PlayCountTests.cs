@@ -15,16 +15,82 @@ public sealed class PlayCountTests : OsuWebDatabaseTest
         await using var tomyum = await NewTomYumContextAsync();
         await AddMapsAsync();
         var mirror = new OsuWebScoreMirror(tomyum, NewOsuWebContext());
+        await mirror.EnsureLinkTableAsync();
 
-        await mirror.RecordPlayAsync(Play(2, 100, passed: true));
-        await mirror.RecordPlayAsync(Play(2, 100, passed: false));
-        await mirror.RecordPlayAsync(Play(3, 101, passed: true));
-        await mirror.RecordPlayAsync(Play(2, 100, passed: true, mode: GameMode.RelaxOffset)); // relax isn't mirrored
-        await mirror.RecordPlayAsync(Play(2, 999, passed: true));                            // map not on the website
+        Score[] plays =
+        [
+            Play(2, 100, passed: true),
+            Play(2, 100, passed: false),
+            Play(3, 101, passed: true),
+            Play(2, 100, passed: true, mode: GameMode.RelaxOffset), // relax isn't mirrored
+            Play(2, 999, passed: true),                             // map not on the website
+        ];
+        foreach (var play in plays)
+        {
+            // Stored first, then counted, as score submission does.
+            tomyum.Scores.Add(play);
+            await tomyum.SaveChangesAsync();
+            await mirror.RecordPlayAsync(play);
+        }
 
         Assert.Equal(2, await ScalarAsync<int>("SELECT playcount FROM osu_user_beatmap_playcount WHERE user_id = 2 AND beatmap_id = 100"));
         Assert.Equal((2, 1), (await ScalarAsync<int>("SELECT playcount FROM osu_beatmaps WHERE beatmap_id = 100"), await ScalarAsync<int>("SELECT passcount FROM osu_beatmaps WHERE beatmap_id = 100")));
         Assert.Equal(3, await ScalarAsync<int>("SELECT play_count FROM osu_beatmapsets WHERE beatmapset_id = 10"));
+        // "Play History" on the profile.
+        Assert.Equal(2, await ScalarAsync<int>($"SELECT playcount FROM osu_user_month_playcount WHERE user_id = 2 AND `year_month` = '{ThisMonth}'"));
+        // A later rebuild finds nothing to add.
+        Assert.Equal(0, await mirror.RebuildPlayCountsAsync());
+        Assert.Equal(2, await ScalarAsync<int>("SELECT playcount FROM osu_user_beatmap_playcount WHERE user_id = 2 AND beatmap_id = 100"));
+    }
+
+    [MySqlFact]
+    public async Task Rebuild_KeepsLazerPlays_AndFollowsRemovedScores()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        await AddMapsAsync();
+        var mirror = new OsuWebScoreMirror(tomyum, NewOsuWebContext());
+        await mirror.EnsureLinkTableAsync();
+        var removed = Play(2, 100, true);
+        tomyum.Scores.AddRange(removed, Play(2, 100, false), Play(2, 101, true, at: new DateTimeOffset(2026, 8, 31, 23, 0, 0, TimeSpan.Zero)));
+        await tomyum.SaveChangesAsync();
+        Assert.Equal(2, await mirror.RebuildPlayCountsAsync());
+
+        // Lazer plays, as ppy's score processor counts them.
+        await ExecuteAsync("UPDATE osu_user_beatmap_playcount SET playcount = playcount + 3 WHERE user_id = 2 AND beatmap_id = 100");
+        await ExecuteAsync($"UPDATE osu_user_month_playcount SET playcount = playcount + 3 WHERE user_id = 2 AND `year_month` = '{ThisMonth}'");
+        await ExecuteAsync("UPDATE osu_beatmaps SET playcount = playcount + 3 WHERE beatmap_id = 100");
+        await ExecuteAsync("UPDATE osu_beatmapsets SET play_count = play_count + 3 WHERE beatmapset_id = 10");
+
+        tomyum.Scores.Remove(removed);
+        await tomyum.SaveChangesAsync();
+        Assert.Equal(1, await mirror.RebuildPlayCountsAsync());
+        Assert.Equal(0, await mirror.RebuildPlayCountsAsync());
+
+        Assert.Equal(4, await ScalarAsync<int>("SELECT playcount FROM osu_user_beatmap_playcount WHERE user_id = 2 AND beatmap_id = 100"));
+        Assert.Equal((4, 0), (await ScalarAsync<int>("SELECT playcount FROM osu_beatmaps WHERE beatmap_id = 100"), await ScalarAsync<int>("SELECT passcount FROM osu_beatmaps WHERE beatmap_id = 100")));
+        Assert.Equal(5, await ScalarAsync<int>("SELECT play_count FROM osu_beatmapsets WHERE beatmapset_id = 10"));
+        Assert.Equal(4, await ScalarAsync<int>($"SELECT playcount FROM osu_user_month_playcount WHERE user_id = 2 AND `year_month` = '{ThisMonth}'"));
+        Assert.Equal(1, await ScalarAsync<int>("SELECT playcount FROM osu_user_month_playcount WHERE user_id = 2 AND `year_month` = '2608'"));
+    }
+
+    [MySqlFact]
+    public async Task Upgrade_DoesntCountThePlaysTheOldRebuildWrote_Twice()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        await AddMapsAsync();
+        tomyum.Scores.AddRange(Play(2, 100, true), Play(2, 100, true));
+        await tomyum.SaveChangesAsync();
+        // What the previous version left: the map counts rebuilt from TomYum's scores, no history.
+        await ExecuteAsync("INSERT INTO osu_user_beatmap_playcount (user_id, beatmap_id, playcount) VALUES (2, 100, 2)");
+        await ExecuteAsync("UPDATE osu_beatmaps SET playcount = 2, passcount = 2 WHERE beatmap_id = 100");
+
+        var mirror = new OsuWebScoreMirror(tomyum, NewOsuWebContext());
+        await mirror.EnsureLinkTableAsync();
+        Assert.Equal(0, await mirror.RebuildPlayCountsAsync());
+
+        Assert.Equal(2, await ScalarAsync<int>("SELECT playcount FROM osu_user_beatmap_playcount WHERE user_id = 2 AND beatmap_id = 100"));
+        Assert.Equal(2, await ScalarAsync<int>("SELECT playcount FROM osu_beatmaps WHERE beatmap_id = 100"));
+        Assert.Equal(2, await ScalarAsync<int>($"SELECT playcount FROM osu_user_month_playcount WHERE user_id = 2 AND `year_month` = '{ThisMonth}'"));
     }
 
     [MySqlFact]
@@ -38,7 +104,7 @@ public sealed class PlayCountTests : OsuWebDatabaseTest
         var mirror = new OsuWebScoreMirror(tomyum, NewOsuWebContext());
 
         Assert.Equal(3, await mirror.RebuildPlayCountsAsync());
-        Assert.Equal(3, await mirror.RebuildPlayCountsAsync()); // rebuilding again doesn't double count
+        Assert.Equal(0, await mirror.RebuildPlayCountsAsync()); // rebuilding again doesn't double count
 
         Assert.Equal(2, await ScalarAsync<int>("SELECT playcount FROM osu_user_beatmap_playcount WHERE user_id = 2 AND beatmap_id = 100"));
         Assert.Equal((3, 2), (await ScalarAsync<int>("SELECT playcount FROM osu_beatmaps WHERE beatmap_id = 100"), await ScalarAsync<int>("SELECT passcount FROM osu_beatmaps WHERE beatmap_id = 100")));
@@ -77,7 +143,9 @@ public sealed class PlayCountTests : OsuWebDatabaseTest
             await beatmaps.WriteAsync(new Beatmap { Id = id, SetId = 10, Md5 = $"md5-{id}", Status = RankedStatus.Ranked, OsuApiStatus = 1, Version = "v", Artist = "a", Title = "t", Creator = "c" });
     }
 
-    private static Score Play(int userId, int beatmapId, bool passed, int mode = 0) => new()
+    private static string ThisMonth => OsuWebScoreMirror.YearMonth(DateTimeOffset.UtcNow);
+
+    private static Score Play(int userId, int beatmapId, bool passed, int mode = 0, DateTimeOffset? at = null) => new()
     {
         UserId = userId,
         BeatmapId = beatmapId,
@@ -87,6 +155,6 @@ public sealed class PlayCountTests : OsuWebDatabaseTest
         Grade = passed ? "A" : "F",
         Passed = passed,
         Status = passed ? ScoreStatus.Best : ScoreStatus.Failed,
-        SubmittedAt = DateTimeOffset.UtcNow,
+        SubmittedAt = at ?? DateTimeOffset.UtcNow,
     };
 }
