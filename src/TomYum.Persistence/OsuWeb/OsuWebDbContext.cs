@@ -65,6 +65,9 @@ public sealed class OsuWebDbContext : DbContext
             history.Property(h => h.BanStatus).HasColumnName("ban_status");
             history.Property(h => h.Period).HasColumnName("period");
             history.Property(h => h.Timestamp).HasColumnName("timestamp");
+            history.Property(h => h.Reason).HasColumnName("reason");
+            history.Property(h => h.BannerId).HasColumnName("banner_id");
+            history.Property(h => h.Permanent).HasColumnName("permanent");
         });
 
         modelBuilder.Entity<OsuWebUser>(user =>

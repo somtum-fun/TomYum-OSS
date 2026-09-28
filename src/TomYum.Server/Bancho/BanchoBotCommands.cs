@@ -29,6 +29,7 @@ public sealed class BanchoBotCommands
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly PluginCommandRegistry _pluginCommands;
     private readonly LoadedPluginRegistry _loadedPlugins;
+    private readonly ModerationCommands? _moderation;
 
     public BanchoBotCommands(
         TomYumVersion version,
@@ -38,7 +39,8 @@ public sealed class BanchoBotCommands
         BeatmapService beatmaps,
         IServiceScopeFactory scopeFactory,
         PluginCommandRegistry pluginCommands,
-        LoadedPluginRegistry loadedPlugins)
+        LoadedPluginRegistry loadedPlugins,
+        ModerationCommands? moderation = null)
     {
         _version = version;
         _players = players;
@@ -48,6 +50,7 @@ public sealed class BanchoBotCommands
         _scopeFactory = scopeFactory;
         _pluginCommands = pluginCommands;
         _loadedPlugins = loadedPlugins;
+        _moderation = moderation;
     }
 
     public async Task<string?> TryHandleAsync(
@@ -76,6 +79,9 @@ public sealed class BanchoBotCommands
                 : StaffOnly,
             "mp" => await MpAsync(caller, parts, privileges, cancellationToken).ConfigureAwait(false),
             "plugins" => ListPlugins(),
+            _ when ModerationCommands.Handles(command) => _moderation is null
+                ? "Moderation isn't available on this server."
+                : await _moderation.RunAsync(caller.UserId, command, parts[1..], cancellationToken).ConfigureAwait(false),
             _ => await FallbackToPluginAsync(caller, command, parts, message, cancellationToken).ConfigureAwait(false),
         };
     }
@@ -121,7 +127,9 @@ public sealed class BanchoBotCommands
         privileges.HasFlag(BanchoPrivileges.Owner) || privileges.HasFlag(BanchoPrivileges.Developer);
 
     private static string Help(BanchoPrivileges privileges) => IsStaff(privileges)
-        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !stats (staff), !setpriv <user> <role> (staff)."
+        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !stats (staff), !setpriv <user> <role> (staff). "
+          + "Moderation (staff): !restrict/!ban <user> <reason>, !unrestrict/!unban <user> <reason>, !silence <user> <10m|1h|1d|1w> <reason>, "
+          + "!unsilence <user> [reason], !alert <message>, !alertu <user> <message>. Names with spaces: use _."
         : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>.";
 
     private static string Roll(string sender, string[] parts)

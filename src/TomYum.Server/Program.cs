@@ -58,6 +58,7 @@ builder.Services.AddSingleton<PlayerRegistry>();
 builder.Services.AddSingleton<ChannelRegistry>();
 builder.Services.AddSingleton<MatchRegistry>();
 builder.Services.AddSingleton<TomYumVersion>();
+builder.Services.AddSingleton<ModerationCommands>();
 builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
