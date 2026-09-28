@@ -114,6 +114,8 @@ public sealed class ModerationCommandTests : OsuWebDatabaseTest
         var services = new ServiceCollection()
             .AddSingleton<IUserRepository>(users)
             .AddScoped(_ => new OsuWebCommunity(NewOsuWebContext()))
+            .AddSingleton(players)
+            .AddSingleton<TomYum.Server.OsuWeb.OnlinePlayers>()
             .BuildServiceProvider();
         var scopes = services.GetRequiredService<IServiceScopeFactory>();
         var website = new TomYum.Server.OsuWeb.OsuWebChatBridge(

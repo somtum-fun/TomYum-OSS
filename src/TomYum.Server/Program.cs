@@ -66,6 +66,7 @@ builder.Services.AddSingleton<TomYumVersion>();
 builder.Services.AddSingleton<ModerationCommands>();
 builder.Services.AddSingleton<MapCommands>();
 builder.Services.AddSingleton<NowPlayingStore>();
+builder.Services.AddSingleton<TomYum.Server.OsuWeb.OnlinePlayers>();
 builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
@@ -110,6 +111,12 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddScoped<TomYum.Server.Achievements.PackMedalAwarder>();
     // Profile rank graphs: a daily snapshot of everyone's rank.
     builder.Services.AddHostedService<OsuWebRankHistoryJob>();
+    // Featured artist tags (and descriptions/nominators) for sets imported before imports brought them.
+    builder.Services.AddHostedService<BeatmapsetExtrasBackfill>();
+    // Lazer presence (TomYum's spectator build publishes it to Redis) and the website's online graph.
+    builder.Services.AddSingleton(sp => new LazerPresence(
+        sp.GetRequiredService<ILogger<LazerPresence>>(), sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>()));
+    builder.Services.AddHostedService<BanchoStatsJob>();
 
     // ppy's score processor next to osu-web (lazer support, docs/lazer.md): it owns pp on the website.
     var mirrorOptions = new OsuWebMirrorOptions();

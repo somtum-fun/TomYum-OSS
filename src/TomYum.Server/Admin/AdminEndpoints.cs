@@ -7,6 +7,8 @@ using TomYum.Persistence.OsuWeb;
 using TomYum.Server.Bancho;
 using TomYum.Server.Beatmaps;
 
+using TomYum.Server.OsuWeb;
+
 namespace TomYum.Server.Admin;
 
 /// <summary>
@@ -97,41 +99,31 @@ public static class AdminEndpoints
                 Version = version.Display,
                 Online = online.Count,
                 OnlineStable = online.Count(p => p.Client == "stable"),
-                OnlineElsewhere = online.Count(p => p.Client != "stable"),
+                OnlineLazer = online.Count(p => p.Client == "lazer"),
+                OnlineWebsite = online.Count(p => p.Client == "website"),
                 StartedAt = new DateTimeOffset(Process.GetCurrentProcess().StartTime.ToUniversalTime(), TimeSpan.Zero),
             });
         });
     }
 
-    /// <summary>An online player for the admin panel.</summary>
+    /// <summary>An online player for the admin panel (stable's mode/action numbers; lazer and website players mapped onto them).</summary>
     public sealed record OnlineEntry(int UserId, string Username, int Mode, int Action, string ActionInfo, int BeatmapId, DateTime LastActivity, string Client);
 
-    /// <summary>
-    /// Everyone online: stable players in-game, then (with the website) those it shows online and
-    /// who aren't in stable: on lazer, or browsing the website. Their mode and activity aren't known
-    /// here (ppy's spectator server keeps lazer presence to itself), so they show as idle.
-    /// </summary>
+    /// <summary>Everyone online (<see cref="OnlinePlayers"/>): stable players with their in-game status, lazer players with theirs, website visitors as idle.</summary>
     public static async Task<IReadOnlyList<OnlineEntry>> OnlineAsync(PlayerRegistry players, IServiceProvider services, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(players);
         ArgumentNullException.ThrowIfNull(services);
 
-        var online = players.All
-            .Where(p => p.UserId != BanchoBot.UserId)
-            .OrderBy(p => p.Presence.Username, StringComparer.OrdinalIgnoreCase)
-            .Select(p => new OnlineEntry(p.UserId, p.Presence.Username, p.Presence.Mode, p.Presence.Action, p.Presence.ActionInfo,
-                p.Presence.BeatmapId, p.LastActivityUtc.UtcDateTime, "stable"))
+        var byId = players.All.ToDictionary(p => p.UserId);
+        var online = await services.GetRequiredService<OnlinePlayers>().GetAsync(cancellationToken).ConfigureAwait(false);
+        return online.Select(p => p.Client == OnlineClient.Stable && byId.TryGetValue(p.UserId, out var session)
+                ? new OnlineEntry(p.UserId, p.Username, session.Presence.Mode, session.Presence.Action, session.Presence.ActionInfo,
+                    session.Presence.BeatmapId, p.LastSeen, "stable")
+                : new OnlineEntry(p.UserId, p.Username, p.Mode ?? 0, p.Playing ? 2 : 0,
+                    (p.Client == OnlineClient.Lazer ? "on lazer" : "on the website") + (p.Doing is { } doing ? $": {doing}" : string.Empty),
+                    p.BeatmapId ?? 0, p.LastSeen, p.Client == OnlineClient.Lazer ? "lazer" : "website"))
             .ToList();
-
-        using var scope = services.CreateScope();
-        if (scope.ServiceProvider.GetService<TomYum.Persistence.OsuWeb.OsuWebCommunity>() is { } community)
-        {
-            var inGame = online.Select(p => p.UserId).ToHashSet();
-            online.AddRange((await community.GetOnlineSinceAsync(cancellationToken).ConfigureAwait(false))
-                .Where(p => !inGame.Contains(p.UserId))
-                .Select(p => new OnlineEntry(p.UserId, p.Username, 0, 0, "on lazer or the website", 0, p.LastSeen, "lazer/website")));
-        }
-        return online;
     }
 
     /// <summary>The acting staff member's osu-web user id (0 when the request didn't say).</summary>

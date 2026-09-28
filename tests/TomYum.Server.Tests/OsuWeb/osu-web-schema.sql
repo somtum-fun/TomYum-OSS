@@ -509,6 +509,26 @@ CREATE TABLE osu_user_beatmap_playcount (
   PRIMARY KEY (user_id, beatmap_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- Online statistics (front page graph) and lazer's multiplayer rooms (only what TomYum reads).
+CREATE TABLE osu_banchostats (
+  banchostats_id int unsigned NOT NULL AUTO_INCREMENT,
+  users_irc smallint NOT NULL DEFAULT 0,
+  users_osu mediumint NOT NULL DEFAULT 0,
+  users_lazer mediumint unsigned NOT NULL DEFAULT 0,
+  multiplayer_games smallint NOT NULL DEFAULT 0,
+  multiplayer_games_lazer smallint NOT NULL DEFAULT 0,
+  `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (banchostats_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE multiplayer_rooms (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  name varchar(100) NOT NULL DEFAULT '',
+  type enum('playlists', 'head_to_head', 'team_versus', 'matchmaking') NOT NULL DEFAULT 'playlists',
+  ends_at timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
 -- Notifications (medal unlocks among them): as on a current osu-web database.
 CREATE TABLE notifications (
   id bigint unsigned NOT NULL AUTO_INCREMENT,

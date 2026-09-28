@@ -67,8 +67,9 @@ public abstract class OsuWebDatabaseTest : IAsyncLifetime
             return;
 
         await AdminAsync($"CREATE DATABASE `{OsuWebDatabase}`");
-        OsuWebConnectionString = new MySqlConnectionStringBuilder(_server) { Database = OsuWebDatabase }.ConnectionString;
-        TomYumConnectionString = new MySqlConnectionStringBuilder(_server) { Database = TomYumDatabase }.ConnectionString;
+        // Small pools: test classes run in parallel, each with its own databases (and pools).
+        OsuWebConnectionString = new MySqlConnectionStringBuilder(_server) { Database = OsuWebDatabase, MaximumPoolSize = 4 }.ConnectionString;
+        TomYumConnectionString = new MySqlConnectionStringBuilder(_server) { Database = TomYumDatabase, MaximumPoolSize = 4 }.ConnectionString;
 
         var ddl = await File.ReadAllTextAsync(Path.Combine(AppContext.BaseDirectory, "OsuWeb", "osu-web-schema.sql"));
         await ExecuteAsync(ddl);
