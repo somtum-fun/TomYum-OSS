@@ -25,7 +25,16 @@ Done (2026-09-27):
   TomYum (`POST /_admin/beatmaps/import`, `/_admin/beatmapsets/{id}/import`) before the request is
   handled. Maps osu! doesn't know are remembered for an hour.
 
-Not yet: custom-map pp (the processor downloads `.osu` files from osu.ppy.sh).
+- **Presence across clients** (2026-09-28): the spectator build also publishes who's online on lazer,
+  and what they're doing, to Redis every 5 seconds (`tomyum:lazer-presence`, from
+  `docker/spectator/TomYumPresencePublisher.cs`). TomYum merges it with stable players and website
+  visitors (`OnlinePlayers`): the staff panel's online list, Discord's `/online`, `!alert`, and the
+  website's online statistics (`osu_banchostats`, written every minute: the front page's counts and graph).
+
+- **Medals**: ppy's processor gives lazer plays skill, mod introduction and statistics medals under
+  osu!'s ids; TomYum gives pack medals for both clients (docs/achievements.md).
+
+Custom-map pp works (the processor downloads `.osu` files from TomYum, `BEATMAP_DOWNLOAD_PATH`).
 
 ## Connecting a lazer client
 
