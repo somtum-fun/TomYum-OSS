@@ -82,11 +82,9 @@ public abstract class OsuWebDatabaseTest : IAsyncLifetime
 
         // Every test has its own databases, so its connection pools are never used again: close them,
         // or idle connections pile up across the run until MySQL refuses new ones.
-        foreach (var connectionString in new[] { OsuWebConnectionString, TomYumConnectionString })
-        {
-            using var connection = new MySqlConnection(connectionString);
-            await MySqlConnection.ClearPoolAsync(connection);
-        }
+        // EF's pools are keyed by the connection string Pomelo adds its own options to, so clearing
+        // ours by name misses them: clear every pool (other tests just open fresh connections).
+        await MySqlConnection.ClearAllPoolsAsync();
 
         await AdminAsync($"DROP DATABASE IF EXISTS `{OsuWebDatabase}`");
         await AdminAsync($"DROP DATABASE IF EXISTS `{TomYumDatabase}`");
