@@ -169,7 +169,15 @@ public sealed class OsuWebPerformanceWatcher : BackgroundService
             .GetProcessedSinceAsync(_processedCursor, cancellationToken).ConfigureAwait(false);
         var fresh = ids.Where(id => !_queuedAtCursor.Contains(id)).ToList();
         if (fresh.Count > 0)
+        {
             await services.GetRequiredService<OsuWebScoreIndexing>().QueueAsync(fresh).ConfigureAwait(false);
+            // Pack medals (ppy's processor can't give them here: see PackMedalAwarder).
+            if (services.GetService<Achievements.PackMedalAwarder>() is { } packs)
+                await packs.CheckAsync(fresh, cancellationToken).ConfigureAwait(false);
+            // Country rankings: the processor updates players, not their countries.
+            if (services.GetService<TomYum.Persistence.OsuWeb.OsuWebPackCompletion>() is { } scores && services.GetService<OsuWebSync>() is { } sync)
+                await sync.RecalculateCountriesOfAsync(await scores.PlayersOfScoresAsync(fresh, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+        }
 
         _queuedAtCursor = cursor == _processedCursor ? [.. _queuedAtCursor, .. fresh] : [.. ids];
         _processedCursor = cursor;

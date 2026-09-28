@@ -339,23 +339,28 @@ public sealed class OsuWebCommunity
     /// <see cref="OnlineWindow"/>, presence not hidden). Lazer counts through its website API use.
     /// BanchoBot and restricted players are left out.
     /// </summary>
-    public async Task<IReadOnlyList<(int UserId, string Username)>> GetOnlineAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<(int UserId, string Username)>> GetOnlineAsync(CancellationToken cancellationToken = default) =>
+        (await GetOnlineSinceAsync(cancellationToken).ConfigureAwait(false)).Select(o => (o.UserId, o.Username)).ToList();
+
+    /// <summary>Like <see cref="GetOnlineAsync"/>, with when each was last seen.</summary>
+    public async Task<IReadOnlyList<(int UserId, string Username, DateTime LastSeen)>> GetOnlineSinceAsync(CancellationToken cancellationToken = default)
     {
         var since = DateTimeOffset.UtcNow.Add(-OnlineWindow).ToUnixTimeSeconds();
         var rows = await _db.Database.SqlQueryRaw<OnlineRow>(
             $$"""
-            SELECT u.user_id AS UserId, u.username AS Username FROM phpbb_users u
+            SELECT u.user_id AS UserId, u.username AS Username, CAST(u.user_lastvisit AS SIGNED) AS LastVisit FROM phpbb_users u
             WHERE u.user_lastvisit > {0} AND u.user_allow_viewonline = 1 AND u.user_id <> 1 AND {{Visible}}
             ORDER BY u.username
             LIMIT 500
             """, since).ToListAsync(cancellationToken).ConfigureAwait(false);
-        return rows.Select(r => ((int)r.UserId, r.Username)).ToList();
+        return rows.Select(r => ((int)r.UserId, r.Username, DateTimeOffset.FromUnixTimeSeconds(r.LastVisit).UtcDateTime)).ToList();
     }
 
     private sealed class OnlineRow
     {
         public uint UserId { get; set; }
         public string Username { get; set; } = string.Empty;
+        public long LastVisit { get; set; }
     }
 
     /// <summary>The player's osu-web group identifiers (<c>admin</c>, <c>gmt</c>, <c>nat</c>, <c>bng</c>, …).</summary>

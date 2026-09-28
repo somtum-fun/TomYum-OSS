@@ -84,6 +84,35 @@ public sealed class OsuWebSync : IOsuWebSync
     /// Has osu-web rebuild the player's country ranking data (country rankings and the country filter
     /// of the global ranking). Best effort: rankings just lag behind if it fails.
     /// </summary>
+    /// <summary>
+    /// Rebuilds the country ranking data of these players' countries, once per country: after lazer
+    /// plays (ppy's processor updates the players' stats, not their countries' rankings).
+    /// </summary>
+    public async Task RecalculateCountriesOfAsync(IEnumerable<int> userIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(userIds);
+        if (!_interop.IsConfigured)
+            return;
+
+        var countries = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var userId in userIds.Distinct())
+        {
+            if (await _mirror.GetCountryAsync(userId, cancellationToken).ConfigureAwait(false) is { Length: > 0 } country)
+                countries.Add(country);
+        }
+        foreach (var country in countries)
+        {
+            try
+            {
+                await _interop.RecalculateCountryAsync(country, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "osu-web country recalculation failed for {Country}.", country);
+            }
+        }
+    }
+
     private async Task RecalculateCountryAsync(int userId, CancellationToken cancellationToken)
     {
         if (!_interop.IsConfigured)
@@ -100,27 +129,34 @@ public sealed class OsuWebSync : IOsuWebSync
         }
     }
 
-    public async Task MedalsUnlockedAsync(int userId, IReadOnlyList<Medal> medals, int beatmapId, CancellationToken cancellationToken = default)
+    public Task MedalsUnlockedAsync(int userId, IReadOnlyList<Medal> medals, int beatmapId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(medals);
+        return UnlockMedalIdsAsync(userId, medals.Select(m => m.Id).ToList(), beatmapId, cancellationToken);
+    }
 
-        foreach (var medal in medals)
+    /// <summary>Unlocks medals by id on the website (with its notification and activity entry when InterOp works).</summary>
+    public async Task UnlockMedalIdsAsync(int userId, IReadOnlyList<int> medalIds, int beatmapId, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(medalIds);
+
+        foreach (var medalId in medalIds)
         {
             if (_interop.IsConfigured)
             {
                 try
                 {
-                    await _interop.UnlockMedalAsync(userId, medal.Id, beatmapId, cancellationToken).ConfigureAwait(false);
+                    await _interop.UnlockMedalAsync(userId, medalId, beatmapId, cancellationToken).ConfigureAwait(false);
                     continue;
                 }
                 catch (HttpRequestException ex)
                 {
-                    _logger.LogWarning(ex, "osu-web InterOp unlock of medal {MedalId} for user {UserId} failed; writing it directly", medal.Id, userId);
+                    _logger.LogWarning(ex, "osu-web InterOp unlock of medal {MedalId} for user {UserId} failed; writing it directly", medalId, userId);
                 }
             }
 
             // No InterOp (or it failed): the medal still shows on the profile, just without an activity entry.
-            await _medals.InsertUnlockAsync(userId, medal.Id, beatmapId, DateTime.UtcNow, cancellationToken).ConfigureAwait(false);
+            await _medals.InsertUnlockAsync(userId, medalId, beatmapId, DateTime.UtcNow, cancellationToken).ConfigureAwait(false);
         }
     }
 

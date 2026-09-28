@@ -105,7 +105,9 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Configuration.GetSection(OsuWebInteropOptions.SectionName).Bind(interopOptions);
     builder.Services.AddSingleton(interopOptions);
     builder.Services.AddHttpClient<OsuWebInterop>(http => http.Timeout = TimeSpan.FromSeconds(10));
-    builder.Services.AddScoped<IOsuWebSync, OsuWebSync>();
+    builder.Services.AddScoped<OsuWebSync>();
+    builder.Services.AddScoped<IOsuWebSync>(sp => sp.GetRequiredService<OsuWebSync>());
+    builder.Services.AddScoped<TomYum.Server.Achievements.PackMedalAwarder>();
     // Profile rank graphs: a daily snapshot of everyone's rank.
     builder.Services.AddHostedService<OsuWebRankHistoryJob>();
 
@@ -327,6 +329,11 @@ if (databaseOptions.Enabled)
         // Medals: osu-web's catalog starts empty, and profiles only show catalogued medals. It's
         // osu!'s own list (ppy's processor awards lazer medals by osu!'s ids); TomYum's when offline.
         var medals = scope.ServiceProvider.GetRequiredService<OsuWebMedals>();
+        // Local packs clear of osu!'s pack numbers, which ppy's processor checks for pack medals.
+        var movedPacks = await scope.ServiceProvider.GetRequiredService<OsuWebPackCompletion>()
+            .MovePacksOutOfOsusNumbersAsync(TomYum.Server.Achievements.PackMedalAwarder.LocalPackFloor);
+        if (movedPacks > 0)
+            app.Logger.LogInformation("Renumbered {Count} beatmap pack(s) clear of osu!'s pack numbers.", movedPacks);
         using (var medalHttp = app.Services.GetRequiredService<IHttpClientFactory>().CreateClient())
         {
             medalHttp.Timeout = TimeSpan.FromSeconds(20);
@@ -339,15 +346,25 @@ if (databaseOptions.Enabled)
         }
         try
         {
-            if (await scope.ServiceProvider.GetRequiredService<TomYum.Server.Achievements.MedalRebuild>().RunIfPendingAsync() is { } rebuilt)
+            var rebuild = scope.ServiceProvider.GetRequiredService<TomYum.Server.Achievements.MedalRebuild>();
+            if (await rebuild.RunIfPendingAsync() is { } rebuilt)
                 app.Logger.LogInformation(
                     "Medals recalculated under osu!'s ids and rules: {Scores} score(s) judged, {Added} medal(s) given, {Removed} taken back, {Legacy} old website copies removed.",
                     rebuilt.Scores, rebuilt.Added, rebuilt.Removed, rebuilt.LegacyCopiesRemoved);
+            if (await rebuild.RunLazerIfPendingAsync() is { } lazer)
+                app.Logger.LogInformation(
+                    "Lazer and pack medals recalculated: {Scores} lazer play(s) judged, {Added} given, {Removed} taken back, {Packs} pack medal(s), {Notifications} old notification(s) removed.",
+                    lazer.LazerScores, lazer.Added, lazer.Removed, lazer.PackMedals, lazer.Notifications);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             app.Logger.LogError(ex, "Recalculating medals failed; it runs again at the next start.");
         }
+        // Country rankings for everyone with stats (lazer plays before this didn't update them).
+        var ranked = await scope.ServiceProvider.GetRequiredService<OsuWebDbContext>().Database
+            .SqlQuery<int>($"SELECT DISTINCT CAST(user_id AS SIGNED) AS Value FROM osu_user_stats UNION SELECT CAST(user_id AS SIGNED) FROM osu_user_stats_taiko UNION SELECT CAST(user_id AS SIGNED) FROM osu_user_stats_fruits UNION SELECT CAST(user_id AS SIGNED) FROM osu_user_stats_mania")
+            .ToListAsync();
+        await scope.ServiceProvider.GetRequiredService<OsuWebSync>().RecalculateCountriesOfAsync(ranked);
         var copiedUnlocks = await medals.CopyUnlocksAsync();
         if (copiedUnlocks > 0)
             app.Logger.LogInformation("osu-web medals: {Unlocks} earlier unlock(s) copied.", copiedUnlocks);

@@ -34,4 +34,8 @@
     <ProjectReference Include="../TomYum.Plugins.Loader/TomYum.Plugins.Loader.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Achievements/PackMedals.json" LogicalName="TomYum.Server.Achievements.PackMedals.json" />
+  </ItemGroup>
+
 </Project>
