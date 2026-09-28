@@ -75,6 +75,12 @@ public sealed class MapCommands
         {
             try
             {
+                // The rating with the mods (and in the ruleset) played, instead of the map's own.
+                if ((np.Mods != TomYum.Bancho.Mods.None || np.Mode != beatmap.Mode)
+                    && await calculator.StarRatingAsync(beatmap.Id, np.Mode, (int)np.Mods, cancellationToken).ConfigureAwait(false) is { } stars)
+                {
+                    parts[1] = "★" + stars.ToString("0.00", CultureInfo.InvariantCulture);
+                }
                 var pp = await calculator.ForAccuraciesAsync(beatmap.Id, np.Mode, (int)np.Mods, Accuracies, cancellationToken).ConfigureAwait(false);
                 if (pp is { Count: 4 })
                 {

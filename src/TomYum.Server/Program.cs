@@ -119,6 +119,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService<BanchoStatsJob>();
     // The website's first places (profile "First Place Scores"), which nothing else keeps.
     builder.Services.AddHostedService<OsuWebLeadersJob>();
+    // Score cards (Discord) show the star rating with the play's mods.
+    builder.Services.AddSingleton<IStarRatings, ModStarRatings>();
     // Lazer's daily challenge: osu-web opens the rooms; TomYum keeps its queue filled.
     var dailyChallengeOptions = new DailyChallengeOptions();
     builder.Configuration.GetSection(DailyChallengeOptions.SectionName).Bind(dailyChallengeOptions);
