@@ -163,6 +163,36 @@ public sealed class DiscordDatabaseTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task TheOnlyRankedPlayer_IsFirst_WhateverTheirPp()
+    {
+        var (alpha, _, _) = await SeedAsync();
+        await InsertStatsAsync(alpha, pp: 515.168, accuracy: 93.6, plays: 7, country: "NL"); // not exact as a float
+        var links = new InMemoryDiscordLinkRepository();
+        await links.LinkAsync(alpha, 555, DateTime.UtcNow);
+
+        var rank = await NewCommands(links).RunAsync("rank", new Dictionary<string, string>(), 555);
+        Assert.Equal("**Alpha** is #1 in osu! (:flag_nl: #1) with 515.17pp.", rank.Post.Content);
+    }
+
+    [MySqlFact]
+    public async Task Online_CountsLazerAndWebsitePlayers_TheWebsitesWay()
+    {
+        var (alpha, bravo, cheater) = await SeedAsync();
+        await ExecuteAsync($"UPDATE phpbb_users SET user_lastvisit = UNIX_TIMESTAMP() - 60 WHERE user_id IN ({alpha}, {bravo}, {cheater})");
+        await ExecuteAsync($"UPDATE phpbb_users SET user_allow_viewonline = 0 WHERE user_id = {bravo}"); // hides their presence
+        var players = new PlayerRegistry();
+        players.Add(new TomYum.Bancho.BanchoPresence { UserId = 999, Username = "StablePlayer" });
+        var services = new ServiceCollection()
+            .AddScoped(_ => new OsuWebCommunity(NewOsuWebContext()))
+            .AddSingleton<IDiscordLinkRepository>(new InMemoryDiscordLinkRepository())
+            .BuildServiceProvider();
+        var commands = new DiscordCommands(services.GetRequiredService<IServiceScopeFactory>(), players, new DiscordLinkCodes(), new DiscordFormat("https://osu.test", "https://a.test"));
+
+        var online = await commands.RunAsync("online", new Dictionary<string, string>(), 1);
+        Assert.Equal("**2** online\n▸ **stable** (1): StablePlayer\n▸ **lazer / website** (1): Alpha", online.Post.Content);
+    }
+
+    [MySqlFact]
     public async Task Announcer_WaitsWhileDiscordIsDown_ThenCatchesUp()
     {
         var (alpha, _, _) = await SeedAsync();

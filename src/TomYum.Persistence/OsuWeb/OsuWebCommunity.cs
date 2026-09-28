@@ -152,10 +152,15 @@ public sealed class OsuWebCommunity
         int? globalRank = null, countryRank = null;
         if (row.Pp > 0 && !row.Restricted)
         {
-            var above = $"SELECT COUNT(*) AS Value FROM `{table}` s JOIN phpbb_users u ON u.user_id = s.user_id WHERE {Visible} AND s.rank_score > {{0}}";
-            globalRank = (int)(await _db.Database.SqlQueryRaw<long>(above, row.Pp).SingleAsync(cancellationToken).ConfigureAwait(false)) + 1;
-            var aboveInCountry = above + " AND u.country_acronym = {1}";
-            countryRank = (int)(await _db.Database.SqlQueryRaw<long>(aboveInCountry, row.Pp, row.Country).SingleAsync(cancellationToken).ConfigureAwait(false)) + 1;
+            // Compared in SQL against the player's own row: the column is a float, and a rounded copy
+            // passed back in could rank the player below themselves.
+            var above = $$"""
+                SELECT COUNT(*) AS Value FROM `{{table}}` s JOIN phpbb_users u ON u.user_id = s.user_id
+                WHERE {{Visible}} AND s.user_id <> {0} AND s.rank_score > (SELECT own.rank_score FROM `{{table}}` own WHERE own.user_id = {0})
+                """;
+            globalRank = (int)(await _db.Database.SqlQueryRaw<long>(above, userId).SingleAsync(cancellationToken).ConfigureAwait(false)) + 1;
+            countryRank = (int)(await _db.Database.SqlQueryRaw<long>(above + " AND u.country_acronym = {1}", userId, row.Country)
+                .SingleAsync(cancellationToken).ConfigureAwait(false)) + 1;
         }
 
         return new PlayerCard(
@@ -324,6 +329,33 @@ public sealed class OsuWebCommunity
         return rows.Where(r => r.GroupId != botGroup)
             .Select(r => new NewPlayer((int)r.UserId, r.Username, r.CountryAcronym, DateTimeOffset.FromUnixTimeSeconds(r.UserRegdate).UtcDateTime))
             .ToList();
+    }
+
+    /// <summary>How recently a player must have been seen to count as online (osu-web's <c>USER_ONLINE_WINDOW</c> default).</summary>
+    public static readonly TimeSpan OnlineWindow = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Players the website shows as online (osu-web's <c>User::isOnline</c>: seen within
+    /// <see cref="OnlineWindow"/>, presence not hidden). Lazer counts through its website API use.
+    /// BanchoBot and restricted players are left out.
+    /// </summary>
+    public async Task<IReadOnlyList<(int UserId, string Username)>> GetOnlineAsync(CancellationToken cancellationToken = default)
+    {
+        var since = DateTimeOffset.UtcNow.Add(-OnlineWindow).ToUnixTimeSeconds();
+        var rows = await _db.Database.SqlQueryRaw<OnlineRow>(
+            $$"""
+            SELECT u.user_id AS UserId, u.username AS Username FROM phpbb_users u
+            WHERE u.user_lastvisit > {0} AND u.user_allow_viewonline = 1 AND u.user_id <> 1 AND {{Visible}}
+            ORDER BY u.username
+            LIMIT 500
+            """, since).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Select(r => ((int)r.UserId, r.Username)).ToList();
+    }
+
+    private sealed class OnlineRow
+    {
+        public uint UserId { get; set; }
+        public string Username { get; set; } = string.Empty;
     }
 
     /// <summary>The player's osu-web group identifiers (<c>admin</c>, <c>gmt</c>, <c>nat</c>, <c>bng</c>, …).</summary>

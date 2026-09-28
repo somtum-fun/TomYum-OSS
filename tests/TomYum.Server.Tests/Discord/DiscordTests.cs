@@ -236,7 +236,17 @@ public sealed class DiscordTests
         var services = new ServiceCollection().AddSingleton<IDiscordLinkRepository>(new InMemoryDiscordLinkRepository()).BuildServiceProvider();
         var commands = new DiscordCommands(services.GetRequiredService<IServiceScopeFactory>(), players, new DiscordLinkCodes(), new DiscordFormat("https://osu.test", "https://a.test"));
 
-        Assert.Equal("**2** in-game: alpha, Bravo", (await commands.RunAsync("online", new Dictionary<string, string>(), 1)).Post.Content);
+        Assert.Equal("**2** online\n▸ **stable** (2): alpha, Bravo", (await commands.RunAsync("online", new Dictionary<string, string>(), 1)).Post.Content);
+    }
+
+    [Theory]
+    [InlineData("Artist - Title (TV Size) [Extra]", "Artist - Title (TV Size) [Extra]")]
+    [InlineData("under_score*", "under_score*")]
+    [InlineData("Weird ] name [x]", "Weird ) name (x)")]
+    [InlineData("Open [ only", "Open ( only")]
+    public void LinkLabels_AreNotEscaped_AndCantBreakTheLink(string text, string expected)
+    {
+        Assert.Equal(expected, DiscordFormat.LinkLabel(text));
     }
 
     private static (DiscordChatRelay, DiscordFakeGateway, InMemoryUserRepository, InMemoryDiscordLinkRepository, OnlinePlayer Listener, ChatLog) NewRelay()
