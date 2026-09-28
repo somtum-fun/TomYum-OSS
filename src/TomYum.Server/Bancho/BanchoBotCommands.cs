@@ -31,6 +31,7 @@ public sealed class BanchoBotCommands
     private readonly LoadedPluginRegistry _loadedPlugins;
     private readonly ModerationCommands? _moderation;
     private readonly Discord.DiscordLinkCodes? _discordCodes;
+    private readonly MapCommands? _maps;
 
     public BanchoBotCommands(
         TomYumVersion version,
@@ -42,7 +43,8 @@ public sealed class BanchoBotCommands
         PluginCommandRegistry pluginCommands,
         LoadedPluginRegistry loadedPlugins,
         ModerationCommands? moderation = null,
-        Discord.DiscordLinkCodes? discordCodes = null)
+        Discord.DiscordLinkCodes? discordCodes = null,
+        MapCommands? maps = null)
     {
         _version = version;
         _players = players;
@@ -54,6 +56,7 @@ public sealed class BanchoBotCommands
         _loadedPlugins = loadedPlugins;
         _moderation = moderation;
         _discordCodes = discordCodes;
+        _maps = maps;
     }
 
     public async Task<string?> TryHandleAsync(
@@ -83,6 +86,9 @@ public sealed class BanchoBotCommands
             "mp" => await MpAsync(caller, parts, privileges, cancellationToken).ConfigureAwait(false),
             "plugins" => ListPlugins(),
             "link" => await LinkDiscordAsync(caller, parts, cancellationToken).ConfigureAwait(false),
+            "map" => _maps is null
+                ? "Status changes aren't available on this server."
+                : await _maps.RunAsync(caller, parts[1..], cancellationToken).ConfigureAwait(false),
             _ when ModerationCommands.Handles(command) => _moderation is null
                 ? "Moderation isn't available on this server."
                 : await _moderation.RunAsync(caller.UserId, command, parts[1..], cancellationToken).ConfigureAwait(false),
@@ -150,10 +156,10 @@ public sealed class BanchoBotCommands
         privileges.HasFlag(BanchoPrivileges.Owner) || privileges.HasFlag(BanchoPrivileges.Developer);
 
     private static string Help(BanchoPrivileges privileges) => IsStaff(privileges)
-        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !stats (staff), !setpriv <user> <role> (staff). "
+        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np), !stats (staff), !setpriv <user> <role> (staff). "
           + "Moderation (staff): !restrict/!ban <user> <reason>, !unrestrict/!unban <user> <reason>, !silence <user> <10m|1h|1d|1w> <reason>, "
           + "!unsilence <user> [reason], !alert <message>, !alertu <user> <message>, !alts <user>, !verify <user>. Names with spaces: use _."
-        : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord).";
+        : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np).";
 
     private static string Roll(string sender, string[] parts)
     {

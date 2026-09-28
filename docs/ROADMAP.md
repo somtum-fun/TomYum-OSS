@@ -105,7 +105,7 @@ _Clean-room reimplementation from `memories/features/dan-mode.md` + `session.md`
 ## Phase 5 — Custom beatmaps 🔒 Phase 0 (storage/migrations); `!map` needs none
 _TomYum already **serves** status; it can't **accept uploads** yet. Split status-work (easy) from upload (hard)._
 
-- [ ] **`!map` rank/love/unrank/qualified** + `/np` last-map tracking — status-only, no osz2. Do early.
+- [x] **`!map` rank/love/unrank/qualified** + `/np` last-map tracking — status-only, no osz2. `/np` to BanchoBot answers with the map, status and pp at 95–100%.
 - [ ] Custom-status model: `mapsets` table (ownership, `frozen`, `prod_only`), per-mode override,
       set-vs-diff granularity; exclude custom maps from osu!api re-sync.
 - [ ] ⚖️ **osz2 codec** — the single biggest build item. Decide: clean-room C# vs a sidecar (like the

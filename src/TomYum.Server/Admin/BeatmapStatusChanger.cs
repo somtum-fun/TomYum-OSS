@@ -74,6 +74,9 @@ public sealed class BeatmapStatusChanger
         var changed = new List<Beatmap>();
         foreach (var beatmap in Targets(set, beatmapIds))
         {
+            // Already set by staff to this status: nothing to do (no log entry, recalculation or announcement).
+            if (beatmap.StatusFrozen && beatmap.Status == status)
+                continue;
             if (await _repository.SetStatusAsync(beatmap.Id, status, cancellationToken).ConfigureAwait(false))
             {
                 _beatmaps.SetStatusOverride(beatmap.Id, status);
