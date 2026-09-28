@@ -6,7 +6,7 @@ namespace TomYum.Server.Plugins;
 
 /// <summary>
 /// Shared store of plugin-contributed <c>!</c>commands. <c>BanchoBotCommands</c> consults it for any
-/// command its built-in switch doesn't handle, so plugins add commands with no core change. Each
+/// command that isn't built in, so plugins add commands with no core change. Each
 /// registration is tagged with the owning plugin id (for <c>!plugins</c> listing and unload).
 /// </summary>
 public sealed class PluginCommandRegistry
@@ -29,6 +29,9 @@ public sealed class PluginCommandRegistry
         ArgumentNullException.ThrowIfNull(handler);
 
         var normalized = name.TrimStart('!').ToLowerInvariant();
+        if (Bancho.BanchoBotCommands.BuiltIn.Contains(normalized))
+            throw new InvalidOperationException(
+                $"plugin '{pluginId}' cannot register command '!{normalized}': it is a built-in command.");
         var command = new PluginCommand(pluginId, normalized, description ?? string.Empty, handler);
         if (!_commands.TryAdd(normalized, command))
             throw new InvalidOperationException(

@@ -309,4 +309,61 @@ public class ChatHandlerTests
         Assert.DoesNotContain("!stats", await bot.TryHandleCommandAsync(Caller("Player"), "!help", BanchoPrivileges.Player));
         Assert.Contains("!stats", await bot.TryHandleCommandAsync(Caller("Admin"), "!help", BanchoPrivileges.Owner));
     }
+
+    [Fact]
+    public async Task Bot_Help_IsMadeFromTheCommands()
+    {
+        var bot = NewBot();
+        var player = await bot.TryHandleCommandAsync(Caller("Player"), "!help", BanchoPrivileges.Player);
+        Assert.StartsWith("Commands: ", player, StringComparison.Ordinal);
+        Assert.Contains("!roll [max]", player, StringComparison.Ordinal);
+        Assert.Contains("!link <code> (Discord)", player, StringComparison.Ordinal);
+        Assert.Contains("!map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np)", player, StringComparison.Ordinal);
+        Assert.DoesNotContain("!restrict", player, StringComparison.Ordinal);
+
+        var staff = await bot.TryHandleCommandAsync(Caller("Admin"), "!help", BanchoPrivileges.Owner);
+        Assert.Contains(" Staff: ", staff, StringComparison.Ordinal);
+        Assert.Contains("!silence <user> <10m|1h|1d|1w> <reason>", staff, StringComparison.Ordinal);
+        Assert.DoesNotContain("!ban ", staff, StringComparison.Ordinal); // an alias: works, not listed
+        Assert.EndsWith("Names with spaces: use _.", staff, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CommandTables_RefuseMisdeclaredCommands()
+    {
+        Assert.Contains("restrict", BanchoBotCommands.BuiltIn);
+        Assert.Throws<InvalidOperationException>(() => new ChatCommandTable<Twice>());
+        Assert.Throws<InvalidOperationException>(() => new ChatCommandTable<WrongShape>());
+    }
+
+    [Fact]
+    public async Task CommandTables_RunTheMethod_ForEachOfItsNames()
+    {
+        var table = new ChatCommandTable<Echo>();
+        var context = new ChatCommandContext(Caller("Player"), "shout", ["shout", "hi"], "!shout hi", BanchoPrivileges.Player, CancellationToken.None);
+        Assert.Equal((true, "shout: hi"), await table.RunAsync(new Echo(), context));
+        Assert.Equal((false, null), await table.RunAsync(new Echo(), context with { Name = "nope" }));
+    }
+
+    private sealed class Echo
+    {
+        [ChatCommand("say")]
+        [ChatCommand("shout")]
+        public static Task<string?> Run(ChatCommandContext context) => Task.FromResult<string?>($"{context.Name}: {string.Join(' ', context.Args)}");
+    }
+
+    private sealed class Twice
+    {
+        [ChatCommand("a")]
+        public static string One(ChatCommandContext context) => "1";
+
+        [ChatCommand("a")]
+        public static string Two(ChatCommandContext context) => "2";
+    }
+
+    private sealed class WrongShape
+    {
+        [ChatCommand("x")]
+        public static int Number(string text) => 1;
+    }
 }
