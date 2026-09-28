@@ -66,7 +66,7 @@ public sealed class MapCommands
         var mods = ModNames(np.Mods);
         var parts = new List<string>
         {
-            $"[{_site}/b/{beatmap.Id.ToString(CultureInfo.InvariantCulture)} {beatmap.Artist} - {beatmap.Title} ({beatmap.Creator}) [{beatmap.Version}]]{(mods.Length > 0 ? " +" + mods : string.Empty)}",
+            $"[{_site}/b/{beatmap.Id.ToString(CultureInfo.InvariantCulture)} {beatmap.FullName}]{(mods.Length > 0 ? " +" + mods : string.Empty)}",
             "★" + beatmap.StarRating.ToString("0.00", CultureInfo.InvariantCulture),
             StatusName(status),
         };

@@ -25,7 +25,7 @@ public enum RelayOutcome
 /// themselves, and not while they're silenced or restricted, so in-game moderation applies. Link
 /// codes are never relayed.
 /// </summary>
-public sealed class DiscordChatRelay : BackgroundService
+public sealed partial class DiscordChatRelay : BackgroundService
 {
     /// <summary>Longest message relayed into the game (stable's chat box takes about this much).</summary>
     public const int MaxGameMessage = 400;
@@ -71,8 +71,29 @@ public sealed class DiscordChatRelay : BackgroundService
 
         var name = DiscordFormat.Escape(sender);
         if (text.StartsWith(ActionPrefix, StringComparison.Ordinal))
-            return $"\\* **{name}** {DiscordFormat.Escape(text[ActionPrefix.Length..].TrimEnd('\u0001'))}";
-        return $"**{name}**: {DiscordFormat.Escape(text)}";
+            return $"\\* **{name}** {ToDiscordText(text[ActionPrefix.Length..].TrimEnd('\u0001'))}";
+        return $"**{name}**: {ToDiscordText(text)}";
+    }
+
+    /// <summary>
+    /// Chat text for Discord: markdown escaped, and osu! chat links (<c>[https://… label]</c>, as a
+    /// /np sends them, or the old <c>(label)[https://…]</c>) turned into Discord links, <c>[label](https://…)</c>.
+    /// </summary>
+    public static string ToDiscordText(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        var builder = new System.Text.StringBuilder(text.Length + 16);
+        var at = 0;
+        foreach (System.Text.RegularExpressions.Match link in ChatLink().Matches(text))
+        {
+            builder.Append(DiscordFormat.Escape(text[at..link.Index]));
+            var url = link.Groups["url"].Success ? link.Groups["url"].Value : link.Groups["oldurl"].Value;
+            var label = link.Groups["label"].Success ? link.Groups["label"].Value : link.Groups["oldlabel"].Value;
+            builder.Append('[').Append(DiscordFormat.LinkLabel(label.Trim())).Append("](").Append(url).Append(')');
+            at = link.Index + link.Length;
+        }
+        builder.Append(DiscordFormat.Escape(text[at..]));
+        return builder.ToString();
     }
 
     /// <summary>A Discord message as it's said in-game: one line, trimmed; null when nothing is left.</summary>
@@ -154,6 +175,10 @@ public sealed class DiscordChatRelay : BackgroundService
         if (ToDiscordLine(entry.SenderName, entry.Text) is { } line)
             _toDiscord.Writer.TryWrite(line);
     }
+
+    /// <summary>osu! chat links: <c>[url label]</c> (the label may hold [brackets]) and the old <c>(label)[url]</c>.</summary>
+    [System.Text.RegularExpressions.GeneratedRegex(@"\[(?<url>https?://[^\s\]]+) (?<label>(?:[^\[\]]|\[[^\[\]]*\])+)\]|\((?<oldlabel>[^()]+)\)\[(?<oldurl>https?://[^\s\]]+)\]")]
+    private static partial System.Text.RegularExpressions.Regex ChatLink();
 
     private static bool IsLinkCode(string text) =>
         text.TrimStart().StartsWith("!link", true, CultureInfo.InvariantCulture);
