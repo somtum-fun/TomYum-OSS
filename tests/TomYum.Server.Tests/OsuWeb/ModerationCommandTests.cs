@@ -97,6 +97,36 @@ public sealed class ModerationCommandTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task Alerts_AlsoReachLazerAndWebsitePlayers_AsAMessage()
+    {
+        var osuWeb = NewOsuWebContext();
+        var users = new OsuWebUserRepository(osuWeb);
+        var gmt = await users.AddAsync(NewUser("Gmt Person", UserPrivileges.Normal | UserPrivileges.Moderator));
+        var stable = await users.AddAsync(NewUser("Stable Player", UserPrivileges.Normal));
+        var lazer = await users.AddAsync(NewUser("Lazer Player", UserPrivileges.Normal));
+        await users.AddAsync(NewUser("Offline Player", UserPrivileges.Normal));
+        // New accounts count as just seen: only these two were active recently.
+        await ExecuteAsync("UPDATE phpbb_users SET user_lastvisit = 0");
+        await ExecuteAsync($"UPDATE phpbb_users SET user_lastvisit = UNIX_TIMESTAMP() WHERE user_id IN ({stable.Id}, {lazer.Id})");
+
+        var players = new PlayerRegistry();
+        players.Add(new BanchoPresence { UserId = stable.Id, Username = "Stable Player" });
+        var services = new ServiceCollection()
+            .AddSingleton<IUserRepository>(users)
+            .AddScoped(_ => new OsuWebCommunity(NewOsuWebContext()))
+            .BuildServiceProvider();
+        var scopes = services.GetRequiredService<IServiceScopeFactory>();
+        var website = new TomYum.Server.OsuWeb.OsuWebChatBridge(
+            scopes, players, new ChannelRegistry(), new ChatLog(scopes, TimeProvider.System, NullLogger<ChatLog>.Instance),
+            NullLogger<TomYum.Server.OsuWeb.OsuWebChatBridge>.Instance);
+        var commands = new ModerationCommands(scopes, players, website: website);
+
+        Assert.Equal("Sent to 1 player(s) in-game and 1 on lazer/the website.", await commands.RunAsync(gmt.Id, "alert", ["restart", "soon"]));
+        Assert.Equal("Sent to Lazer Player as a message (they're not in stable).", await commands.RunAsync(gmt.Id, "alertu", ["Lazer_Player", "hi"]));
+        Assert.Equal("Sent to Stable Player.", await commands.RunAsync(gmt.Id, "alertu", ["Stable_Player", "hi"]));
+    }
+
+    [MySqlFact]
     public async Task DiscordStaffCommands_TakeAPlayer_AndRunAsTheLinkedAccount()
     {
         var tomyum = await NewTomYumContextAsync();

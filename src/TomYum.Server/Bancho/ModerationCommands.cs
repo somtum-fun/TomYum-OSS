@@ -26,13 +26,18 @@ public sealed class ModerationCommands
     private readonly IServiceScopeFactory _scopes;
     private readonly PlayerRegistry _players;
     private readonly TimeProvider _time;
+    private readonly OsuWeb.OsuWebChatBridge? _website;
 
-    public ModerationCommands(IServiceScopeFactory scopes, PlayerRegistry players, TimeProvider? time = null)
+    public ModerationCommands(IServiceScopeFactory scopes, PlayerRegistry players, TimeProvider? time = null, OsuWeb.OsuWebChatBridge? website = null)
     {
         _scopes = scopes;
         _players = players;
         _time = time ?? TimeProvider.System;
+        _website = website;
     }
+
+    /// <summary>An alert as a chat message (lazer and the website have no pop-up for it).</summary>
+    private static string WebsiteAlert(string text) => $"📢 Staff alert: {text}";
 
     /// <summary>The moderation command words.</summary>
     public static bool Handles(string command) =>
@@ -52,22 +57,54 @@ public sealed class ModerationCommands
         switch (command)
         {
             case "alert":
+            {
                 if (parts.Length == 0)
                     return "Usage: !alert <message>";
-                var everyone = Notification(string.Join(' ', parts));
-                foreach (var player in _players.All.Where(p => p.UserId != BanchoBot.UserId))
+                var text = string.Join(' ', parts);
+                var everyone = Notification(text);
+                var inGame = _players.All.Where(p => p.UserId != BanchoBot.UserId).ToList();
+                foreach (var player in inGame)
                     player.Enqueue(everyone);
-                return string.Create(CultureInfo.InvariantCulture, $"Sent to {_players.All.Count(p => p.UserId != BanchoBot.UserId)} player(s).");
+
+                // Lazer (and website) players get it as a message from BanchoBot: that's what reaches them.
+                var elsewhere = 0;
+                if (scope.ServiceProvider.GetService<OsuWebCommunity>() is { } community && _website is not null)
+                {
+                    var stable = inGame.Select(p => p.UserId).ToHashSet();
+                    foreach (var (userId, username) in await community.GetOnlineAsync(cancellationToken).ConfigureAwait(false))
+                    {
+                        if (stable.Contains(userId))
+                            continue;
+                        _website.ForwardPrivateMessage(BanchoBot.UserId, username, WebsiteAlert(text));
+                        elsewhere++;
+                    }
+                }
+                return elsewhere > 0
+                    ? string.Create(CultureInfo.InvariantCulture, $"Sent to {inGame.Count} player(s) in-game and {elsewhere} on lazer/the website.")
+                    : string.Create(CultureInfo.InvariantCulture, $"Sent to {inGame.Count} player(s).");
+            }
 
             case "alertu":
+            {
                 if (parts.Length < 2)
                     return "Usage: !alertu <user> <message>";
+                var text = string.Join(' ', parts[1..]);
                 var recipient = _players.GetByUsername(parts[0].Replace('_', ' '))
                     ?? _players.All.FirstOrDefault(p => User.MakeSafeName(p.Presence.Username) == User.MakeSafeName(parts[0]));
-                if (recipient is null)
-                    return $"{parts[0]} isn't online.";
-                recipient.Enqueue(Notification(string.Join(' ', parts[1..])));
-                return $"Sent to {recipient.Presence.Username}.";
+                if (recipient is not null)
+                {
+                    recipient.Enqueue(Notification(text));
+                    return $"Sent to {recipient.Presence.Username}.";
+                }
+
+                // Not in stable: as a message on lazer/the website, where they'll see it next.
+                if (_website is not null && await users.GetBySafeNameAsync(User.MakeSafeName(parts[0]), cancellationToken).ConfigureAwait(false) is { } user)
+                {
+                    _website.ForwardPrivateMessage(BanchoBot.UserId, user.Username, WebsiteAlert(text));
+                    return $"Sent to {user.Username} as a message (they're not in stable).";
+                }
+                return $"{parts[0]} isn't online.";
+            }
 
             case "alts" or "verify":
                 return await RunHardwareCommandAsync(scope.ServiceProvider, users, caller, command, parts, cancellationToken).ConfigureAwait(false);

@@ -105,6 +105,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddSingleton(interopOptions);
     builder.Services.AddHttpClient<OsuWebInterop>(http => http.Timeout = TimeSpan.FromSeconds(10));
     builder.Services.AddScoped<IOsuWebSync, OsuWebSync>();
+    // Profile rank graphs: a daily snapshot of everyone's rank.
+    builder.Services.AddHostedService<OsuWebRankHistoryJob>();
 
     // ppy's score processor next to osu-web (lazer support, docs/lazer.md): it owns pp on the website.
     var mirrorOptions = new OsuWebMirrorOptions();
