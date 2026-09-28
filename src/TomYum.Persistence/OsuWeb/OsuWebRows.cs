@@ -132,10 +132,19 @@ public sealed class OsuWebBeatmapset
 /// </summary>
 public sealed class OsuWebAccountHistory
 {
+    public const sbyte Note = 0;
     public const sbyte Restriction = 1;
     public const sbyte Silence = 2;
 
     public uint BanId { get; set; }
+
+    /// <summary>Shown on the player's account history page.</summary>
+    public string? Reason { get; set; }
+
+    /// <summary>The staff member who did it.</summary>
+    public uint? BannerId { get; set; }
+
+    public bool Permanent { get; set; }
 
     public uint? UserId { get; set; }
 

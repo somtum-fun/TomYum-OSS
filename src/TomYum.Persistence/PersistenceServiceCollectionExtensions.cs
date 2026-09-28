@@ -48,6 +48,9 @@ public static class PersistenceServiceCollectionExtensions
 
             // Scores + stats: mirrored after each submission (the server's OsuWebSync drives it).
             services.AddScoped<OsuWebScoreMirror>();
+
+            // Restrictions and silences, written like the website's GMT panel writes them.
+            services.AddScoped<OsuWebModeration>();
         }
         else
         {
