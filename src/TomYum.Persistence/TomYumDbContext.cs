@@ -36,6 +36,12 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>In-game chat, for staff.</summary>
     public DbSet<ChatLogEntry> ChatLog => Set<ChatLogEntry>();
 
+    /// <summary>Hardware hashes seen at login (multi-account and ban-evasion checks).</summary>
+    public DbSet<ClientHash> ClientHashes => Set<ClientHash>();
+
+    /// <summary>Accounts past the first-login ban-evasion check.</summary>
+    public DbSet<VerifiedUser> VerifiedUsers => Set<VerifiedUser>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

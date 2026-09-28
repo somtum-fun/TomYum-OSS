@@ -62,6 +62,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IUserAchievementRepository, UserAchievementRepository>();
         services.AddScoped<IStaffLogRepository, StaffLogRepository>();
         services.AddScoped<IChatLogRepository, ChatLogRepository>();
+        services.AddScoped<IClientHashRepository, ClientHashRepository>();
 
         return services;
     }

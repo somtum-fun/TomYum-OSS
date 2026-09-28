@@ -29,7 +29,11 @@ public sealed class DatabaseMigratorTests : OsuWebDatabaseTest
         {
             await legacy.Database.EnsureCreatedAsync();
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE chat_messages");
+            // Tables from later migrations didn't exist then either.
+            await legacy.Database.ExecuteSqlRawAsync("DROP TABLE client_hashes");
+            await legacy.Database.ExecuteSqlRawAsync("DROP TABLE verified_users");
             legacy.UserStats.Add(new UserStats { UserId = 2, Mode = 0, Pp = 338.5 });
+            legacy.Scores.Add(new Score { UserId = 2, BeatmapMd5 = "abc", Grade = "A", Passed = true, SubmittedAt = DateTimeOffset.UtcNow });
             await legacy.SaveChangesAsync();
         }
 
@@ -40,5 +44,7 @@ public sealed class DatabaseMigratorTests : OsuWebDatabaseTest
         Assert.Contains(db.Database.GetMigrations().First(), await db.Database.GetAppliedMigrationsAsync());
         Assert.Equal(338.5, (await db.UserStats.AsNoTracking().SingleAsync()).Pp);
         Assert.Equal(0, await db.ChatLog.CountAsync()); // topped up
+        // Players who already played are past the first-login ban-evasion check.
+        Assert.Equal([2], await db.VerifiedUsers.Select(v => v.UserId).ToListAsync());
     }
 }

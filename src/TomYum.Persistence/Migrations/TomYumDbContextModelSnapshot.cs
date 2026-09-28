@@ -131,6 +131,55 @@ namespace TomYum.Persistence.Migrations
                     b.ToTable("chat_messages", (string)null);
                 });
 
+            modelBuilder.Entity("TomYum.Domain.Entities.ClientHash", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("OsuPath")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("osupath");
+
+                    b.Property<string>("Adapters")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("adapters");
+
+                    b.Property<string>("UninstallId")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("uninstall_id");
+
+                    b.Property<string>("DiskSerial")
+                        .HasMaxLength(32)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(32)")
+                        .HasColumnName("disk_serial");
+
+                    b.Property<DateTime>("LatestTime")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("latest_time");
+
+                    b.Property<int>("Occurrences")
+                        .HasColumnType("int")
+                        .HasColumnName("occurrences");
+
+                    b.HasKey("UserId", "OsuPath", "Adapters", "UninstallId", "DiskSerial");
+
+                    b.HasIndex("Adapters");
+
+                    b.HasIndex("DiskSerial");
+
+                    b.HasIndex("UninstallId");
+
+                    b.ToTable("client_hashes", (string)null);
+                });
+
             modelBuilder.Entity("TomYum.Domain.Entities.Score", b =>
                 {
                     b.Property<long>("Id")
@@ -362,6 +411,25 @@ namespace TomYum.Persistence.Migrations
                     b.HasKey("UserId", "Mode");
 
                     b.ToTable("user_stats", (string)null);
+                });
+
+            modelBuilder.Entity("TomYum.Domain.Entities.VerifiedUser", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTime>("VerifiedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("verified_at");
+
+                    b.Property<int>("VerifiedBy")
+                        .HasColumnType("int")
+                        .HasColumnName("verified_by");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("verified_users", (string)null);
                 });
 #pragma warning restore 612, 618
         }

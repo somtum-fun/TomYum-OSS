@@ -148,7 +148,7 @@ public sealed class ModerationDatabaseTests : OsuWebDatabaseTest
         Assert.Equal(1, await chat.DeleteOlderThanAsync(DateTime.UtcNow - ChatLog.Retention));
     }
 
-    private ScoreModeration NewModeration(TomYumDbContext tomyum, OsuWebScoreMirror? mirror = null) => new(
+    private static ScoreModeration NewModeration(TomYumDbContext tomyum, OsuWebScoreMirror? mirror = null) => new(
         tomyum, new StaffLogRepository(tomyum), new ConfigurationBuilder().Build(), TimeProvider.System,
         NullLogger<ScoreModeration>.Instance, mirror);
 

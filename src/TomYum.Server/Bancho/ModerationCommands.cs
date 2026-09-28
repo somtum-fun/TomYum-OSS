@@ -3,6 +3,7 @@ using TomYum.Bancho;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
+using TomYum.Domain.Services;
 using TomYum.Persistence.OsuWeb;
 using TomYum.Server.Admin;
 
@@ -10,7 +11,8 @@ namespace TomYum.Server.Bancho;
 
 /// <summary>
 /// BanchoBot's moderation commands: <c>!restrict</c>/<c>!ban</c>, <c>!unrestrict</c>/<c>!unban</c>,
-/// <c>!silence</c>, <c>!unsilence</c>, <c>!alert</c> and <c>!alertu</c>. They do what the website's
+/// <c>!silence</c>, <c>!unsilence</c>, <c>!alert</c>, <c>!alertu</c>, and <c>!alts</c>/<c>!verify</c> for
+/// the ban-evasion check (accounts sharing a machine; letting a refused new account in). They do what the website's
 /// GMT panel does (the same account rows, the same staff log, applied in-game at once), so staff
 /// can use either. Staff = moderators (GMT), administrators and developers, checked against their
 /// account as stored now, not the session's privileges; like the panel, only administrators may
@@ -34,7 +36,7 @@ public sealed class ModerationCommands
 
     /// <summary>The moderation command words.</summary>
     public static bool Handles(string command) =>
-        command is "restrict" or "ban" or "unrestrict" or "unban" or "silence" or "unsilence" or "alert" or "alertu";
+        command is "restrict" or "ban" or "unrestrict" or "unban" or "silence" or "unsilence" or "alert" or "alertu" or "verify" or "alts";
 
     /// <summary>Runs <paramref name="command"/> for <paramref name="callerId"/>; <paramref name="parts"/> are the words after the command.</summary>
     public async Task<string> RunAsync(int callerId, string command, string[] parts, CancellationToken cancellationToken = default)
@@ -66,6 +68,9 @@ public sealed class ModerationCommands
                     return $"{parts[0]} isn't online.";
                 recipient.Enqueue(Notification(string.Join(' ', parts[1..])));
                 return $"Sent to {recipient.Presence.Username}.";
+
+            case "alts" or "verify":
+                return await RunHardwareCommandAsync(scope.ServiceProvider, users, caller, command, parts, cancellationToken).ConfigureAwait(false);
         }
 
         var moderation = scope.ServiceProvider.GetService<OsuWebModeration>();
@@ -140,6 +145,56 @@ public sealed class ModerationCommands
             await RecalculateCountryAsync(scope.ServiceProvider, target.Id, cancellationToken).ConfigureAwait(false);
 
         return done + ".";
+    }
+
+    /// <summary><c>!alts &lt;user&gt;</c> (other accounts seen on the same machine) and <c>!verify &lt;user&gt;</c>.</summary>
+    private async Task<string> RunHardwareCommandAsync(IServiceProvider services, IUserRepository users, User caller, string command, string[] parts, CancellationToken cancellationToken)
+    {
+        if (parts.Length < 1)
+            return $"Usage: !{command} <user>";
+        var target = await users.GetBySafeNameAsync(User.MakeSafeName(parts[0]), cancellationToken).ConfigureAwait(false);
+        if (target is null)
+            return $"No such user \"{parts[0]}\".";
+        var hashes = services.GetRequiredService<IClientHashRepository>();
+
+        if (command == "verify")
+        {
+            if (!await hashes.VerifyAsync(target.Id, caller.Id, _time.GetUtcNow().UtcDateTime, cancellationToken).ConfigureAwait(false))
+                return $"{target.Username} is already verified.";
+            var summary = $"Verified {target.Username}: they can log in even if they share a machine with a restricted account";
+            await services.GetRequiredService<IStaffLogRepository>().AddAsync(new StaffLogEntry
+            {
+                CreatedAt = _time.GetUtcNow().UtcDateTime,
+                ActorId = caller.Id,
+                Action = "user.verify",
+                TargetId = target.Id,
+                Summary = summary,
+            }, cancellationToken).ConfigureAwait(false);
+            return summary + ".";
+        }
+
+        var others = new List<int>();
+        foreach (var seen in await hashes.ListAsync(target.Id, cancellationToken).ConfigureAwait(false))
+        {
+            var query = new ClientHashQuery(ClientHashMatch.Usable(seen.Adapters), ClientHashMatch.Usable(seen.UninstallId), ClientHashMatch.Usable(seen.DiskSerial));
+            foreach (var id in await hashes.FindOtherUsersAsync(target.Id, query, cancellationToken: cancellationToken).ConfigureAwait(false))
+            {
+                if (!others.Contains(id))
+                    others.Add(id);
+            }
+        }
+        if (others.Count == 0)
+            return $"No other accounts seen on {target.Username}'s machine(s).";
+
+        var names = new List<string>();
+        foreach (var id in others.Take(10))
+        {
+            var other = await users.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+            if (other is not null)
+                names.Add(other.IsRestricted ? $"{other.Username} (restricted)" : other.Username);
+        }
+        var more = others.Count > 10 ? string.Create(CultureInfo.InvariantCulture, $" and {others.Count - 10} more") : string.Empty;
+        return $"Same machine as {target.Username}: {string.Join(", ", names)}{more}.";
     }
 
     /// <summary>Moderators (GMT), administrators and developers.</summary>

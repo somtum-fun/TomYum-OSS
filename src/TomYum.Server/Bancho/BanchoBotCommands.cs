@@ -129,7 +129,7 @@ public sealed class BanchoBotCommands
     private static string Help(BanchoPrivileges privileges) => IsStaff(privileges)
         ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !stats (staff), !setpriv <user> <role> (staff). "
           + "Moderation (staff): !restrict/!ban <user> <reason>, !unrestrict/!unban <user> <reason>, !silence <user> <10m|1h|1d|1w> <reason>, "
-          + "!unsilence <user> [reason], !alert <message>, !alertu <user> <message>. Names with spaces: use _."
+          + "!unsilence <user> [reason], !alert <message>, !alertu <user> <message>, !alts <user>, !verify <user>. Names with spaces: use _."
         : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>.";
 
     private static string Roll(string sender, string[] parts)

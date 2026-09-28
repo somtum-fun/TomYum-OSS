@@ -28,6 +28,11 @@ public sealed class BanchoLoginHandler
     private readonly ChannelRegistry _channels;
     private readonly ILogger<BanchoLoginHandler> _logger;
     private readonly TomYum.Plugins.Abstractions.IEventBus? _events;
+    private readonly IClientHashRepository? _clientHashes;
+    private readonly IStaffLogRepository? _staffLog;
+
+    /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
+    public const string EvasionNotice = "Please contact staff directly to create an account.";
 
     /// <summary>Creates the handler over the user repository, password hasher, online-player registry, and channel registry.</summary>
     public BanchoLoginHandler(
@@ -37,7 +42,9 @@ public sealed class BanchoLoginHandler
         PlayerRegistry registry,
         ChannelRegistry channels,
         ILogger<BanchoLoginHandler> logger,
-        TomYum.Plugins.Abstractions.IEventBus? events = null)
+        TomYum.Plugins.Abstractions.IEventBus? events = null,
+        IClientHashRepository? clientHashes = null,
+        IStaffLogRepository? staffLog = null)
     {
         _users = users;
         _passwordHasher = passwordHasher;
@@ -46,6 +53,8 @@ public sealed class BanchoLoginHandler
         _channels = channels;
         _logger = logger;
         _events = events;
+        _clientHashes = clientHashes;
+        _staffLog = staffLog;
     }
 
     /// <summary>The outcome of a login attempt: the framed response body and the new token (if any).</summary>
@@ -81,6 +90,11 @@ public sealed class BanchoLoginHandler
             _logger.LogInformation("Login failed: bad password for {Username}.", request.Username);
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
         }
+
+        // Hardware hashes: recorded for every login; an account's first login is refused when the
+        // machine belongs to a restricted account (ban evasion), until staff verify it.
+        if (_clientHashes is not null && await IsEvadingAsync(user, request.ClientHashes, cancellationToken).ConfigureAwait(false))
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, EvasionNotice), null);
 
         // Resolve the country for this session: prefer the live CF-IPCountry header, fall back
         // to the stored user country. If the stored country is "xx" and we have a real one
@@ -182,5 +196,55 @@ public sealed class BanchoLoginHandler
             user.Username, user.Id, request.OsuVersion, _registry.Count);
 
         return new LoginOutcome(responseBody, player.Token);
+    }
+
+    /// <summary>
+    /// Records the login's hashes, then for an unverified account checks whether any other account
+    /// on the same machine is restricted. Staff and BanchoBot are never checked. An account that gets
+    /// in is verified, so the check happens once (staff can verify one by hand with <c>!verify</c>).
+    /// </summary>
+    private async Task<bool> IsEvadingAsync(User user, ClientHashes hashes, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        await _clientHashes!.RecordAsync(new ClientHash
+        {
+            UserId = user.Id,
+            OsuPath = ClientHashMatch.Normalize(hashes.OsuPathMd5),
+            Adapters = ClientHashMatch.Normalize(hashes.AdaptersMd5),
+            UninstallId = ClientHashMatch.Normalize(hashes.UninstallMd5),
+            DiskSerial = ClientHashMatch.Normalize(hashes.DiskSignatureMd5),
+            LatestTime = now,
+        }, cancellationToken).ConfigureAwait(false);
+
+        if (user.Id == BanchoBot.UserId || ModerationCommands.IsStaff(user.Privileges)
+            || await _clientHashes.IsVerifiedAsync(user.Id, cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        var query = ClientHashMatch.For(hashes.AdaptersStr, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5);
+        foreach (var otherId in await _clientHashes.FindOtherUsersAsync(user.Id, query, cancellationToken: cancellationToken).ConfigureAwait(false))
+        {
+            var other = await _users.GetByIdAsync(otherId, cancellationToken).ConfigureAwait(false);
+            if (other is not { IsRestricted: true })
+                continue;
+
+            _logger.LogWarning("Login refused: {Username} (id {UserId}) shares a machine with restricted {Other} (id {OtherId}).",
+                user.Username, user.Id, other.Username, other.Id);
+            if (_staffLog is not null)
+            {
+                await _staffLog.AddAsync(new StaffLogEntry
+                {
+                    CreatedAt = now,
+                    Action = "user.evasion_blocked",
+                    TargetId = user.Id,
+                    Summary = $"{user.Username}'s first login was refused: same machine as restricted {other.Username} (id {other.Id}).",
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            return true;
+        }
+
+        await _clientHashes.VerifyAsync(user.Id, 0, now, cancellationToken).ConfigureAwait(false);
+        return false;
     }
 }
