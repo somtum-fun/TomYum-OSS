@@ -34,6 +34,10 @@ Done (2026-09-27):
 - **Medals**: ppy's processor gives lazer plays skill, mod introduction and statistics medals under
   osu!'s ids; TomYum gives pack medals for both clients (docs/achievements.md).
 
+- **Beatmap submission** (2026-09-28): the editor's Submit goes to TomYum
+  (`{API URL}/beatmap-submission`, lazer's default with LazerAuthlibInjection). Custom sets are
+  downloaded and played like any other (docs/custom-beatmaps.md).
+
 Custom-map pp works (the processor downloads `.osu` files from TomYum, `BEATMAP_DOWNLOAD_PATH`).
 
 ## Connecting a lazer client

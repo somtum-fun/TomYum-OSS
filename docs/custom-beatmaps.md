@@ -63,7 +63,63 @@ Caddy sends `/uploads/default/beatmaps/<8+ digit id>/…` to TomYum, and officia
 assets.ppy.sh. Covers and thumbnails are cut from the background the first time they're asked for,
 and kept.
 
-## Not yet
+## Submitting from the game
 
-- The stable client's own submission (editor → "Submit", `.osz2`).
-- Lazer's beatmap submission.
+Mappers submit their own sets from the editor, as on osu!. The rules are ppy's
+(`BeatmapSubmissions`):
+
+- Only the set's owner can change it. Nobody can once it's ranked, qualified or loved.
+- Not while restricted or silenced.
+- 1 to 128 difficulties.
+- A limited number of sets in progress: 4, plus one per ranked set (up to 8). Supporters get 8,
+  up to 20. Administrators have no limit.
+  - Sets untouched for four weeks don't count, but coming back to one needs a free slot.
+  - Ids handed out and never used stop counting after a day. They stay taken, so no id is ever
+    handed out twice.
+
+Every submission first gets ids for the set and each difficulty. The client writes them into its
+files and uploads the package. TomYum keeps the files **exactly** as sent, because the client knows
+its maps by their checksums. So every difficulty must carry one of the set's ids, and every id must
+have its difficulty. Owners and handed-out ids are kept in `custom_beatmapsets` and
+`custom_beatmap_slots`. Uploads from the BN panel are recorded there too, with the mapper as owner,
+so they can be updated from the game later.
+
+Submissions, updates and refusals go to the staff log (`beatmapset.upload`) and show under "Recent
+uploads" in the BN panel.
+
+### osu!stable
+
+Editor → **Submit**. Nothing to set up: the client sends it to the server it's connected to.
+
+| Step | Endpoint | What happens |
+|---|---|---|
+| Ids | `GET /web/osu-osz2-bmsubmit-getid.php` | Answers `0`, the set id, the difficulty ids in the editor's order, `1` (always a full upload), sets left. Errors: `1` not yours, `3` ranked, `5` anything else, with the reason. |
+| Upload | `POST /web/osu-osz2-bmsubmit-upload.php` | The encrypted `.osz2`, checked against the MD5 the editor sends, then decrypted (`Osz2Package`) and stored as an `.osz`. |
+| Description | `POST /web/osu-osz2-bmsubmit-post.php` | "Finished" (pending) or a work in progress, and the description, which becomes the set's description post on the website. |
+
+TomYum never asks the editor for a patch (bsdiff) against an earlier `.osz2`: it always wants the
+whole package, as osu! does when it has no earlier version.
+
+### osu!(lazer)
+
+Editor → **Submit** (with LazerAuthlibInjection, docs/lazer.md). Leave the ruleset's "Beatmap
+Submission Service Url" empty: lazer then uses `{API URL}/beatmap-submission`, which Caddy sends to
+TomYum.
+
+| Step | Endpoint |
+|---|---|
+| Ids | `PUT /beatmap-submission/beatmapsets`, with difficulties to keep and how many to create, and WIP or Pending. The answer includes the current files with their SHA-256. |
+| Upload | `PUT /beatmap-submission/beatmapsets/{id}` (the whole `.osz`), or `PATCH` with only the changed and removed files |
+
+Lazer's login is checked the way ppy's services check it. The token must be signed with the
+website's Passport key (`OsuWeb:OAuthPublicKeyPath`, default `oauth-public.key`; production mounts
+the website's). It must be for lazer's client (`OsuWeb:LazerClientId`, default 5), and still be
+valid in `oauth_access_tokens`.
+
+Not supported yet: guest difficulties uploaded on their own (lazer's
+`PATCH …/beatmaps/{id}`). The owner includes them in the set instead.
+
+### Dropping a difficulty
+
+A difficulty left out of a new version stops being playable here (not submitted). It's also removed
+from the website. Its scores stay in the database.

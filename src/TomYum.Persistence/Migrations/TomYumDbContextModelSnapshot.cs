@@ -180,6 +180,56 @@ namespace TomYum.Persistence.Migrations
                     b.ToTable("client_hashes", (string)null);
                 });
 
+            modelBuilder.Entity("TomYum.Domain.Entities.CustomBeatmapSet", b =>
+                {
+                    b.Property<int>("SetId")
+                        .HasColumnType("int")
+                        .HasColumnName("set_id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("OwnerId")
+                        .HasColumnType("int")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("Target")
+                        .HasColumnType("int")
+                        .HasColumnName("target");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("updated_at");
+
+                    b.Property<DateTime?>("UploadedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("uploaded_at");
+
+                    b.HasKey("SetId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("custom_beatmapsets", (string)null);
+                });
+
+            modelBuilder.Entity("TomYum.Domain.Entities.CustomBeatmapSlot", b =>
+                {
+                    b.Property<int>("BeatmapId")
+                        .HasColumnType("int")
+                        .HasColumnName("beatmap_id");
+
+                    b.Property<int>("SetId")
+                        .HasColumnType("int")
+                        .HasColumnName("set_id");
+
+                    b.HasKey("BeatmapId");
+
+                    b.HasIndex("SetId");
+
+                    b.ToTable("custom_beatmap_slots", (string)null);
+                });
+
             modelBuilder.Entity("TomYum.Domain.Entities.DiscordLink", b =>
                 {
                     b.Property<int>("UserId")

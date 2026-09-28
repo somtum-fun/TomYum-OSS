@@ -55,7 +55,43 @@ public sealed class OsuWebCustomSets
         await _db.Database.ExecuteSqlRawAsync(
             $"UPDATE osu_beatmaps SET deleted_at = NOW() WHERE beatmapset_id = {set} AND deleted_at IS NULL AND beatmap_id NOT IN ({ids})",
             cancellationToken).ConfigureAwait(false);
+        // An unranked set shows what its remaining difficulties are (a work in progress or pending),
+        // now that the dropped ones don't count.
+        await _db.Database.ExecuteSqlRawAsync(
+            $"""
+            UPDATE osu_beatmapsets SET approved = (
+                SELECT MAX(b.approved) FROM osu_beatmaps b WHERE b.beatmapset_id = {set} AND b.deleted_at IS NULL)
+            WHERE beatmapset_id = {set} AND approved IN (-1, 0)
+              AND EXISTS (SELECT 1 FROM osu_beatmaps b WHERE b.beatmapset_id = {set} AND b.deleted_at IS NULL)
+            """,
+            cancellationToken).ConfigureAwait(false);
 #pragma warning restore EF1002
+    }
+
+    /// <summary>
+    /// Sets an unranked set's status to a work in progress (-1) or pending (0), as its mapper chose;
+    /// ranked, qualified and loved sets are left alone.
+    /// </summary>
+    public async Task SetUnrankedStatusAsync(int setId, int approved, CancellationToken cancellationToken = default)
+    {
+        if (approved is not (-1 or 0))
+            throw new ArgumentOutOfRangeException(nameof(approved), "Only work in progress (-1) or pending (0).");
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE osu_beatmapsets SET approved = {approved}, last_update = UTC_TIMESTAMP() WHERE beatmapset_id = {setId} AND approved IN (-1, 0)",
+            cancellationToken).ConfigureAwait(false);
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE osu_beatmaps SET approved = {approved} WHERE beatmapset_id = {setId} AND deleted_at IS NULL AND approved IN (-1, 0)",
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The set's forum thread (its description), 0 when it has none.</summary>
+    public async Task<int> ThreadIdAsync(int setId, CancellationToken cancellationToken = default)
+    {
+        var thread = await _db.Database
+            .SqlQuery<uint>($"SELECT thread_id AS Value FROM osu_beatmapsets WHERE beatmapset_id = {setId}")
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return thread.Count == 0 ? 0 : (int)thread[0];
     }
 
     private static string? Truncate(string? value) =>

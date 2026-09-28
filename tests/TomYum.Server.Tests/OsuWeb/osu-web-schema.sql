@@ -707,3 +707,19 @@ CREATE TABLE score_process_history (
   processed_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (score_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Passport (2016_06_01_000002_create_oauth_access_tokens_table): lazer's logins.
+DROP TABLE IF EXISTS oauth_access_tokens;
+CREATE TABLE oauth_access_tokens (
+  id varchar(100) NOT NULL,
+  user_id bigint unsigned NULL,
+  client_id bigint unsigned NOT NULL,
+  name varchar(255) NULL,
+  scopes text NULL,
+  revoked tinyint(1) NOT NULL,
+  created_at timestamp NULL DEFAULT NULL,
+  updated_at timestamp NULL DEFAULT NULL,
+  expires_at datetime NULL,
+  PRIMARY KEY (id),
+  KEY oauth_access_tokens_user_id_index (user_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

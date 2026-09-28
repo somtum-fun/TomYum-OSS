@@ -42,7 +42,7 @@ a.localtest.me {
 
 # osu.: the client's /web/* and in-game registration go to TomYum, the website to osu-web.
 osu.localtest.me {
-	@tomyum path /web/* /d/*
+	@tomyum path /web/* /d/* /beatmap-submission/*
 	# lazer sends the same User-Agent, but asks for JSON: its sign-up is the website's.
 	@stable_register {
 		method POST

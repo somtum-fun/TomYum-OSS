@@ -109,6 +109,8 @@ services:
       TOMYUM_OSU__CLIENTSECRET: ${OSU_CLIENT_SECRET:-}
     volumes:
       - server-data:/app/data
+      # Checks lazer logins for beatmap submission.
+      - *oauth-key
     depends_on:
       db:
         condition: service_healthy

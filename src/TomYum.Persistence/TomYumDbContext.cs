@@ -45,6 +45,12 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Game accounts linked to Discord accounts.</summary>
     public DbSet<DiscordLink> DiscordLinks => Set<DiscordLink>();
 
+    /// <summary>Custom (server-only) beatmap sets: owners and submission state.</summary>
+    public DbSet<CustomBeatmapSet> CustomBeatmapSets => Set<CustomBeatmapSet>();
+
+    /// <summary>Difficulty ids handed out for custom sets.</summary>
+    public DbSet<CustomBeatmapSlot> CustomBeatmapSlots => Set<CustomBeatmapSlot>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

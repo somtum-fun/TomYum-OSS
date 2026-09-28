@@ -143,6 +143,9 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService(sp => sp.GetRequiredService<OsuWebChatBridge>());
     builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
+    // Beatmap submission from the game clients (stable's .osz2, lazer's submission service).
+    builder.Services.AddScoped<BeatmapSubmissions>();
+    builder.Services.AddSingleton<LazerTokens>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<BeatmapImportRunner>());
 }
 else
@@ -457,6 +460,8 @@ if (databaseOptions.UseOsuWebAccounts)
         : AdminEndpoints.DefaultHosts);
     // Beatmap set uploads from the BN panel (a ticket signed by the website).
     app.MapCustomUploads(BanchoHosts.Web(domain));
+    // Beatmap submission from the stable editor and lazer (docs/custom-beatmaps.md).
+    app.MapSubmission(BanchoHosts.Web(domain));
 }
 
 app.Run();
