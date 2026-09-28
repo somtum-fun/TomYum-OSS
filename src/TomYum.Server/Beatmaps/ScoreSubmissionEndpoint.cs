@@ -200,7 +200,7 @@ public static class ScoreSubmissionEndpoint
 
         // Fetch the leaderboard before insert to determine the player's beatmap rank before this submission.
         // After insert the position of the previous best is no longer queryable.
-        var preBoardForRank = await scores.GetLeaderboardAsync(bmk, gameMode, 50, cancellationToken).ConfigureAwait(false);
+        var preBoardForRank = await scores.GetLeaderboardAsync(bmk, gameMode, 50, user.Id, cancellationToken).ConfigureAwait(false);
         var prevBeatmapRank = prevBest is not null
             ? preBoardForRank.TakeWhile(s => s.Id != prevBest.Id).Count() + 1 as int?
             : null;
@@ -367,7 +367,7 @@ public static class ScoreSubmissionEndpoint
             }
         }
 
-        var leaderboard = await scores.GetLeaderboardAsync(bmk, gameMode, 50, cancellationToken).ConfigureAwait(false);
+        var leaderboard = await scores.GetLeaderboardAsync(bmk, gameMode, 50, user.Id, cancellationToken).ConfigureAwait(false);
         var scoreRank = leaderboard.TakeWhile(s => s.Id != score.Id).Count() + 1;
 
         var totalHits = n300 + n100 + n50 + nmiss;

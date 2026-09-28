@@ -15,6 +15,12 @@ public sealed class CreateMatchHandler : IClientPacketHandler
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        if (context.Player.IsRestricted)
+        {
+            ModerationPackets.WriteNoMultiplayer(context.Response);
+            return Task.CompletedTask;
+        }
+
         MatchCreateArgs args;
         try { args = MatchEncoder.ReadCreateArgs(context.Payload.Span); }
         catch (InvalidDataException) { return Task.CompletedTask; }

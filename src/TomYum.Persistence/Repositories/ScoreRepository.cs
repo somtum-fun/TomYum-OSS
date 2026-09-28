@@ -31,13 +31,14 @@ public sealed class ScoreRepository : IScoreRepository
             .Where(s => s.UserId == userId && s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)
             .FirstOrDefaultAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId = null, CancellationToken cancellationToken = default)
     {
         var query = _db.Scores.AsNoTracking()
             .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best);
 
-        // Restricted players stay off leaderboards (their scores are kept for if they're unrestricted).
-        var restricted = _restricted?.Ids;
+        // Restricted players stay off leaderboards (their scores are kept for if they're unrestricted),
+        // but see their own (bancho.py's shadow leaderboard).
+        var restricted = _restricted?.Ids.Where(id => id != viewerId).ToList();
         if (restricted is { Count: > 0 })
             query = query.Where(s => !restricted.Contains(s.UserId));
 

@@ -59,6 +59,9 @@ public sealed class ModerationDatabaseTests : OsuWebDatabaseTest
         var board = await new ScoreRepository(tomyum, restricted).GetLeaderboardAsync("md5-1", 0, 50);
 
         Assert.Equal([11], board.Select(s => s.UserId));
+        // The shadow leaderboard: the restricted player still sees their own score, in place.
+        Assert.Equal([10, 11], (await new ScoreRepository(tomyum, restricted).GetLeaderboardAsync("md5-1", 0, 50, viewerId: 10)).Select(s => s.UserId));
+        Assert.Equal([11], (await new ScoreRepository(tomyum, restricted).GetLeaderboardAsync("md5-1", 0, 50, viewerId: 11)).Select(s => s.UserId));
         var stats = new UserStatsRepository(tomyum, restricted);
         Assert.Equal(1, await stats.GetGlobalRankAsync(11, 0));   // #1 once the restricted player is out
         Assert.Equal(0, await stats.GetGlobalRankAsync(10, 0));   // unranked

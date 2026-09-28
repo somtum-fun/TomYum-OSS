@@ -3,6 +3,7 @@ using TomYum.Bancho;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
+using TomYum.Domain.Services;
 using TomYum.Server.Bancho;
 
 namespace TomYum.Server.Beatmaps;
@@ -40,13 +41,15 @@ public static class WebEndpoints
             .RequireHost(hosts);
     }
 
-    private static async Task<IResult> HandleGetScoresAsync(
+    internal static async Task<IResult> HandleGetScoresAsync(
         HttpContext context,
         IConfiguration configuration,
         BeatmapService beatmaps,
         IScoreRepository scores,
         IUserRepository users,
         PlayerRegistry registry,
+        IPasswordHasher passwords,
+        RestrictedUsers restricted,
         CancellationToken cancellationToken)
     {
         var md5 = context.Request.Query["c"].ToString();
@@ -77,15 +80,24 @@ public static class WebEndpoints
         _ = int.TryParse(context.Request.Query["mods"].ToString(), out var modsArg);
         var gameMode = ((Mods)modsArg).ToGameMode(mode);
 
-        var board = await scores.GetLeaderboardAsync(md5, gameMode, 50, cancellationToken).ConfigureAwait(false);
-
-        // The requesting player's personal best. osu!stable sends its username as `us` (not the
-        // session token); personal bests are public (they're on the board too), so the name is enough.
+        // The requesting player. osu!stable sends its username as `us` and its password's md5 as `ha`.
+        // Personal bests are public (they're on the board too), so the name is enough, except for a
+        // restricted player: their scores are hidden from everyone else, so they see them (in place
+        // on the board, bancho.py's shadow leaderboard) only when the password checks out.
         Score? personalBest = null;
         var requesterId = await ResolveRequesterIdAsync(context.Request.Query["us"].ToString(), registry, users, cancellationToken).ConfigureAwait(false);
-        if (requesterId is { } requester)
+        if (requesterId is { } requester && restricted.Contains(requester)
+            && (await users.GetByIdAsync(requester, cancellationToken).ConfigureAwait(false) is not { } requesterUser
+                || context.Request.Query["ha"].ToString() is not { Length: > 0 } passwordMd5
+                || !passwords.Verify(passwordMd5, requesterUser.PasswordBcrypt)))
         {
-            personalBest = await scores.GetPersonalBestAsync(requester, md5, gameMode, cancellationToken).ConfigureAwait(false);
+            requesterId = null;
+        }
+
+        var board = await scores.GetLeaderboardAsync(md5, gameMode, 50, requesterId, cancellationToken).ConfigureAwait(false);
+        if (requesterId is { } viewer)
+        {
+            personalBest = await scores.GetPersonalBestAsync(viewer, md5, gameMode, cancellationToken).ConfigureAwait(false);
         }
 
         var sb = new System.Text.StringBuilder();
