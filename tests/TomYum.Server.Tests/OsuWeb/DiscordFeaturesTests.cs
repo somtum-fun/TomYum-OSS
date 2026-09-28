@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using SkiaSharp;
@@ -272,10 +273,91 @@ public sealed class DiscordFeaturesTests : OsuWebDatabaseTest
 
     // ── set-up ─────────────────────────────────────────────────────────────────────────────
 
-    private DiscordCommands NewCommands(IDiscordLinkRepository links, out ServiceProvider services)
+    [MySqlFact]
+    public async Task Badges_AreForAdmins_AndStandingCanBeCleared()
     {
+        var (alpha, bravo, cheater, staff) = await SeedAsync();
+        var admin = (await new OsuWebUserRepository(NewOsuWebContext()).AddAsync(new User
+        {
+            Username = "Boss", SafeName = "boss", Email = "boss@x.dev", PasswordBcrypt = "x", Country = "nl",
+            Privileges = UserPrivileges.Normal | UserPrivileges.Moderator | UserPrivileges.Administrator,
+        })).Id;
+        var links = new InMemoryDiscordLinkRepository();
+        await links.LinkAsync(alpha, 1001, DateTime.UtcNow);
+        await links.LinkAsync(staff, 1002, DateTime.UtcNow);
+        await links.LinkAsync(admin, 1003, DateTime.UtcNow);
+
+        // An osu! badge already in the asset cache (so no download).
+        var assets = Path.Combine(Path.GetTempPath(), "tomyum-badges-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(assets, AssetsEndpoints.BadgeFolder));
+        await File.WriteAllBytesAsync(Path.Combine(assets, AssetsEndpoints.BadgeFolder, "contributor.png"), [1, 2, 3]);
+        var commands = NewCommands(links, out _, assets);
+
+        var give = new Dictionary<string, string> { ["player"] = "Alpha", ["image"] = "contributor", ["description"] = "Helped out", ["url"] = "https://osu.test/wiki" };
+        Assert.Equal("That command is staff-only.", (await commands.RunAsync("addbadge", give, 1001)).Post.Content);
+        Assert.Equal("Only administrators can give or take badges.", (await commands.RunAsync("addbadge", give, 1002)).Post.Content);
+        Assert.StartsWith("Gave **Alpha** the badge **Helped out**", (await commands.RunAsync("addbadge", give, 1003)).Post.Content, StringComparison.Ordinal);
+        Assert.Contains("already has", (await commands.RunAsync("addbadge", give, 1003)).Post.Content, StringComparison.Ordinal);
+        Assert.Contains("isn't an osu! badge", (await commands.RunAsync("addbadge", new Dictionary<string, string>(give) { ["image"] = "../../etc/passwd" }, 1003)).Post.Content, StringComparison.Ordinal);
+        Assert.Equal("https://osu.test/wiki", await ScalarAsync<string>($"SELECT url FROM osu_badges WHERE user_id = {alpha} AND image = 'contributor.png'"));
+
+        var list = await commands.RunAsync("removebadge", new Dictionary<string, string> { ["player"] = "Alpha" }, 1003);
+        Assert.Contains("**1.** Helped out (`contributor.png`)", list.Post.Content, StringComparison.Ordinal);
+        Assert.StartsWith("Took **Helped out**", (await commands.RunAsync("removebadge", new Dictionary<string, string> { ["player"] = "Alpha", ["badge"] = "1" }, 1003)).Post.Content, StringComparison.Ordinal);
+        Assert.Equal(0L, await ScalarAsync<long>($"SELECT COUNT(*) FROM osu_badges WHERE user_id = {alpha}"));
+
+        // Standing: a silence and a note go; a restricted player keeps their restriction until it's lifted.
+        var moderation = new OsuWebModeration(NewOsuWebContext());
+        await moderation.SilenceAsync(bravo, staff, TimeSpan.FromDays(1), "spam");
+        await ExecuteAsync($"INSERT INTO osu_user_banhistory (user_id, ban_status, period, reason, permanent, `timestamp`) VALUES ({cheater}, 1, 0, 'cheating', 1, UTC_TIMESTAMP())"); // already flagged as restricted
+        Assert.NotNull(await moderation.SilenceEndAsync(bravo));
+        var clear = new Dictionary<string, string> { ["player"] = "Bravo", ["reason"] = "appeal accepted" };
+        Assert.Equal("That command is staff-only.", (await commands.RunAsync("clearstanding", clear, 1001)).Post.Content);
+        Assert.StartsWith("Cleared 1 record(s) (everything) from **Bravo**", (await commands.RunAsync("clearstanding", clear, 1002)).Post.Content, StringComparison.Ordinal);
+        Assert.Null(await moderation.SilenceEndAsync(bravo));
+        Assert.Contains("nothing like that", (await commands.RunAsync("clearstanding", clear, 1002)).Post.Content, StringComparison.Ordinal);
+
+        Assert.Contains("lift it with /unrestrict first", (await commands.RunAsync("clearstanding", new Dictionary<string, string> { ["player"] = "Cheater", ["reason"] = "x" }, 1002)).Post.Content, StringComparison.Ordinal);
+        Assert.Equal(1L, await ScalarAsync<long>($"SELECT COUNT(*) FROM osu_user_banhistory WHERE user_id = {cheater}"));
+        Assert.Equal("user.clear_standing", (await new StaffLogRepository(NewTomYumContext()).ListAsync(new StaffLogQuery(Limit: 1))).Single().Action);
+        Directory.Delete(assets, recursive: true);
+    }
+
+    [Fact]
+    public void BadgeImages_AreRedrawnToBadgeSize_AndOnlyPublicAddressesAreFetched()
+    {
+        using var wide = new SKBitmap(300, 100);
+        wide.Erase(SKColors.Red);
+        using var encoded = wide.Encode(SKEncodedImageFormat.Png, 100);
+        using var badge = SKBitmap.Decode(TomYum.Server.Admin.BadgeImages.Fit(encoded.ToArray(), 172, 80));
+        Assert.Equal((172, 80), (badge.Width, badge.Height));
+        Assert.Equal(SKColors.Transparent.Alpha, badge.GetPixel(86, 2).Alpha); // letterboxed: 3:1 into 43:20
+        Assert.Equal(SKColors.Red, badge.GetPixel(86, 40));
+        Assert.Null(TomYum.Server.Admin.BadgeImages.Fit([1, 2, 3], 86, 40));
+
+        foreach (var address in new[] { "127.0.0.1", "10.1.2.3", "172.20.0.5", "192.168.39.74", "169.254.1.1", "::1", "fd00::1", "::ffff:192.168.1.1" })
+            Assert.False(TomYum.Server.Admin.BadgeImages.IsPublic(System.Net.IPAddress.Parse(address)), address);
+        Assert.True(TomYum.Server.Admin.BadgeImages.IsPublic(System.Net.IPAddress.Parse("162.159.130.233")));
+
+        IReadOnlyList<OsuWebBadge> badges = [new() { Image = "a.png", Description = "Mapping contest winner" }, new() { Image = "b.png", Description = "Tournament winner" }];
+        Assert.Equal("b.png", DiscordCommands.FindBadge(badges, "2")!.Image);
+        Assert.Equal("a.png", DiscordCommands.FindBadge(badges, "a")!.Image);
+        Assert.Equal("b.png", DiscordCommands.FindBadge(badges, "tournament winner")!.Image);
+        Assert.Null(DiscordCommands.FindBadge(badges, "winner")); // two match: ask
+        Assert.Null(DiscordCommands.FindBadge(badges, "3"));
+    }
+
+    private DiscordCommands NewCommands(IDiscordLinkRepository links, out ServiceProvider services, string? assets = null)
+    {
+        var configuration = new Microsoft.Extensions.Configuration.ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Assets:CachePath"] = assets ?? Path.GetTempPath() })
+            .Build();
         services = new ServiceCollection()
             .AddLogging()
+            .AddHttpClient()
+            .AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(configuration)
+            .AddSingleton<TomYum.Server.Admin.BadgeImages>()
+            .AddScoped(_ => new OsuWebBadges(NewOsuWebContext()))
             .AddSingleton(TimeProvider.System)
             .AddScoped(_ => new OsuWebCommunity(NewOsuWebContext()))
             .AddScoped(_ => new OsuWebModeration(NewOsuWebContext()))

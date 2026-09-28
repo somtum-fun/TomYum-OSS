@@ -1,0 +1,173 @@
+using System.Globalization;
+using System.Net;
+using System.Net.Sockets;
+using System.Security.Cryptography;
+using SkiaSharp;
+using TomYum.Server.Beatmaps;
+
+namespace TomYum.Server.Admin;
+
+/// <summary>
+/// Profile badge images for the badge commands, kept in the asset cache's <c>profile-badges</c>
+/// folder that <see cref="AssetsEndpoints"/> serves (and the website's badge images point to):
+/// <list type="bullet">
+/// <item>an osu! badge by file name (e.g. <c>contributor.png</c>): checked on osu!'s CDN and cached;</item>
+/// <item>any image link (a Discord attachment, …): downloaded once and redrawn at badge size,
+/// 86×40 and 172×80 for <c>@2x</c>, so it looks like the others and doesn't depend on the link.</item>
+/// </list>
+/// </summary>
+public sealed class BadgeImages
+{
+    /// <summary>The download client: it only connects to public addresses.</summary>
+    public const string HttpClientName = "BadgeImages";
+
+    public const int Width = 86;
+    public const int Height = 40;
+    private const int MaxBytes = 8 * 1024 * 1024;
+
+    private readonly IHttpClientFactory _http;
+    private readonly IConfiguration _configuration;
+
+    public BadgeImages(IHttpClientFactory http, IConfiguration configuration)
+    {
+        _http = http;
+        _configuration = configuration;
+    }
+
+    /// <summary>
+    /// The badge's image name for <paramref name="text"/> (an osu! badge name or an image link),
+    /// with the file ready to be served; or the reason it can't be used.
+    /// </summary>
+    public async Task<(string? Image, string? Error)> PrepareAsync(string text, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        text = text.Trim();
+        if (Uri.TryCreate(text, UriKind.Absolute, out var link) && (link.Scheme == Uri.UriSchemeHttps || link.Scheme == Uri.UriSchemeHttp))
+            return await FromLinkAsync(link, cancellationToken).ConfigureAwait(false);
+
+        var name = Path.HasExtension(text) ? text : text + ".png";
+        if (!AssetsEndpoints.IsSafeMedalFile(name))
+            return (null, "That isn't an osu! badge file name (like `contributor.png`) or an image link.");
+        if (File.Exists(Path.Combine(Directory, name)))
+            return (name, null);
+
+        using var client = _http.CreateClient(AssetsEndpoints.HttpClientName);
+        using var response = await client.GetAsync($"https://assets.ppy.sh/{AssetsEndpoints.BadgeFolder}/{name}", cancellationToken).ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+            return (null, $"osu! has no badge called `{name}`. Give the file name from a badge's image link, or a link to your own image.");
+        await SaveAsync(name, await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+        return (name, null);
+    }
+
+    /// <summary>Redraws <paramref name="source"/> to fit <paramref name="width"/>×<paramref name="height"/> (centred, transparent around it).</summary>
+    public static byte[]? Fit(byte[] source, int width, int height)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        using var codec = SKCodec.Create(new SKMemoryStream(source));
+        if (codec is null)
+            return null;
+        using var original = SKBitmap.Decode(codec);
+        if (original is null || original.Width == 0 || original.Height == 0)
+            return null;
+
+        var scale = Math.Min((float)width / original.Width, (float)height / original.Height);
+        var drawn = new SKRect(0, 0, original.Width * scale, original.Height * scale);
+        drawn.Offset((width - drawn.Width) / 2, (height - drawn.Height) / 2);
+
+        using var surface = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        surface.Canvas.Clear(SKColors.Transparent);
+        using var image = SKImage.FromBitmap(original);
+        surface.Canvas.DrawImage(image, drawn, new SKSamplingOptions(SKCubicResampler.Mitchell));
+        using var snapshot = surface.Snapshot();
+        using var png = snapshot.Encode(SKEncodedImageFormat.Png, 100);
+        return png.ToArray();
+    }
+
+    /// <summary>For the download client: connects only to public addresses (staff can't point it at the server's network).</summary>
+    public static async ValueTask<Stream> ConnectPublicAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var addresses = await Dns.GetHostAddressesAsync(context.DnsEndPoint.Host, cancellationToken).ConfigureAwait(false);
+        var address = addresses.FirstOrDefault(IsPublic)
+            ?? throw new HttpRequestException($"{context.DnsEndPoint.Host} isn't a public address.");
+        var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        try
+        {
+            await socket.ConnectAsync(address, context.DnsEndPoint.Port, cancellationToken).ConfigureAwait(false);
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>Whether <paramref name="address"/> is on the internet (not loopback, private, link-local, …).</summary>
+    public static bool IsPublic(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (address.IsIPv4MappedToIPv6)
+            address = address.MapToIPv4();
+        if (IPAddress.IsLoopback(address) || address.Equals(IPAddress.Any) || address.Equals(IPAddress.IPv6Any))
+            return false;
+        if (address.AddressFamily == AddressFamily.InterNetworkV6)
+            return !(address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6UniqueLocal || address.IsIPv6Multicast);
+
+        var b = address.GetAddressBytes();
+        return !(b[0] is 0 or 10 or 127 or >= 224
+                 || (b[0] == 100 && b[1] >= 64 && b[1] < 128)
+                 || (b[0] == 169 && b[1] == 254)
+                 || (b[0] == 172 && b[1] >= 16 && b[1] < 32)
+                 || (b[0] == 192 && b[1] == 168)
+                 || (b[0] == 198 && b[1] is 18 or 19));
+    }
+
+    private string Directory => AssetsEndpoints.CacheDirectory(_configuration, AssetsEndpoints.BadgeFolder);
+
+    private async Task<(string? Image, string? Error)> FromLinkAsync(Uri link, CancellationToken cancellationToken)
+    {
+        byte[] data;
+        try
+        {
+            using var client = _http.CreateClient(HttpClientName);
+            using var response = await client.GetAsync(link, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return (null, string.Create(CultureInfo.InvariantCulture, $"That link gave HTTP {(int)response.StatusCode}."));
+            if (response.Content.Headers.ContentLength > MaxBytes)
+                return (null, "That image is too big (8 MB at most).");
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using var buffer = new MemoryStream();
+            var chunk = new byte[81920];
+            int read;
+            while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                if (buffer.Length + read > MaxBytes)
+                    return (null, "That image is too big (8 MB at most).");
+                buffer.Write(chunk, 0, read);
+            }
+            data = buffer.ToArray();
+        }
+        catch (HttpRequestException ex)
+        {
+            return (null, $"Couldn't download that image: {ex.Message}");
+        }
+
+        if (Fit(data, Width, Height) is not { } normal || Fit(data, Width * 2, Height * 2) is not { } retina)
+            return (null, "That link isn't an image (PNG, JPEG, GIF or WebP).");
+
+        var name = "tomyum-" + Convert.ToHexStringLower(SHA256.HashData(data))[..16];
+        await SaveAsync(name + ".png", normal, cancellationToken).ConfigureAwait(false);
+        await SaveAsync(name + "@2x.png", retina, cancellationToken).ConfigureAwait(false);
+        return (name + ".png", null);
+    }
+
+    private async Task SaveAsync(string file, byte[] data, CancellationToken cancellationToken)
+    {
+        System.IO.Directory.CreateDirectory(Directory);
+        var path = Path.Combine(Directory, file);
+        var temp = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        await File.WriteAllBytesAsync(temp, data, cancellationToken).ConfigureAwait(false);
+        File.Move(temp, path, overwrite: true);
+    }
+}

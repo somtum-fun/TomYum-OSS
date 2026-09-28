@@ -210,6 +210,18 @@ builder.Services.AddHttpClient(AssetsEndpoints.HttpClientName, http =>
     http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
 });
 
+// Profile badge images for the Discord badge commands (links are fetched from public addresses only).
+builder.Services.AddHttpClient(BadgeImages.HttpClientName, http =>
+{
+    http.Timeout = TimeSpan.FromSeconds(20);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
+}).ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+{
+    ConnectCallback = BadgeImages.ConnectPublicAsync,
+    MaxAutomaticRedirections = 3,
+});
+builder.Services.AddSingleton<BadgeImages>();
+
 // Packet dispatch: one stateless handler per client packet id, discovered by the singleton
 // dispatcher into a frozen lookup. Register each handler so DI enumerates them.
 builder.Services.AddSingleton<IClientPacketHandler, PingHandler>();

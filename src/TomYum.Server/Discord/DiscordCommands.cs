@@ -52,6 +52,9 @@ public sealed partial class DiscordCommands
             ["alert"] = (o, _) => [o.GetValueOrDefault("message") ?? string.Empty],
         };
 
+    private static readonly IReadOnlyList<DiscordChoice> StandingKinds =
+        [new("everything", "all"), new("silences", "silences"), new("restrictions", "restrictions"), new("notes", "notes")];
+
     private static readonly IReadOnlyList<DiscordChoice> WipeModes =
         [new("every mode", "all"), new("osu!", "osu"), new("osu!taiko", "taiko"), new("osu!catch", "catch"), new("osu!mania", "mania")];
 
@@ -88,6 +91,9 @@ public sealed partial class DiscordCommands
         new("user", "Staff: a player's account: status, history, alts, IPs, recent plays", [PlayerOption], Staff: true),
         new("wipe", "Staff: remove all of a player's scores (stable)", [PlayerOption, new("mode", "Which mode", Required: true, Choices: WipeModes), new("reason", "Why", Required: true)], Staff: true),
         new("removescore", "Staff: remove one stable score", [new("score", "Score id (GMT panel) or the score's link", Required: true), new("reason", "Why")], Staff: true),
+        new("clearstanding", "Staff: clear a player's account standing (silences, restrictions, notes)", [PlayerOption, new("reason", "Why", Required: true), new("what", "Which records (everything if left out)", Choices: StandingKinds)], Staff: true),
+        new("addbadge", "Admin: give a player a profile badge", [PlayerOption, new("image", "An osu! badge's file name (e.g. contributor.png) or a link to an image (86x40 fits best)", Required: true), new("description", "The badge's tooltip", Required: true), new("url", "Where clicking the badge goes (optional)")], Staff: true),
+        new("removebadge", "Admin: take a profile badge away", [PlayerOption, new("badge", "Its number, description or image; left out: list their badges")], Staff: true),
         new("rankmap", "BN: rank a set (or one difficulty)", StatusOptions, Private: true),
         new("lovemap", "BN: love a set (or one difficulty)", StatusOptions, Private: true),
         new("qualify", "BN: qualify a set (or one difficulty)", StatusOptions, Private: true),
@@ -152,6 +158,12 @@ public sealed partial class DiscordCommands
                 return await WipeAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
             case "removescore":
                 return await RemoveScoreAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "clearstanding":
+                return await ClearStandingAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "addbadge":
+                return await AddBadgeAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "removebadge":
+                return await RemoveBadgeAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
             case var status when StatusCommands.ContainsKey(status):
                 return await StatusRequestAsync(scope.ServiceProvider, links, status, options, callerId, cancellationToken).ConfigureAwait(false);
         }

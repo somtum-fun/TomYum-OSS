@@ -32,7 +32,7 @@ What circleguard looks at is in its README:
 
 | Risk | |
 |---|---|
-| ≥ `ReportAt` (15) | Posted to Discord's reports channel with the reasons and numbers, with Restrict / Silence 1 day / Dismiss buttons |
+| ≥ `ReportAt` (15) | Posted to Discord's circleguard channel (`TOMYUM_DISCORD__CIRCLEGUARDCHANNELID`, default the reports channel) with the reasons and numbers, with Restrict / Silence 1 day / Dismiss buttons |
 | > `RestrictAbove` (15) | The player is restricted at once by BanchoBot and told *"[circleguard] Suspicious activity detected on your recent play."* (no details). The staff log has the details. The Discord post says so and has an **Unrestrict (false alarm)** button. Staff accounts are only reported, never restricted |
 
 The two thresholds are production's. To only report and never restrict automatically, set
