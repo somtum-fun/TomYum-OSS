@@ -42,15 +42,21 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         }
 
         var sender = context.Player.Presence.Username;
+        var nowPlaying = NowPlaying.TryParse(text);
+        if (nowPlaying is not null)
+            context.Player.LastNowPlaying = nowPlaying;
 
         // A DM to BanchoBot: answer back to the sender rather than routing to a real session.
         // Always allowed, also for silenced/restricted players (commands like !help keep working).
         if (string.Equals(target, BanchoBot.Name, StringComparison.OrdinalIgnoreCase))
         {
             _chatLog?.Record(context.Player.UserId, sender, BanchoBot.Name, text, BanchoBot.UserId);
-            var reply = await _bot.TryHandleCommandAsync(
+            // A /np gets the map's details and pp; anything else is a command (or a friendly hint).
+            var reply = nowPlaying is not null && context.Services.GetService<MapCommands>() is { } maps
+                ? await maps.DescribeAsync(nowPlaying, cancellationToken).ConfigureAwait(false)
+                : await _bot.TryHandleCommandAsync(
                     context.Player, text, context.Player.Presence.Privileges, cancellationToken).ConfigureAwait(false)
-                ?? "Hi! I only respond to commands — try !help.";
+                  ?? "Hi! I only respond to commands — try !help.";
             ChatEncoder.WriteMessage(
                 context.Response,
                 new BanchoMessage(BanchoBot.Name, reply, sender, BanchoBot.UserId));

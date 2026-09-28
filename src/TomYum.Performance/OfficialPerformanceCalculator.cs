@@ -26,7 +26,7 @@ namespace TomYum.Performance;
 /// attributes 30 min by beatmapId+rulesetId+mods, then runs the performance calculator.
 /// One of the pluggable backends behind RoutingPerformanceCalculator (ADR-0005 / ADR-0010).
 /// </summary>
-public sealed class OfficialPerformanceCalculator : IPerformanceCalculator
+public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAccuracyPerformance
 {
     private readonly OsuFileCache _files;
     private readonly IMemoryCache _cache;
@@ -44,15 +44,7 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator
         var ruleset = GetRuleset(request.RulesetId);
         var mods = ruleset.ConvertFromLegacyMods((LegacyMods)request.Mods).ToArray();
 
-        var cacheKey = $"diff:official:{request.BeatmapId}:{request.RulesetId}:{request.Mods}";
-        var diffAttribs = await _cache.GetOrCreateAsync(cacheKey, async entry =>
-        {
-            entry.SlidingExpiration = TimeSpan.FromMinutes(30);
-            var bytes = await _files.GetAsync(request.BeatmapId, cancellationToken).ConfigureAwait(false);
-            using var stream = new MemoryStream(bytes, writable: false);
-            var working = new StreamedWorkingBeatmap(stream, ruleset);
-            return ruleset.CreateDifficultyCalculator(working).Calculate(mods);
-        }).ConfigureAwait(false);
+        var diffAttribs = await DifficultyAsync(request.BeatmapId, request.RulesetId, request.Mods, ruleset, mods, cancellationToken).ConfigureAwait(false);
 
         if (diffAttribs is null)
             return 0.0;
@@ -72,6 +64,50 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator
 
         return pp;
     }
+
+    /// <summary>
+    /// osu! only: pp for a full combo at each accuracy, with the misses-free hit counts that give it
+    /// (all 100s beyond the 300s, as ppy's own "pp if FC" does).
+    /// </summary>
+    public async Task<IReadOnlyList<double>?> ForAccuraciesAsync(int beatmapId, int rulesetId, int mods, IReadOnlyList<double> accuracies, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(accuracies);
+        if (rulesetId != 0)
+            return null;
+
+        var ruleset = GetRuleset(0);
+        var modList = ruleset.ConvertFromLegacyMods((LegacyMods)mods).ToArray();
+        if (await DifficultyAsync(beatmapId, 0, mods, ruleset, modList, cancellationToken).ConfigureAwait(false)
+            is not osu.Game.Rulesets.Osu.Difficulty.OsuDifficultyAttributes attributes)
+        {
+            return null;
+        }
+
+        var objects = attributes.HitCircleCount + attributes.SliderCount + attributes.SpinnerCount;
+        var calculator = ruleset.CreatePerformanceCalculator();
+        if (objects == 0 || calculator is null)
+            return null;
+
+        var results = new List<double>(accuracies.Count);
+        foreach (var accuracy in accuracies)
+        {
+            // acc = (300·n300 + 100·n100) / (300·n)  =>  n100 = 1.5·n·(1 − acc)
+            var n100 = (int)Math.Clamp(Math.Round(1.5 * objects * (1 - Math.Clamp(accuracy, 0, 1))), 0, objects);
+            var request = new PerformanceRequest(beatmapId, 0, mods, attributes.MaxCombo, objects - n100, n100, 0, 0, 0, 0, Passed: true);
+            results.Add(calculator.Calculate(BuildScoreInfo(request, ruleset, modList), attributes).Total);
+        }
+        return results;
+    }
+
+    private Task<DifficultyAttributes?> DifficultyAsync(int beatmapId, int rulesetId, int legacyMods, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods, CancellationToken cancellationToken) =>
+        _cache.GetOrCreateAsync($"diff:official:{beatmapId}:{rulesetId}:{legacyMods}", async entry =>
+        {
+            entry.SlidingExpiration = TimeSpan.FromMinutes(30);
+            var bytes = await _files.GetAsync(beatmapId, cancellationToken).ConfigureAwait(false);
+            using var stream = new MemoryStream(bytes, writable: false);
+            var working = new StreamedWorkingBeatmap(stream, ruleset);
+            return ruleset.CreateDifficultyCalculator(working).Calculate(mods);
+        });
 
     internal static ScoreInfo BuildScoreInfo(PerformanceRequest req, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods)
     {

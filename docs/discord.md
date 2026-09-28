@@ -8,7 +8,8 @@ everything except the chat relay and `/online`.
 
 | Where | What |
 |---|---|
-| Slash commands | `/profile`, `/rank`, `/recent`, `/best` (user and mode optional; the caller's linked account and their main mode by default), `/top` (ranking, optional country), `/leaderboard` (a beatmap id or link), `/online`, `/link`, `/unlink`, `/staff` |
+| Slash commands | `/profile`, `/rank`, `/recent`, `/best` (user and mode optional; the caller's linked account and their main mode by default), `/top` (ranking, optional country), `/leaderboard` (a beatmap id or link), `/online` (stable in-game, plus lazer/website players the website shows online), `/link`, `/unlink` |
+| Staff commands | `/restrict`, `/unrestrict`, `/silence` (pick a length), `/unsilence`, `/alts`, `/verify`, `/alert`. The player is a name or an @mention of a linked member. Hidden from members without the *Timeout members* permission (Server Settings → Integrations → the bot changes that); the linked game account must be staff |
 | Chat channel | Two-way with in-game `#osu` (which the website and lazer share). Game → Discord is batched about once a second. Discord → game only for linked players, posted as them; silenced or restricted players get a 🔇 reaction, unlinked members a 🔗 |
 | Beatmaps channel | Sets ranked, approved, qualified or loved from the BN panel or BanchoBot, with the cover |
 | Public log | New #1s (a score beating every earlier score by other players on a ranked/qualified/loved map), plays of at least `BigPlayPp` pp (default 300) that are the player's best on the map, medals, new players |
@@ -25,8 +26,8 @@ Linked players get the Discord roles of their website groups (`admin`, `gmt`, `n
 and the optional "linked" role; restricted players get none. Roles are checked every 30 minutes and
 right after linking; the bot only ever adds or removes the roles it's configured with.
 
-**`/staff`** runs a BanchoBot moderation command as the caller's linked account (e.g.
-`/staff silence Name 1h spam`), with the same permission checks as in-game.
+**Staff commands** run BanchoBot's moderation commands as the caller's linked account, with the
+same permission checks, staff log and in-game effect; only the caller sees the reply.
 
 ## Setting it up
 

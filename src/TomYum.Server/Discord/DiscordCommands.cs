@@ -7,11 +7,14 @@ using TomYum.Server.Bancho;
 
 namespace TomYum.Server.Discord;
 
-/// <summary>An option of a slash command.</summary>
-public sealed record DiscordOptionSpec(string Name, string Description, bool Required = false, IReadOnlyList<string>? Choices = null);
+/// <summary>A fixed choice of an option: what Discord shows, and the value the command gets.</summary>
+public sealed record DiscordChoice(string Name, string Value);
 
-/// <summary>A slash command as registered with Discord.</summary>
-public sealed record DiscordCommandSpec(string Name, string Description, IReadOnlyList<DiscordOptionSpec> Options);
+/// <summary>An option of a slash command.</summary>
+public sealed record DiscordOptionSpec(string Name, string Description, bool Required = false, IReadOnlyList<DiscordChoice>? Choices = null);
+
+/// <summary>A slash command as registered with Discord; <see cref="Staff"/> ones are hidden from members who can't moderate.</summary>
+public sealed record DiscordCommandSpec(string Name, string Description, IReadOnlyList<DiscordOptionSpec> Options, bool Staff = false);
 
 /// <summary>
 /// The bot's slash commands. Player lookups read the website's data (stable and lazer together,
@@ -20,7 +23,31 @@ public sealed record DiscordCommandSpec(string Name, string Description, IReadOn
 public sealed partial class DiscordCommands
 {
     private static readonly DiscordOptionSpec UserOption = new("user", "Player name (or @mention of a linked member); you if left out");
-    private static readonly DiscordOptionSpec ModeOption = new("mode", "Ruleset; their main one if left out", Choices: DiscordFormat.RulesetKeys);
+    private static readonly IReadOnlyList<DiscordChoice> Rulesets =
+        [new("osu!", "osu"), new("osu!taiko", "taiko"), new("osu!catch", "catch"), new("osu!mania", "mania")];
+
+    private static readonly DiscordOptionSpec ModeOption = new("mode", "Ruleset; their main one if left out", Choices: Rulesets);
+
+    private static readonly DiscordOptionSpec PlayerOption = new("player", "The player's name (or @mention a linked member)", Required: true);
+
+    private static readonly IReadOnlyList<DiscordChoice> SilenceLengths =
+    [
+        new("10 minutes", "10m"), new("1 hour", "1h"), new("6 hours", "6h"), new("1 day", "1d"),
+        new("3 days", "3d"), new("1 week", "1w"), new("2 weeks", "2w"), new("1 month", "30d"),
+    ];
+
+    /// <summary>The staff commands, and how their options become the moderation command's arguments.</summary>
+    private static readonly Dictionary<string, Func<IReadOnlyDictionary<string, string>, string, string[]>> StaffArguments =
+        new Dictionary<string, Func<IReadOnlyDictionary<string, string>, string, string[]>>(StringComparer.Ordinal)
+        {
+            ["restrict"] = (o, player) => [player, o.GetValueOrDefault("reason") ?? string.Empty],
+            ["unrestrict"] = (o, player) => [player, o.GetValueOrDefault("reason") ?? string.Empty],
+            ["silence"] = (o, player) => [player, o.GetValueOrDefault("length") ?? string.Empty, o.GetValueOrDefault("reason") ?? string.Empty],
+            ["unsilence"] = (o, player) => o.TryGetValue("reason", out var reason) ? [player, reason] : [player],
+            ["alts"] = (_, player) => [player],
+            ["verify"] = (_, player) => [player],
+            ["alert"] = (o, _) => [o.GetValueOrDefault("message") ?? string.Empty],
+        };
 
     /// <summary>Every command, for registration.</summary>
     public static readonly IReadOnlyList<DiscordCommandSpec> Specs =
@@ -29,12 +56,18 @@ public sealed partial class DiscordCommands
         new("rank", "A player's rank and pp", [UserOption, ModeOption]),
         new("recent", "A player's latest play", [UserOption, ModeOption]),
         new("best", "A player's top plays", [UserOption, ModeOption]),
-        new("top", "The pp ranking", [new("mode", "Ruleset (osu! if left out)", Choices: DiscordFormat.RulesetKeys), new("country", "Two-letter country code, e.g. NL")]),
-        new("leaderboard", "A beatmap's leaderboard", [new("beatmap", "Beatmap id or link", Required: true), new("mode", "Ruleset (the map's own if left out)", Choices: DiscordFormat.RulesetKeys)]),
+        new("top", "The pp ranking", [new("mode", "Ruleset (osu! if left out)", Choices: Rulesets), new("country", "Two-letter country code, e.g. NL")]),
+        new("leaderboard", "A beatmap's leaderboard", [new("beatmap", "Beatmap id or link", Required: true), new("mode", "Ruleset (the map's own if left out)", Choices: Rulesets)]),
         new("online", "Who's in-game", []),
         new("link", "Link your game account to Discord", []),
         new("unlink", "Unlink your game account from Discord", []),
-        new("staff", "Run a staff command as your linked account (e.g. silence Name 1h spam)", [new("command", "restrict, unrestrict, silence, unsilence, alert, alertu, alts or verify, with its arguments", Required: true)]),
+        new("restrict", "Staff: restrict a player (hidden, off rankings)", [PlayerOption, new("reason", "Why (shown on their account history)", Required: true)], Staff: true),
+        new("unrestrict", "Staff: lift a restriction", [PlayerOption, new("reason", "Why", Required: true)], Staff: true),
+        new("silence", "Staff: stop a player from chatting for a while", [PlayerOption, new("length", "For how long", Required: true, Choices: SilenceLengths), new("reason", "Why", Required: true)], Staff: true),
+        new("unsilence", "Staff: lift a silence early", [PlayerOption, new("reason", "Why (optional)")], Staff: true),
+        new("alts", "Staff: other accounts seen on the same computer", [PlayerOption], Staff: true),
+        new("verify", "Staff: let in a new account that shares a computer with a restricted one", [PlayerOption], Staff: true),
+        new("alert", "Staff: a pop-up notice to everyone in-game", [new("message", "What to say", Required: true)], Staff: true),
     ];
 
     private readonly IServiceScopeFactory _scopes;
@@ -81,8 +114,8 @@ public sealed partial class DiscordCommands
             case "online":
                 return await OnlineAsync(scope.ServiceProvider.GetService<OsuWebCommunity>(), cancellationToken).ConfigureAwait(false);
 
-            case "staff":
-                return await StaffAsync(links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case var staff when StaffArguments.ContainsKey(staff):
+                return await StaffAsync(scope.ServiceProvider, links, staff, options, callerId, cancellationToken).ConfigureAwait(false);
         }
 
         if (scope.ServiceProvider.GetService<OsuWebCommunity>() is not { } community)
@@ -268,18 +301,29 @@ public sealed partial class DiscordCommands
         return DiscordReply.Text(string.Join('\n', lines));
     }
 
-    private async Task<DiscordReply> StaffAsync(IDiscordLinkRepository links, IReadOnlyDictionary<string, string> options, ulong callerId, CancellationToken cancellationToken)
+    /// <summary>
+    /// A staff command, run as the caller's linked account through BanchoBot's moderation commands
+    /// (same permission checks, logs and in-game effect). The player is a name or a linked member's mention.
+    /// </summary>
+    private async Task<DiscordReply> StaffAsync(
+        IServiceProvider services, IDiscordLinkRepository links, string command, IReadOnlyDictionary<string, string> options, ulong callerId, CancellationToken cancellationToken)
     {
         if (_moderation is null)
             return DiscordReply.Text("Moderation isn't available on this server.", isPrivate: true);
         if (await links.GetByDiscordIdAsync(callerId, cancellationToken).ConfigureAwait(false) is not { } link)
-            return DiscordReply.Text("Link your account first (/link).", isPrivate: true);
+            return DiscordReply.Text("Link your account first with /link: staff commands run as your game account.", isPrivate: true);
 
-        var parts = (options.GetValueOrDefault("command") ?? string.Empty).TrimStart('!').Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0 || !ModerationCommands.Handles(parts[0].ToLowerInvariant()))
-            return DiscordReply.Text("Staff commands: restrict, unrestrict, silence, unsilence, alert, alertu, alts, verify.", isPrivate: true);
+        var player = options.GetValueOrDefault("player")?.Trim() ?? string.Empty;
+        if (MentionPattern().Match(player) is { Success: true } mention)
+        {
+            var mentioned = await links.GetByDiscordIdAsync(ulong.Parse(mention.Groups[1].Value, CultureInfo.InvariantCulture), cancellationToken).ConfigureAwait(false);
+            var user = mentioned is null ? null : await services.GetRequiredService<IUserRepository>().GetByIdAsync(mentioned.UserId, cancellationToken).ConfigureAwait(false);
+            if (user is null)
+                return DiscordReply.Text("That member hasn't linked their account; give the player's name instead.", isPrivate: true);
+            player = user.Username;
+        }
 
-        var reply = await _moderation.RunAsync(link.UserId, parts[0].ToLowerInvariant(), parts[1..], cancellationToken).ConfigureAwait(false);
+        var reply = await _moderation.RunAsync(link.UserId, command, StaffArguments[command](options, player), cancellationToken).ConfigureAwait(false);
         return DiscordReply.Text(reply, isPrivate: true);
     }
 

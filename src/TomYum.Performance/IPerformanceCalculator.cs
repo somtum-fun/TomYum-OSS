@@ -17,6 +17,16 @@ public interface IPerformanceCalculator
     Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Optional: pp for full-combo plays at given accuracies (BanchoBot's <c>/np</c> reply). A
+/// calculator that can't (another backend, a ruleset it doesn't support) returns null.
+/// </summary>
+public interface IAccuracyPerformance
+{
+    /// <summary>pp for each of <paramref name="accuracies"/> (0–1), in order, or null when unknown.</summary>
+    Task<IReadOnlyList<double>?> ForAccuraciesAsync(int beatmapId, int rulesetId, int mods, IReadOnlyList<double> accuracies, CancellationToken cancellationToken = default);
+}
+
 /// <summary>Full set of inputs the pp calculator needs for one submitted score.</summary>
 /// <param name="BeatmapId">Online beatmap id.</param>
 /// <param name="RulesetId">0 = osu!, 1 = taiko, 2 = catch, 3 = mania.</param>

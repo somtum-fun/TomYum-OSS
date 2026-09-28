@@ -17,7 +17,8 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
     /// <summary>How long a command may run before the bot tells Discord it's still thinking (Discord allows 3 s).</summary>
     private static readonly TimeSpan AnswerWithin = TimeSpan.FromSeconds(2);
 
-    private static readonly HashSet<string> PrivateCommands = new(StringComparer.Ordinal) { "link", "unlink", "staff" };
+    private static readonly HashSet<string> PrivateCommands = new(
+        DiscordCommands.Specs.Where(s => s.Staff).Select(s => s.Name).Append("link").Append("unlink"), StringComparer.Ordinal);
 
     private readonly DiscordOptions _options;
     private readonly IServiceProvider _services;
@@ -178,6 +179,10 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
     private static ApplicationCommandProperties ToSlashCommand(DiscordCommandSpec spec)
     {
         var builder = new SlashCommandBuilder().WithName(spec.Name).WithDescription(spec.Description);
+        // Staff commands are hidden from members who can't time people out (Server Settings ->
+        // Integrations changes who sees them); the linked game account's rank is what's checked.
+        if (spec.Staff)
+            builder.WithDefaultMemberPermissions(GuildPermission.ModerateMembers);
         foreach (var option in spec.Options)
         {
             var optionBuilder = new SlashCommandOptionBuilder()
@@ -186,7 +191,7 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
                 .WithType(ApplicationCommandOptionType.String)
                 .WithRequired(option.Required);
             foreach (var choice in option.Choices ?? [])
-                optionBuilder.AddChoice(choice, choice);
+                optionBuilder.AddChoice(choice.Name, choice.Value);
             builder.AddOption(optionBuilder);
         }
         return builder.Build();

@@ -10,7 +10,7 @@ namespace TomYum.Performance;
 /// for that mode, so e.g. vanilla can use the in-process official calculator while relax/autopilot
 /// use an akatsuki-pp-rs sidecar. See ADR-0010.
 /// </summary>
-public sealed class RoutingPerformanceCalculator : IPerformanceCalculator
+public sealed class RoutingPerformanceCalculator : IPerformanceCalculator, IAccuracyPerformance
 {
     private readonly PerformanceOptions _options;
     private readonly IPerformanceBackendRegistry _registry;
@@ -36,6 +36,11 @@ public sealed class RoutingPerformanceCalculator : IPerformanceCalculator
 
         return _registry.Resolve(backend).CalculateAsync(request, cancellationToken);
     }
+
+    public Task<IReadOnlyList<double>?> ForAccuraciesAsync(int beatmapId, int rulesetId, int mods, IReadOnlyList<double> accuracies, CancellationToken cancellationToken = default) =>
+        _registry.Resolve(ResolveBackendName(GameMode.FromLegacyMods(rulesetId, mods))) is IAccuracyPerformance backend
+            ? backend.ForAccuraciesAsync(beatmapId, rulesetId, mods, accuracies, cancellationToken)
+            : Task.FromResult<IReadOnlyList<double>?>(null);
 
     private string ResolveBackendName(int gameMode)
     {
