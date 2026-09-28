@@ -39,6 +39,7 @@ public sealed class DiscordAnnouncer : BackgroundService
     private readonly TomYumVersion _version;
     private readonly TimeProvider _time;
     private readonly ILogger<DiscordAnnouncer> _logger;
+    private readonly DiscordWatch? _watch;
 
     private bool _started;
     private ulong _scoreMark;
@@ -57,8 +58,10 @@ public sealed class DiscordAnnouncer : BackgroundService
         DiscordLinkCodes codes,
         TomYumVersion version,
         TimeProvider time,
-        ILogger<DiscordAnnouncer> logger)
+        ILogger<DiscordAnnouncer> logger,
+        DiscordWatch? watch = null)
     {
+        _watch = watch;
         _options = options;
         _gateway = gateway;
         _format = format;
@@ -101,6 +104,8 @@ public sealed class DiscordAnnouncer : BackgroundService
             await AnnounceScoresAsync(community, cancellationToken).ConfigureAwait(false);
             await AnnounceMedalsAsync(community, cancellationToken).ConfigureAwait(false);
             await AnnouncePlayersAsync(community, cancellationToken).ConfigureAwait(false);
+            if (_watch is not null)
+                await _watch.TickAsync(community, cancellationToken).ConfigureAwait(false);
         }
         if (staffLog is not null)
             await AnnounceStaffLogAsync(staffLog, community, services, cancellationToken).ConfigureAwait(false);
@@ -148,6 +153,8 @@ public sealed class DiscordAnnouncer : BackgroundService
             _medalsAtMark = (await community.GetMedalsSinceAsync(_medalMark, cancellationToken).ConfigureAwait(false))
                 .Select(m => (m.UserId, m.MedalId)).ToHashSet();
             _userMark = await community.GetLatestUserIdAsync(cancellationToken).ConfigureAwait(false);
+            if (_watch is not null)
+                await _watch.StartAsync(community, cancellationToken).ConfigureAwait(false);
         }
         if (staffLog is not null)
             _staffMark = await staffLog.ListAsync(new StaffLogQuery(Limit: 1), cancellationToken).ConfigureAwait(false) is [var newest, ..] ? newest.Id : 0;
@@ -179,6 +186,8 @@ public sealed class DiscordAnnouncer : BackgroundService
             var big = score.Pp >= _options.BigPlayPp && await community.IsPersonalBestPpAsync(score, cancellationToken).ConfigureAwait(false);
             if (first || big)
                 await _gateway.PostAsync(_options.PublicLogChannelId, ScorePost(score, first, big), cancellationToken).ConfigureAwait(false);
+            if (_watch is not null)
+                await _watch.OnScoreAsync(community, score, first, cancellationToken).ConfigureAwait(false);
         }
     }
 

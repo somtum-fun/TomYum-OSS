@@ -80,7 +80,7 @@ public sealed record BeatmapsetCard(int BeatmapsetId, string Artist, string Titl
 /// new scores, medals and players it announces. Restricted players are left out everywhere except
 /// their own profile lookups, like on the website.
 /// </summary>
-public sealed class OsuWebCommunity
+public sealed partial class OsuWebCommunity
 {
     /// <summary>Statuses with a leaderboard: ranked, approved, qualified, loved.</summary>
     public static readonly IReadOnlySet<int> LeaderboardStatuses = new HashSet<int> { 1, 2, 3, 4 };

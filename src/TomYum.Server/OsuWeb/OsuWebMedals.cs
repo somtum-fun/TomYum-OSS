@@ -157,6 +157,25 @@ public sealed partial class OsuWebMedals
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Removes "unlocked the … medal!" entries from players' recent activity for medals they don't
+    /// have (anymore): left over from before medals moved to osu!'s ids, or from unlocks taken back.
+    /// Matched on the exact name the website wrote (as is, or HTML-escaped). Returns how many.
+    /// </summary>
+    public async Task<int> RemoveStaleMedalEventsAsync(CancellationToken cancellationToken = default) =>
+        await _osuWeb.Database.ExecuteSqlRawAsync(
+            """
+            DELETE e FROM osu_events e
+            WHERE e.text LIKE '% unlocked the "<b>%</b>" medal!%'
+              AND NOT EXISTS (
+                SELECT 1 FROM osu_user_achievements ua
+                JOIN osu_achievements a ON a.achievement_id = ua.achievement_id
+                WHERE ua.user_id = e.user_id
+                  AND (LOCATE(CAST(CONCAT('"<b>', a.name, '</b>" medal!') AS BINARY), CAST(e.text AS BINARY)) > 0
+                    OR LOCATE(CAST(CONCAT('"<b>', REPLACE(REPLACE(REPLACE(REPLACE(a.name, '&', '&amp;'), '''', '&#039;'), '"', '&quot;'), '<', '&lt;'), '</b>" medal!') AS BINARY), CAST(e.text AS BINARY)) > 0))
+            """,
+            cancellationToken).ConfigureAwait(false);
+
     /// <summary>Removes a website unlock (used when TomYum's own medals are recalculated).</summary>
     public Task<int> RemoveUnlockAsync(int userId, int medalId, CancellationToken cancellationToken = default) =>
         _osuWeb.Database.ExecuteSqlAsync(

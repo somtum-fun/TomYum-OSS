@@ -63,6 +63,30 @@ public sealed partial record NowPlaying(int BeatmapId, int SetId, int Mode, Mods
     public static NowPlaying? TryParseAction(string? text) =>
         string.IsNullOrEmpty(text) ? null : TryParse($"\u0001ACTION {text}\u0001");
 
+    /// <summary>
+    /// Mods from acronyms written together or apart (<c>HDDT</c>, <c>+HD DT</c>, <c>hd,hr</c>);
+    /// null when something isn't a mod.
+    /// </summary>
+    public static Mods? ParseAcronyms(string? text)
+    {
+        var letters = new string((text ?? string.Empty).Where(char.IsAsciiLetter).ToArray()).ToUpperInvariant();
+        if (letters.Length % 2 != 0)
+            return null;
+        var mods = Mods.None;
+        for (var i = 0; i < letters.Length; i += 2)
+        {
+            if (!Acronyms.TryGetValue(letters.Substring(i, 2), out var mod))
+                return null;
+            mods |= mod;
+        }
+        // Nightcore and Perfect carry the mods they imply, as the client sends them.
+        if (mods.HasFlag(Mods.Nightcore))
+            mods |= Mods.DoubleTime;
+        if (mods.HasFlag(Mods.Perfect))
+            mods |= Mods.SuddenDeath;
+        return mods;
+    }
+
     /// <summary>Lazer's mod acronyms (stable writes the full names).</summary>
     private static readonly Dictionary<string, Mods> Acronyms = new(StringComparer.Ordinal)
     {

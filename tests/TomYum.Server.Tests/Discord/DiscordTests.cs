@@ -386,6 +386,61 @@ public sealed class DiscordFakeGateway : IDiscordGateway
         return Task.FromResult(true);
     }
 
+    private ulong _nextMessage = 1000;
+
+    /// <summary>Messages by id, as last posted or edited; pinned ones; roles given and taken; the bot's status line.</summary>
+    public Dictionary<ulong, (ulong ChannelId, DiscordPost Post)> Messages { get; } = [];
+
+    public HashSet<ulong> Pinned { get; } = [];
+
+    public List<(ulong DiscordUserId, ulong RoleId, bool Give)> RoleChanges { get; } = [];
+
+    public string? Activity { get; private set; }
+
+    public Task<ulong?> SendAsync(ulong channelId, DiscordPost post, CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            _posts.Add((channelId, post));
+            var id = _nextMessage++;
+            Messages[id] = (channelId, post);
+            return Task.FromResult<ulong?>(id);
+        }
+    }
+
+    public Task<bool> EditAsync(ulong channelId, ulong messageId, DiscordPost post, CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+        {
+            if (!Messages.TryGetValue(messageId, out var message) || message.ChannelId != channelId)
+                return Task.FromResult(false);
+            Messages[messageId] = (channelId, post);
+            return Task.FromResult(true);
+        }
+    }
+
+    public Task PinAsync(ulong channelId, ulong messageId, CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+            Pinned.Add(messageId);
+        return Task.CompletedTask;
+    }
+
+    public Task<ulong> EnsureRoleAsync(string name, uint color, CancellationToken cancellationToken = default) => Task.FromResult(777UL);
+
+    public Task<bool> SetRoleAsync(ulong discordUserId, ulong roleId, bool give, CancellationToken cancellationToken = default)
+    {
+        lock (_lock)
+            RoleChanges.Add((discordUserId, roleId, give));
+        return Task.FromResult(true);
+    }
+
+    public Task SetActivityAsync(string text, CancellationToken cancellationToken = default)
+    {
+        Activity = text;
+        return Task.CompletedTask;
+    }
+
     public async Task<(ulong ChannelId, DiscordPost Post)> WaitForPostAsync()
     {
         for (var i = 0; i < 100; i++)

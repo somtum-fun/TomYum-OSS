@@ -723,3 +723,87 @@ CREATE TABLE oauth_access_tokens (
   PRIMARY KEY (id),
   KEY oauth_access_tokens_user_id_index (user_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Reports (the website's, and BanchoBot's !report): as on a current osu-web database.
+DROP TABLE IF EXISTS osu_user_reports;
+CREATE TABLE osu_user_reports (
+  report_id int unsigned NOT NULL AUTO_INCREMENT,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  reportable_type enum('user','comment','score_best_osu','score_best_taiko','score_best_fruits','score_best_mania','beatmapset_discussion_post','forum_post','beatmapset','solo_score','message','team') DEFAULT NULL,
+  reportable_id bigint unsigned DEFAULT NULL,
+  score_id bigint unsigned NOT NULL DEFAULT 0,
+  mode tinyint NOT NULL DEFAULT 0,
+  reason enum('Insults','Spam','Cheating','UnwantedContent','Nonsense','Other','MultipleAccounts','InappropriateChat') DEFAULT NULL,
+  reporter_id int unsigned NOT NULL DEFAULT 0,
+  comments text,
+  `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (report_id),
+  KEY `timestamp` (`timestamp`),
+  KEY user_lookup (user_id),
+  KEY user_report (reporter_id, user_id, reportable_type, reportable_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Recent activity (medals, ranks, …): as on a current osu-web database.
+DROP TABLE IF EXISTS osu_events;
+CREATE TABLE osu_events (
+  event_id int unsigned NOT NULL AUTO_INCREMENT,
+  `text` varchar(1000) NOT NULL,
+  text_clean varchar(8000) DEFAULT NULL,
+  beatmap_id mediumint unsigned DEFAULT NULL,
+  beatmapset_id mediumint unsigned DEFAULT NULL,
+  user_id int unsigned DEFAULT NULL,
+  `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  epicfactor tinyint unsigned NOT NULL DEFAULT 0,
+  private tinyint unsigned NOT NULL DEFAULT 0,
+  legacy_score_event tinyint(1) DEFAULT NULL,
+  PRIMARY KEY (event_id, `date`),
+  KEY user_id_legacy_score_event (user_id, event_id, legacy_score_event)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci;
+
+-- First places: the lazer view (beatmap_leaders) and stable's (osu_leaders per ruleset).
+DROP TABLE IF EXISTS beatmap_leaders;
+CREATE TABLE beatmap_leaders (
+  score_id bigint unsigned NOT NULL,
+  beatmap_id mediumint unsigned NOT NULL,
+  ruleset_id smallint unsigned NOT NULL,
+  user_id int unsigned NOT NULL,
+  PRIMARY KEY (score_id),
+  UNIQUE KEY beatmap_leaders_beatmap_id_ruleset_id_unique (beatmap_id, ruleset_id),
+  KEY beatmap_leaders_user_id_ruleset_id_index (user_id, ruleset_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+DROP TABLE IF EXISTS osu_leaders;
+CREATE TABLE osu_leaders (
+  beatmap_id mediumint unsigned NOT NULL,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  score_id bigint unsigned NOT NULL,
+  PRIMARY KEY (beatmap_id),
+  KEY user_id (user_id, score_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+DROP TABLE IF EXISTS osu_leaders_taiko;
+CREATE TABLE osu_leaders_taiko (
+  beatmap_id mediumint unsigned NOT NULL,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  score_id bigint unsigned NOT NULL,
+  PRIMARY KEY (beatmap_id),
+  KEY user_id (user_id, score_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+DROP TABLE IF EXISTS osu_leaders_fruits;
+CREATE TABLE osu_leaders_fruits (
+  beatmap_id mediumint unsigned NOT NULL,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  score_id bigint unsigned NOT NULL,
+  PRIMARY KEY (beatmap_id),
+  KEY user_id (user_id, score_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+DROP TABLE IF EXISTS osu_leaders_mania;
+CREATE TABLE osu_leaders_mania (
+  beatmap_id mediumint unsigned NOT NULL,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  score_id bigint unsigned NOT NULL,
+  PRIMARY KEY (beatmap_id),
+  KEY user_id (user_id, score_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
