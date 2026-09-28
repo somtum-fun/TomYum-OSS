@@ -523,9 +523,44 @@ CREATE TABLE osu_banchostats (
 
 CREATE TABLE multiplayer_rooms (
   id bigint unsigned NOT NULL AUTO_INCREMENT,
+  user_id int unsigned NOT NULL DEFAULT 0,
   name varchar(100) NOT NULL DEFAULT '',
-  type enum('playlists', 'head_to_head', 'team_versus', 'matchmaking') NOT NULL DEFAULT 'playlists',
+  starts_at timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   ends_at timestamp NULL DEFAULT NULL,
+  type enum('playlists', 'head_to_head', 'team_versus', 'matchmaking') NOT NULL DEFAULT 'playlists',
+  deleted_at timestamp NULL DEFAULT NULL,
+  category enum('normal', 'spotlight', 'featured_artist', 'daily_challenge') NOT NULL DEFAULT 'normal',
+  PRIMARY KEY (id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE multiplayer_playlist_items (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  room_id bigint unsigned NOT NULL,
+  owner_id int unsigned NOT NULL DEFAULT 0,
+  beatmap_id mediumint unsigned NOT NULL,
+  ruleset_id smallint unsigned NOT NULL,
+  allowed_mods json DEFAULT NULL,
+  required_mods json DEFAULT NULL,
+  PRIMARY KEY (id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE multiplayer_score_links (
+  user_id int unsigned NOT NULL,
+  playlist_item_id bigint unsigned NOT NULL,
+  score_id bigint unsigned NOT NULL,
+  PRIMARY KEY (score_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Lazer's daily challenge queue: 2024_05_09 + 2026_08_20 description.
+CREATE TABLE daily_challenge_queue (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  beatmap_id mediumint unsigned NOT NULL,
+  ruleset_id smallint unsigned NOT NULL,
+  allowed_mods json DEFAULT NULL,
+  required_mods json DEFAULT NULL,
+  `order` smallint unsigned DEFAULT NULL,
+  multiplayer_room_id bigint unsigned DEFAULT NULL,
+  description varchar(255) DEFAULT NULL,
   PRIMARY KEY (id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 

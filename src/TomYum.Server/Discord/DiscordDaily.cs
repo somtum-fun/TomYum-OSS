@@ -11,7 +11,9 @@ namespace TomYum.Server.Discord;
 /// <item>the status message: pinned in <see cref="DiscordOptions.StatusChannelId"/> and edited in place
 /// (who's online on each client, plays and players today, uptime), and the bot's own status line;</item>
 /// <item>the map of the day: a random ranked map each UTC day; the best pass on it that day (by pp,
-/// then score) wins the Map of the Day role for a week, if the winner linked their Discord.</item>
+/// then score) wins the Map of the Day role for a week, if the winner linked their Discord;</item>
+/// <item>lazer's daily challenge: announced when osu-web opens the day's room, with the top
+/// players once it closes.</item>
 /// </list>
 /// What it posted is remembered (<see cref="DiscordState"/>), so restarts don't post again.
 /// </summary>
@@ -66,6 +68,59 @@ public sealed class DiscordDaily : BackgroundService
 
         await StatusAsync(community, cancellationToken).ConfigureAwait(false);
         await MapOfTheDayAsync(scope.ServiceProvider, community, cancellationToken).ConfigureAwait(false);
+        if (scope.ServiceProvider.GetService<OsuWebDailyChallenge>() is { } challenge)
+            await DailyChallengeAsync(scope.ServiceProvider, community, challenge, cancellationToken).ConfigureAwait(false);
+    }
+
+    // ── lazer's daily challenge ───────────────────────────────────────────────────────────
+
+    /// <summary>The room last announced, and whether its results were posted.</summary>
+    private sealed record AnnouncedChallenge(ulong RoomId, string Name, bool Settled);
+
+    private async Task DailyChallengeAsync(IServiceProvider services, OsuWebCommunity community, OsuWebDailyChallenge challenge, CancellationToken cancellationToken)
+    {
+        var last = await _state.GetAsync("daily-challenge").ConfigureAwait(false) is { } json ? JsonSerializer.Deserialize<AnnouncedChallenge>(json) : null;
+        var current = await challenge.CurrentAsync(cancellationToken).ConfigureAwait(false);
+
+        if (last is { Settled: false } && last.RoomId != current?.RoomId)
+        {
+            await _gateway.PostAsync(_options.MapOfTheDayChannel, await ChallengeResultsAsync(challenge, last, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+            last = last with { Settled = true };
+            await _state.SetAsync("daily-challenge", JsonSerializer.Serialize(last)).ConfigureAwait(false);
+        }
+        if (current is null || current.RoomId == last?.RoomId)
+            return;
+
+        var card = await _commands.MapCardAsync(services, community, (int)current.BeatmapId, TomYum.Bancho.Mods.None, current.RulesetId, cancellationToken).ConfigureAwait(false);
+        var required = OsuWebDailyChallenge.Acronyms(current.RequiredMods);
+        var allowed = OsuWebDailyChallenge.Acronyms(current.AllowedMods);
+        var mods = (required.Count > 0 ? $"Required mods: **{string.Join(string.Empty, required)}**. " : string.Empty)
+                   + (allowed.Count > 0 ? $"Allowed: {string.Join(' ', allowed)}." : "No mods.");
+        var ends = current.EndsAt is { } end ? $" Open until {DiscordFormat.Relative(DateTime.SpecifyKind(end, DateTimeKind.Utc))}." : string.Empty;
+        await _gateway.PostAsync(_options.MapOfTheDayChannel, new DiscordPost(
+            $"📅 **{DiscordFormat.Escape(current.Name)}** is open in osu!lazer (main menu → Daily Challenge). Play it as often as you like: your best score counts.{ends}\n{mods}",
+            card), cancellationToken).ConfigureAwait(false);
+        await _state.SetAsync("daily-challenge", JsonSerializer.Serialize(new AnnouncedChallenge(current.RoomId, current.Name, false))).ConfigureAwait(false);
+    }
+
+    private async Task<DiscordPost> ChallengeResultsAsync(OsuWebDailyChallenge challenge, AnnouncedChallenge room, CancellationToken cancellationToken)
+    {
+        var results = await challenge.ResultsAsync(room.RoomId, 5, cancellationToken).ConfigureAwait(false);
+        if (results.Count == 0)
+            return new DiscordPost($"📅 Nobody passed **{DiscordFormat.Escape(room.Name)}**.");
+
+        var players = await challenge.PlayersAsync(room.RoomId, cancellationToken).ConfigureAwait(false);
+        string[] medals = ["🥇", "🥈", "🥉", "4.", "5."];
+        var lines = results.Select((r, i) => string.Create(CultureInfo.InvariantCulture,
+            $"{medals[i]} [{DiscordFormat.LinkLabel(r.Username)}]({_format.Profile((int)r.UserId)}) ▸ {DiscordFormat.Number(r.TotalScore)} ▸ {DiscordFormat.Percent(r.Accuracy)}"));
+        return new DiscordPost(Embed: new DiscordEmbed
+        {
+            Title = $"{room.Name}: results",
+            Url = string.Create(CultureInfo.InvariantCulture, $"{_format.Site}/multiplayer/rooms/{room.RoomId}"),
+            Description = string.Join('\n', lines),
+            Color = DiscordFormat.Gold,
+            Footer = string.Create(CultureInfo.InvariantCulture, $"{players} player(s) took part"),
+        });
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

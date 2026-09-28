@@ -12,6 +12,7 @@ using TomYum.Persistence.Repositories;
 using TomYum.Server.Bancho;
 using TomYum.Server.Beatmaps;
 using TomYum.Server.Discord;
+using TomYum.Server.OsuWeb;
 using TomYum.Server.Tests.Discord;
 using Xunit;
 
@@ -249,6 +250,60 @@ public sealed class DiscordFeaturesTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task TheDailyChallenge_IsQueued_Announced_AndSettled()
+    {
+        var (alpha, bravo, _, _) = await SeedAsync();
+        var commands = NewCommands(new InMemoryDiscordLinkRepository(), out var services);
+        var scopes = services.GetRequiredService<IServiceScopeFactory>();
+
+        // One ranked set here: one day can be queued, never two from the same set.
+        var job = new DailyChallengeQueueJob(new DailyChallengeOptions { DaysAhead = 3 }, scopes, TimeProvider.System, NullLogger<DailyChallengeQueueJob>.Instance);
+        Assert.Equal(1, await job.FillAsync());
+        Assert.Equal(0, await job.FillAsync());
+        var queued = await ScalarAsync<long>("SELECT beatmap_id FROM daily_challenge_queue");
+        Assert.Contains(queued, new long[] { Map, OtherMap });
+        Assert.Equal(["EZ", "NF", "HD", "HR", "SD", "PF", "FL"], OsuWebDailyChallenge.Acronyms(await ScalarAsync<string>("SELECT CAST(allowed_mods AS CHAR) FROM daily_challenge_queue")));
+        Assert.Equal(2, new DailyChallengeOptions { Rulesets = "osu, catch" }.RulesetFor(DateOnly.FromDayNumber(1)));
+
+        // osu-web opens the room (as daily-challenge:create-next does); two players take part.
+        await ExecuteAsync($"""
+            INSERT INTO multiplayer_rooms (id, user_id, name, starts_at, ends_at, type, category)
+            VALUES (7, 1, 'Daily Challenge: Sep 29, 2026', UTC_TIMESTAMP() - INTERVAL 1 HOUR, UTC_TIMESTAMP() + INTERVAL 1 HOUR, 'playlists', 'daily_challenge');
+            INSERT INTO multiplayer_playlist_items (id, room_id, beatmap_id, ruleset_id, allowed_mods, required_mods)
+            SELECT 70, 7, beatmap_id, ruleset_id, allowed_mods, required_mods FROM daily_challenge_queue;
+            UPDATE daily_challenge_queue SET multiplayer_room_id = 7;
+            """);
+        foreach (var (user, total) in new[] { (alpha, 700_000u), (bravo, 950_000u), (alpha, 800_000u) })
+        {
+            var score = await InsertScoreAsync(user, (int)queued, total);
+            await ExecuteAsync($"INSERT INTO multiplayer_score_links (user_id, playlist_item_id, score_id) VALUES ({user}, 70, {score})");
+        }
+
+        var gateway = new DiscordFakeGateway();
+        var daily = new DiscordDaily(DiscordFakeGateway.Options(), gateway, Format, new DiscordState(), scopes, new MatchRegistry(),
+            commands, new TomYumVersion(), TimeProvider.System, NullLogger<DiscordDaily>.Instance);
+        await daily.TickAsync();
+        var open = Assert.Single(gateway.In(DiscordFakeGateway.PublicLog), p => p.Content?.StartsWith("📅", StringComparison.Ordinal) == true);
+        Assert.Contains("**Daily Challenge: Sep 29, 2026** is open in osu!lazer", open.Content, StringComparison.Ordinal);
+        Assert.Contains("Allowed: EZ NF HD HR SD PF FL.", open.Content, StringComparison.Ordinal);
+        Assert.NotNull(open.Embed);
+
+        gateway.Clear();
+        await daily.TickAsync();
+        Assert.DoesNotContain(gateway.In(DiscordFakeGateway.PublicLog), p => p.Content?.StartsWith("📅", StringComparison.Ordinal) == true);
+
+        // It closes: the best per player, best first.
+        await ExecuteAsync("UPDATE multiplayer_rooms SET ends_at = UTC_TIMESTAMP() - INTERVAL 1 MINUTE WHERE id = 7");
+        await daily.TickAsync();
+        var results = Assert.Single(gateway.In(DiscordFakeGateway.PublicLog), p => p.Embed?.Title?.EndsWith(": results", StringComparison.Ordinal) == true);
+        var lines = results.Embed!.Description!.Split('\n');
+        Assert.Equal(2, lines.Length);
+        Assert.StartsWith("🥇 [Bravo]", lines[0], StringComparison.Ordinal);
+        Assert.Contains("800,000", lines[1], StringComparison.Ordinal);
+        Assert.Equal("2 player(s) took part", results.Embed.Footer);
+    }
+
+    [MySqlFact]
     public async Task Players_CanReportInGame()
     {
         var (alpha, bravo, _, _) = await SeedAsync();
@@ -358,6 +413,7 @@ public sealed class DiscordFeaturesTests : OsuWebDatabaseTest
             .AddSingleton<Microsoft.Extensions.Configuration.IConfiguration>(configuration)
             .AddSingleton<TomYum.Server.Admin.BadgeImages>()
             .AddScoped(_ => new OsuWebBadges(NewOsuWebContext()))
+            .AddScoped(_ => new OsuWebDailyChallenge(NewOsuWebContext()))
             .AddSingleton(TimeProvider.System)
             .AddScoped(_ => new OsuWebCommunity(NewOsuWebContext()))
             .AddScoped(_ => new OsuWebModeration(NewOsuWebContext()))

@@ -55,6 +55,31 @@ in lazer**: using it against the official servers gets accounts banned. Remove t
    the default client ID/secret. Turn off the g0v0-server features (the `--non-g0v0-server` option).
 4. Sign in with your normal account from the website.
 
+## Daily challenge
+
+Lazer's daily challenge (main menu → Daily Challenge) is osu-web's own feature: at 00:05 UTC its
+scheduler (`daily-challenge:create-next`) opens a playlist room from the first unused entry in
+`daily_challenge_queue`, and at 00:10 it works out the players' streaks and percentiles
+(`daily-challenge:user-stats-calculate`; they show on profiles and in the daily challenge ranking).
+The spectator server tells lazer clients the room is open.
+
+TomYum keeps that queue filled (`DailyChallengeQueueJob`, hourly): a week ahead, each a random
+ranked map made for the day's ruleset, 1–5 minutes long, 4–6.5★, from a set that was never a daily
+challenge. Players may add EZ, NF, HD, HR (FI and MR in mania), SD, PF and FL, but no rate changes.
+The Discord bot announces each day's room in the map of the day channel and posts the top five when
+it closes. Settings (`tomyum.env`):
+
+```
+TOMYUM_DAILYCHALLENGE__ENABLED=true         # false: fill daily_challenge_queue yourself
+TOMYUM_DAILYCHALLENGE__DAYSAHEAD=7
+TOMYUM_DAILYCHALLENGE__MINSTARS=4
+TOMYUM_DAILYCHALLENGE__MAXSTARS=6.5
+TOMYUM_DAILYCHALLENGE__RULESETS=osu         # rotates by day, e.g. osu,osu,taiko,osu,osu,catch,mania
+```
+
+To open a day's room before 00:05 (e.g. the first time), fill the queue and run
+`docker compose exec osu-web php artisan daily-challenge:create-next`.
+
 ## Research
 
 Checked 2026-09-27 against ppy's current sources:
