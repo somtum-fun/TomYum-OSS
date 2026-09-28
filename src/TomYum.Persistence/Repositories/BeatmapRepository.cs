@@ -100,4 +100,16 @@ public sealed class BeatmapRepository : IBeatmapRepository
 
         return maxCustom is null ? Beatmap.CustomIdFloor : maxCustom.Value + 1;
     }
+
+    /// <inheritdoc />
+    public async Task<int> ReserveCustomBeatmapIdAsync(CancellationToken cancellationToken = default)
+    {
+        var maxCustom = await _db.Beatmaps
+            .Where(b => b.Id >= Beatmap.CustomIdFloor)
+            .Select(b => (int?)b.Id)
+            .MaxAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        return maxCustom is null ? Beatmap.CustomIdFloor : maxCustom.Value + 1;
+    }
 }

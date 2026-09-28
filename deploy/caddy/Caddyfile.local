@@ -61,6 +61,11 @@ osu.localtest.me {
 	handle_path /signalr/* {
 		reverse_proxy localhost:8190
 	}
+	# Custom (uploaded) sets, ids from 10,000,000: TomYum has their covers and audio preview.
+	@custom_set_files path_regexp ^/uploads/default/beatmaps/[0-9]{8,}/
+	handle @custom_set_files {
+		reverse_proxy localhost:8080
+	}
 	# Beatmap covers: osu-web links them under its own uploads, but TomYum never stores any; the
 	# official ones are on ppy's asset server at the same path.
 	@covers path_regexp covers ^/uploads/default/(beatmaps/[0-9]+/covers/.+)$

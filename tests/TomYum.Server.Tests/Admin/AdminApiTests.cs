@@ -338,5 +338,8 @@ public sealed class AdminApiTests
 
         public Task<int> ReserveCustomSetIdAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(Beatmap.CustomIdFloor);
+
+        public Task<int> ReserveCustomBeatmapIdAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(Beatmap.CustomIdFloor);
     }
 }

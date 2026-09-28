@@ -176,6 +176,8 @@ public sealed class ChatBridgeTests
         public Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task<int> ReserveCustomSetIdAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
+
+        public Task<int> ReserveCustomBeatmapIdAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     private sealed class NoMapsApi : IOsuApiClient

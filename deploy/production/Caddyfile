@@ -59,7 +59,8 @@ http://a.{$DOMAIN} {
 # osu.: the game client's /web/* and in-game registration go to TomYum, the website to osu-web.
 http://osu.{$DOMAIN} {
 	request_body {
-		max_size 32MB
+		# Beatmap set uploads from the BN panel go up to 100 MB (Cloudflare's limit too).
+		max_size 110MB
 	}
 
 	# The website's InterOp API is for TomYum and ppy's services on the compose network only.
@@ -87,6 +88,11 @@ http://osu.{$DOMAIN} {
 		reverse_proxy spectator:80
 	}
 
+	# Custom (uploaded) sets, ids from 10,000,000: TomYum has their covers and audio preview.
+	@custom_set_files path_regexp ^/uploads/default/beatmaps/[0-9]{8,}/
+	handle @custom_set_files {
+		import tomyum
+	}
 	# Beatmap covers: the website links them under its uploads, but the official ones are on
 	# ppy's asset server at the same path.
 	@covers path_regexp covers ^/uploads/default/(beatmaps/[0-9]+/covers/.+)$

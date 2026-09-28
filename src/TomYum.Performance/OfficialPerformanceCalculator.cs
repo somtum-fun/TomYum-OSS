@@ -26,7 +26,7 @@ namespace TomYum.Performance;
 /// attributes 30 min by beatmapId+rulesetId+mods, then runs the performance calculator.
 /// One of the pluggable backends behind RoutingPerformanceCalculator (ADR-0005 / ADR-0010).
 /// </summary>
-public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAccuracyPerformance
+public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAccuracyPerformance, IBeatmapDifficulty
 {
     private readonly OsuFileCache _files;
     private readonly IMemoryCache _cache;
@@ -105,11 +105,20 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
         return difficulty?.Attributes.StarRating;
     }
 
+    public async Task<BeatmapDifficulty?> DifficultyAsync(int beatmapId, int rulesetId, CancellationToken cancellationToken = default)
+    {
+        if (rulesetId is < 0 or > 3)
+            return null;
+        var ruleset = GetRuleset(rulesetId);
+        var difficulty = await DifficultyAsync(beatmapId, rulesetId, 0, ruleset, StableMods(ruleset, 0), cancellationToken).ConfigureAwait(false);
+        return difficulty is null ? null : new BeatmapDifficulty(difficulty.Attributes.StarRating, difficulty.Attributes.MaxCombo);
+    }
+
     /// <summary>A map's difficulty attributes, and the map itself (the pp formula reads its AR/OD/CS/HP).</summary>
     private sealed record Difficulty(DifficultyAttributes Attributes, BeatmapInfo Beatmap);
 
     private Task<Difficulty?> DifficultyAsync(int beatmapId, int rulesetId, int legacyMods, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods, CancellationToken cancellationToken) =>
-        _cache.GetOrCreateAsync($"diff:official:{beatmapId}:{rulesetId}:{legacyMods}", async entry =>
+        _cache.GetOrCreateAsync($"diff:official:{beatmapId}:{rulesetId}:{legacyMods}:{_files.Stamp(beatmapId)}", async entry =>
         {
             entry.SlidingExpiration = TimeSpan.FromMinutes(30);
             var bytes = await _files.GetAsync(beatmapId, cancellationToken).ConfigureAwait(false);

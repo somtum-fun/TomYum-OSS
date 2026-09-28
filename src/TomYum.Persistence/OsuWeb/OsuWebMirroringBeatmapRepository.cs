@@ -85,4 +85,20 @@ public sealed class OsuWebMirroringBeatmapRepository : IBeatmapRepository
             throw new InvalidOperationException($"Custom beatmap set ids are exhausted (osu-web's limit is {OsuWebBeatmaps.MaxId}).");
         return next;
     }
+
+    public async Task<int> ReserveCustomBeatmapIdAsync(CancellationToken cancellationToken = default)
+    {
+        var local = await _inner.ReserveCustomBeatmapIdAsync(cancellationToken).ConfigureAwait(false);
+        var floor = (uint)Beatmap.CustomIdFloor;
+        var maxOnOsuWeb = await _osuWeb.Beatmaps.AsNoTracking()
+            .Where(b => b.BeatmapId >= floor)
+            .Select(b => (uint?)b.BeatmapId)
+            .MaxAsync(cancellationToken)
+            .ConfigureAwait(false);
+
+        var next = Math.Max(local, maxOnOsuWeb is null ? Beatmap.CustomIdFloor : (int)maxOnOsuWeb.Value + 1);
+        if (next > OsuWebBeatmaps.MaxId)
+            throw new InvalidOperationException($"Custom beatmap ids are exhausted (osu-web's limit is {OsuWebBeatmaps.MaxId}).");
+        return next;
+    }
 }

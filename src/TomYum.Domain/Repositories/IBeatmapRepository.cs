@@ -43,4 +43,10 @@ public interface IBeatmapRepository
     /// (≥ <see cref="Beatmap.CustomIdFloor"/>) for custom submission.
     /// </summary>
     Task<int> ReserveCustomSetIdAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The first free server-local beatmap (difficulty) id (≥ <see cref="Beatmap.CustomIdFloor"/>);
+    /// every id above it is free too, so a set's new difficulties take consecutive ids from it.
+    /// </summary>
+    Task<int> ReserveCustomBeatmapIdAsync(CancellationToken cancellationToken = default);
 }
