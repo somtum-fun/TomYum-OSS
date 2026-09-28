@@ -16,8 +16,8 @@ namespace TomYum.Server.Bancho;
 /// and the client's md5-hex password is verified against the stored bcrypt hash
 /// (see <see cref="IPasswordHasher"/>). Still backed by an in-memory repository until
 /// <c>TomYum.Persistence</c> lands. Restricted players log in but get the restricted notice and
-/// stay invisible to others; silenced players get their remaining silence. TODO: geolocate the
-/// client IP for presence (country, lon/lat).
+/// stay invisible to others; silenced players get their remaining silence. The country comes from
+/// the endpoint (Cloudflare's header, else <see cref="IpCountry"/>); presence has no coordinates.
 /// </remarks>
 public sealed class BanchoLoginHandler
 {
@@ -74,7 +74,7 @@ public sealed class BanchoLoginHandler
     /// a body to send; <see cref="LoginOutcome.Token"/> is non-null only when login succeeded.
     /// </summary>
     /// <param name="body">Raw login request body.</param>
-    /// <param name="countryIso">2-letter ISO country code from CF-IPCountry (or empty).</param>
+    /// <param name="countryIso">2-letter ISO country code (Cloudflare's, else GeoIP's), or empty.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     public async Task<LoginOutcome> HandleAsync(string body, string countryIso, CancellationToken cancellationToken)
     {

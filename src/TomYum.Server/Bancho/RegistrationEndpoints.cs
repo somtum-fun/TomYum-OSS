@@ -50,9 +50,10 @@ public static class RegistrationEndpoints
         // check == 0 means "create the account"; any non-zero value is validate-only.
         var create = int.TryParse(checkRaw, out var check) && check == 0;
 
-        var countryIso = context.Request.Headers["CF-IPCountry"].ToString();
-        if (string.IsNullOrWhiteSpace(countryIso))
-            countryIso = "xx";
+        var header = context.Request.Headers["CF-IPCountry"].ToString();
+        var countryIso = IpCountry.FromHeader(header)
+                         ?? context.RequestServices.GetService<IpCountry>()?.Lookup(LoginIps.ClientAddress(context))
+                         ?? "xx";
 
         var result = await registration
             .RegisterAsync(username, email, password, create, country: countryIso.ToLowerInvariant(), cancellationToken)

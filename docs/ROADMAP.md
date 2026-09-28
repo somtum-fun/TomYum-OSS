@@ -73,7 +73,10 @@ only visible to self); **banned ≡ restricted** (no hard login reject); **silen
 - [x] **Shared-machine alert** — a verified account that logs in from a restricted account's machine
       (restricted after the alt got in, or verified by hand) gets in, but staff get one Discord alert
       per pair in the reports channel with Restrict / Silence buttons (`user.shared_machine`). 2026-09-29
-- [ ] Presence geolocation — IP→country enrichment (have `CF-IPCountry`; add a fallback lookup).
+- [x] Presence geolocation — IP→country fallback: when `CF-IPCountry` is missing, `XX` or `T1`, the
+      client address is looked up in DB-IP's free country database (CC BY 4.0, downloaded to
+      `data/geoip` and refreshed monthly; `GeoIp:Download=false` turns the download off). Used at
+      login (an `xx` account gets its country then) and in-game registration. 2026-09-29
 
 ## Phase 3 — Stable spectating 🔒 (none) — prereq for DAN
 _All 10 packet IDs exist; `WriteRaw` fastpath exists (see `MatchScoreUpdateHandler`). Just handlers + state._

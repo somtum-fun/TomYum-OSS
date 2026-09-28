@@ -24,3 +24,16 @@ NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FO
 OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
+
+## DB-IP IP to Country Lite
+
+Players' countries, when Cloudflare doesn't give one (`src/TomYum.Server/Bancho/IpCountry.cs`), come
+from DB-IP's free database, downloaded at run time (not included in this repository).
+
+IP Geolocation by [DB-IP](https://db-ip.com), licensed under
+[Creative Commons Attribution 4.0 International](https://creativecommons.org/licenses/by/4.0/).
+
+## MaxMind.Db
+
+The database above is read with [MaxMind.Db](https://github.com/maxmind/MaxMind-DB-Reader-dotnet)
+(NuGet package), licensed under the Apache License 2.0.

@@ -230,6 +230,16 @@ builder.Services.AddHttpClient(BadgeImages.HttpClientName, http =>
 });
 builder.Services.AddSingleton<BadgeImages>();
 
+// Countries for players Cloudflare can't place (DB-IP's free database, refreshed monthly).
+builder.Services.AddHttpClient(IpCountry.HttpClientName, http =>
+{
+    http.Timeout = TimeSpan.FromMinutes(2);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
+});
+builder.Services.AddSingleton<IpCountry>();
+if (builder.Configuration.GetValue("GeoIp:Download", true))
+    builder.Services.AddHostedService<IpCountryUpdater>();
+
 // Packet dispatch: one stateless handler per client packet id, discovered by the singleton
 // dispatcher into a frozen lookup. Register each handler so DI enumerates them.
 builder.Services.AddSingleton<IClientPacketHandler, PingHandler>();
