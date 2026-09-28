@@ -119,6 +119,12 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService<BanchoStatsJob>();
     // The website's first places (profile "First Place Scores"), which nothing else keeps.
     builder.Services.AddHostedService<OsuWebLeadersJob>();
+    // Lazer's daily challenge: osu-web opens the rooms; TomYum keeps its queue filled.
+    var dailyChallengeOptions = new DailyChallengeOptions();
+    builder.Configuration.GetSection(DailyChallengeOptions.SectionName).Bind(dailyChallengeOptions);
+    builder.Services.AddSingleton(dailyChallengeOptions);
+    if (dailyChallengeOptions.Enabled)
+        builder.Services.AddHostedService<DailyChallengeQueueJob>();
 
     // ppy's score processor next to osu-web (lazer support, docs/lazer.md): it owns pp on the website.
     var mirrorOptions = new OsuWebMirrorOptions();
