@@ -47,7 +47,8 @@ public sealed class DiscordFormat
 
     public string Avatar(int userId) => $"{_avatars}/{userId.ToString(CultureInfo.InvariantCulture)}";
 
-    public string Beatmap(int beatmapId) => $"{_site}/beatmaps/{beatmapId.ToString(CultureInfo.InvariantCulture)}";
+    /// <summary>The short link, e.g. <c>https://osu.sundei.eu/b/4622078</c>.</summary>
+    public string Beatmap(int beatmapId) => $"{_site}/b/{beatmapId.ToString(CultureInfo.InvariantCulture)}";
 
     public string Beatmapset(int beatmapsetId) => $"{_site}/beatmapsets/{beatmapsetId.ToString(CultureInfo.InvariantCulture)}";
 

@@ -93,9 +93,46 @@ public sealed class ChatBridgeTests
         Assert.False(bridge.IsForBanchoBot(new WebChatMessage(1, 2, "Lilian", null, 3, "!ping", false)));
     }
 
-    /// <summary>A bridge whose services have BanchoBot and a user repository holding Lilian (whose id is returned).</summary>
-    private static async Task<(OsuWebChatBridge, PlayerRegistry, ChannelRegistry, int)> NewBridgeWithBotAsync()
+    [Fact]
+    public async Task LazerNp_SetsTheMap_AndBanchoBotDescribesIt()
     {
+        var store = new NowPlayingStore();
+        var (bridge, _, _, lilian) = await NewBridgeWithBotAsync(store);
+        const string np = "is listening to [https://osu.sundei.eu/b/4622078 Camellia - Parallel Universe Shifter (iLyne) [To Infinity and Beyond]]";
+
+        // In a channel: remembered for !map.
+        bridge.Deliver(new WebChatMessage(1, lilian, "Lilian", "#osu", null, np, IsAction: true));
+        Assert.Equal(new NowPlaying(4622078, 0, 0, Mods.None), store.Get(lilian));
+
+        // To BanchoBot: answered with the map.
+        var reply = await bridge.AnswerWebsiteCommandAsync(new WebChatMessage(2, lilian, "Lilian", null, BanchoBot.UserId, np, IsAction: true), CancellationToken.None);
+        Assert.StartsWith($"[https://osu.{BanchoHosts.DefaultDomain}/b/4622078 Camellia - Parallel Universe Shifter (iLyne) [To Infinity and Beyond]] | ★6.66 | Loved", reply);
+
+        // The same words typed without /np (not an action) are just chat.
+        Assert.StartsWith("Hi!", await bridge.AnswerWebsiteCommandAsync(new WebChatMessage(3, lilian, "Lilian", null, BanchoBot.UserId, np, IsAction: false), CancellationToken.None));
+    }
+
+    [Theory]
+    [InlineData(10, "short", new[] { "short" })]
+    [InlineData(10, "one two three four", new[] { "one two", "three four" })]
+    [InlineData(10, "abcdefghijklmnop", new[] { "abcdefghij", "klmnop" })]
+    [InlineData(10, "  ", new string[0])]
+    public void LongMessages_AreSplitForTheWebsite(int limit, string text, string[] expected) =>
+        Assert.Equal(expected, OsuWebChatBridge.SplitForWebsite(text, limit));
+
+    [Fact]
+    public void TheStaffHelp_FitsTheWebsiteInPieces()
+    {
+        var help = new string('x', 300) + " " + new string('y', 300) + " " + new string('z', 100);
+        var parts = OsuWebChatBridge.SplitForWebsite(help);
+        Assert.All(parts, p => Assert.InRange(p.Length, 1, OsuWebChatBridge.WebsiteMessageLimit));
+        Assert.Equal(help, string.Join(' ', parts));
+    }
+
+    /// <summary>A bridge whose services have BanchoBot and a user repository holding Lilian (whose id is returned).</summary>
+    private static async Task<(OsuWebChatBridge, PlayerRegistry, ChannelRegistry, int)> NewBridgeWithBotAsync(NowPlayingStore? store = null)
+    {
+        store ??= new NowPlayingStore();
         var players = new PlayerRegistry();
         var channels = new ChannelRegistry();
         var users = new InMemoryUserRepository();
@@ -105,10 +142,39 @@ public sealed class ChatBridgeTests
             .AddSingleton(new BanchoBot(new BanchoBotCommands(
                 new TomYumVersion(), players, channels, new MatchRegistry(), new BeatmapService(new NoMapsApi()),
                 TestScopeFactory.Create(users), new Plugins.PluginCommandRegistry(), new Plugins.LoadedPluginRegistry())))
+            .AddSingleton<IBeatmapRepository>(new OneMapRepository())
+            .AddSingleton(sp => new MapCommands(
+                sp.GetRequiredService<IServiceScopeFactory>(), new BeatmapService(new NoMapsApi()), store,
+                new Microsoft.Extensions.Configuration.ConfigurationBuilder().Build()))
             .BuildServiceProvider();
         var scopes = services.GetRequiredService<IServiceScopeFactory>();
         var chatLog = new ChatLog(scopes, TimeProvider.System, NullLogger<ChatLog>.Instance);
-        return (new OsuWebChatBridge(scopes, players, channels, chatLog, NullLogger<OsuWebChatBridge>.Instance), players, channels, lilian.Id);
+        return (new OsuWebChatBridge(scopes, players, channels, chatLog, NullLogger<OsuWebChatBridge>.Instance, nowPlaying: store), players, channels, lilian.Id);
+    }
+
+    /// <summary>Knows one (loved) map.</summary>
+    private sealed class OneMapRepository : IBeatmapRepository
+    {
+        private static readonly Beatmap Map = new()
+        {
+            Id = 4622078, SetId = 2203483, Md5 = "md5", Status = RankedStatus.Loved, StarRating = 6.66,
+            Artist = "Camellia", Title = "Parallel Universe Shifter", Creator = "iLyne", Version = "To Infinity and Beyond",
+        };
+
+        public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default) => Task.FromResult<Beatmap?>(null);
+
+        public Task<Beatmap?> GetByIdAsync(int id, CancellationToken cancellationToken = default) => Task.FromResult(id == Map.Id ? Map : null);
+
+        public Task<IReadOnlyList<Beatmap>> GetBySetAsync(int setId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>(setId == Map.SetId ? [Map] : []);
+
+        public Task<bool> SetStatusAsync(int beatmapId, RankedStatus status, CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+        public Task<bool> UnfreezeStatusAsync(int beatmapId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+        public Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<int> ReserveCustomSetIdAsync(CancellationToken cancellationToken = default) => Task.FromResult(0);
     }
 
     private sealed class NoMapsApi : IOsuApiClient

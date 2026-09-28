@@ -51,6 +51,11 @@ builder.Configuration
     .AddYamlFile(Path.Combine(configDir, "tomyum.yaml"), optional: true, reloadOnChange: true);
 builder.Configuration.AddEnvironmentVariables(prefix: "TOMYUM_");
 
+// Every SQL statement is logged at Information; outside development that buries the log (the
+// Discord announcer alone queries every few seconds). Failed commands are still logged as errors.
+if (!builder.Environment.IsDevelopment())
+    builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+
 // --- Bancho (osu!stable) online state + auth ---
 // In-memory single-node services for this vertical slice. Persistence (MySQL) and
 // cross-node online state (Redis, ADR-0003) replace the in-memory pieces in later slices.
@@ -60,6 +65,7 @@ builder.Services.AddSingleton<MatchRegistry>();
 builder.Services.AddSingleton<TomYumVersion>();
 builder.Services.AddSingleton<ModerationCommands>();
 builder.Services.AddSingleton<MapCommands>();
+builder.Services.AddSingleton<NowPlayingStore>();
 builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();

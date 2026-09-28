@@ -239,6 +239,18 @@ public sealed class DiscordTests
         Assert.Equal("**2** online\n▸ **stable** (2): alpha, Bravo", (await commands.RunAsync("online", new Dictionary<string, string>(), 1)).Post.Content);
     }
 
+    [Fact]
+    public void MapLinks_ShowArtistTitleMapperAndDifficulty_AndUseTheShortLink()
+    {
+        var score = new ScoreCard(
+            1, 2, "Lilian", 0, 4622078, 2203483, "Camellia", "Parallel Universe Shifter", "To Infinity and Beyond", "iLyne",
+            6.66, 4, [], 0.97, 500, 600, "S", true, 200, 900_000, 5_000_000, true, 500, 10, 0, 1, DateTime.UtcNow);
+
+        Assert.Equal(
+            "[Camellia - Parallel Universe Shifter (iLyne) [To Infinity and Beyond]](https://osu.sundei.eu/b/4622078)",
+            new DiscordFormat("https://osu.sundei.eu", "https://a.sundei.eu").MapLink(score));
+    }
+
     [Theory]
     [InlineData("Artist - Title (TV Size) [Extra]", "Artist - Title (TV Size) [Extra]")]
     [InlineData("under_score*", "under_score*")]

@@ -58,8 +58,8 @@ public sealed record ScoreCard(
     int Miss,
     DateTime EndedAt)
 {
-    /// <summary>"Artist - Title [Version]".</summary>
-    public string MapName => $"{Artist} - {Title} [{Version}]";
+    /// <summary>"Artist - Title (Mapper) [Version]", as lazer shows a map.</summary>
+    public string MapName => string.IsNullOrEmpty(Creator) ? $"{Artist} - {Title} [{Version}]" : $"{Artist} - {Title} ({Creator}) [{Version}]";
 }
 
 /// <summary>A player on the ranking.</summary>

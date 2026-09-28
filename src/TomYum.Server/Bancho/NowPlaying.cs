@@ -5,8 +5,10 @@ using TomYum.Bancho;
 namespace TomYum.Server.Bancho;
 
 /// <summary>
-/// The map a player last shared with <c>/np</c> (osu!stable's "is playing/listening to/watching/
-/// editing [link name]" action), kept on their session for BanchoBot (<c>!map</c>, the pp reply).
+/// The map a player last shared with <c>/np</c>: the "is playing/listening to/watching/editing
+/// [link name]" action message of osu!stable (<c>&lt;Taiko&gt; +Hidden -Easy ~Relax~</c>) or lazer
+/// (<c>&lt;osu!taiko&gt; +HD -EZ</c>, sent through website chat), kept for BanchoBot's <c>!map</c>
+/// and pp reply (<see cref="NowPlayingStore"/>).
 /// </summary>
 /// <param name="BeatmapId">The difficulty, or 0 when only a set was shared (listening in the song select of a set).</param>
 /// <param name="SetId">The set, or 0 when the link didn't say.</param>
@@ -31,8 +33,8 @@ public sealed partial record NowPlaying(int BeatmapId, int SetId, int Mode, Mods
 
         var mode = match.Groups["mode"].Value switch
         {
-            "Taiko" => 1,
-            "CatchTheBeat" => 2,
+            "Taiko" or "osu!taiko" => 1,
+            "CatchTheBeat" or "osu!catch" => 2,
             "osu!mania" => 3,
             _ => 0,
         };
@@ -40,7 +42,10 @@ public sealed partial record NowPlaying(int BeatmapId, int SetId, int Mode, Mods
         var mods = Mods.None;
         foreach (var token in match.Groups["mods"].Value.Split(' ', StringSplitOptions.RemoveEmptyEntries))
         {
-            if (Enum.TryParse<Mods>(token.Trim('+', '-', '~', '|'), ignoreCase: false, out var mod) && mod != Mods.None)
+            var name = token.Trim('+', '-', '~', '|');
+            if (Acronyms.TryGetValue(name, out var acronym))
+                mods |= acronym;
+            else if (Enum.TryParse<Mods>(name, ignoreCase: false, out var mod) && mod != Mods.None)
                 mods |= mod;
         }
         // The client names Nightcore and Perfect alone; their bits include DoubleTime / SuddenDeath.
@@ -52,10 +57,25 @@ public sealed partial record NowPlaying(int BeatmapId, int SetId, int Mode, Mods
         return new NowPlaying(beatmapId, setId, mode, mods);
     }
 
+    /// <summary>
+    /// Wraps a website (lazer) action message the way stable sends one, so both parse alike.
+    /// </summary>
+    public static NowPlaying? TryParseAction(string? text) =>
+        string.IsNullOrEmpty(text) ? null : TryParse($"\u0001ACTION {text}\u0001");
+
+    /// <summary>Lazer's mod acronyms (stable writes the full names).</summary>
+    private static readonly Dictionary<string, Mods> Acronyms = new(StringComparer.Ordinal)
+    {
+        ["NF"] = Mods.NoFail, ["EZ"] = Mods.Easy, ["HD"] = Mods.Hidden, ["HR"] = Mods.HardRock,
+        ["SD"] = Mods.SuddenDeath, ["PF"] = Mods.Perfect, ["DT"] = Mods.DoubleTime, ["NC"] = Mods.Nightcore,
+        ["HT"] = Mods.HalfTime, ["DC"] = Mods.HalfTime, ["FL"] = Mods.Flashlight, ["SO"] = Mods.SpunOut,
+        ["RX"] = Mods.Relax, ["AP"] = Mods.Autopilot, ["FI"] = Mods.FadeIn, ["MR"] = Mods.Mirror,
+    };
+
     private static int Number(System.Text.RegularExpressions.Match match) =>
         match.Success && int.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) ? id : 0;
 
-    [GeneratedRegex(@"^\u0001ACTION is (?:playing|editing|watching|listening to) \[(?<link>https?://\S+) [^\u0001]*?\](?: <(?<mode>Taiko|CatchTheBeat|osu!mania)>)?(?<mods>(?: [-+~|]\w+[~|]?)*)\u0001$")]
+    [GeneratedRegex(@"^\u0001ACTION is (?:playing|editing|watching|listening to) \[(?<link>https?://\S+) [^\u0001]*?\](?: <(?<mode>Taiko|CatchTheBeat|osu!mania|osu!taiko|osu!catch|osu!)>)?(?<mods>(?: [-+~|]\w+[~|]?)*) *\u0001$")]
     private static partial Regex Pattern();
 
     [GeneratedRegex(@"(?:/b/|/beatmaps/|#/?(?:osu|taiko|fruits|mania)?/)(\d{1,10})")]

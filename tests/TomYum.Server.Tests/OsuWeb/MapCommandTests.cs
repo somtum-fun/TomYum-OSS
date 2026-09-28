@@ -30,6 +30,15 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
         Assert.Equal(new NowPlaying(beatmapId, setId, mode, mods), NowPlaying.TryParse(text));
 
     [Theory]
+    [InlineData("is listening to [https://osu.sundei.eu/b/4622078 Camellia - Parallel Universe Shifter (iLyne) [To Infinity and Beyond]]", 4622078, 0, 0, Mods.None)]
+    [InlineData("is playing [https://osu.sundei.eu/b/5 A - B [C]] <osu!taiko> +HD +DT ", 5, 0, 1, Mods.Hidden | Mods.DoubleTime)]
+    [InlineData("is playing [https://osu.sundei.eu/b/5 A - B [C]] <osu!> +NC -EZ", 5, 0, 0, Mods.Nightcore | Mods.DoubleTime | Mods.Easy)]
+    [InlineData("is playing [https://osu.sundei.eu/b/5 A - B [C]] <osu!catch>", 5, 0, 2, Mods.None)]
+    [InlineData("is editing [https://osu.sundei.eu/b/5 A - B [C]]", 5, 0, 0, Mods.None)]
+    public void LazerNp_IsReadToo(string text, int beatmapId, int setId, int mode, Mods mods) =>
+        Assert.Equal(new NowPlaying(beatmapId, setId, mode, mods), NowPlaying.TryParseAction(text));
+
+    [Theory]
     [InlineData("hello")]
     [InlineData("\u0001ACTION waves\u0001")]
     [InlineData("\u0001ACTION is listening to [https://example.com/nothing here]\u0001")]
@@ -43,7 +52,7 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
     [MySqlFact]
     public async Task Map_ChangesTheNpdSet_ForNominatorsOnly()
     {
-        var (maps, services, player, nominator) = await SetUpAsync();
+        var (maps, services, player, nominator, store) = await SetUpAsync();
         var bn = new PlayerRegistry().Add(new BanchoPresence { UserId = nominator, Username = "Nominator" });
 
         Assert.StartsWith("Usage:", await maps.RunAsync(bn, []));
@@ -51,7 +60,7 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
         Assert.Equal("/np the map first.", await maps.RunAsync(bn, ["love"]));
         Assert.Equal("That command is for the Beatmap Nominators, NAT and admins.", await maps.RunAsync(player, ["love"]));
 
-        bn.LastNowPlaying = new NowPlaying(101, 10, 0, Mods.None);
+        store.Set(nominator, new NowPlaying(101, 10, 0, Mods.None));
         Assert.Equal("Artist - Song: all difficulties → loved.", await maps.RunAsync(bn, ["love"]));
         Assert.Equal("Nothing changed: Artist - Song already has loved.", await maps.RunAsync(bn, ["loved", "set"]));
         Assert.Equal("Artist - Song: [Insane] → ranked.", await maps.RunAsync(bn, ["rank", "map"]));
@@ -73,14 +82,14 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
     [MySqlFact]
     public async Task NpReply_ShowsTheMap_ItsStatus_AndPp()
     {
-        var (maps, _, _, _) = await SetUpAsync();
+        var (maps, _, _, _, _) = await SetUpAsync();
 
         var reply = await maps.DescribeAsync(new NowPlaying(101, 10, 0, Mods.Hidden | Mods.DoubleTime));
-        Assert.Equal("[https://osu.test.local/b/101 Artist - Song [Insane]] +HDDT | ★5.50 | Unranked | 95%: 95pp | 98%: 98pp | 99%: 99pp | 100%: 100pp", reply);
+        Assert.Equal("[https://osu.test.local/b/101 Artist - Song (Mapper) [Insane]] +HDDT | ★5.50 | Unranked | 95%: 95pp | 98%: 98pp | 99%: 99pp | 100%: 100pp", reply);
         Assert.StartsWith("I don't know that map", await maps.DescribeAsync(new NowPlaying(999, 0, 0, Mods.None)));
     }
 
-    private async Task<(MapCommands, IServiceProvider, OnlinePlayer Player, int Nominator)> SetUpAsync()
+    private async Task<(MapCommands, IServiceProvider, OnlinePlayer Player, int Nominator, NowPlayingStore Store)> SetUpAsync()
     {
         await NewTomYumContextAsync();
         var users = new OsuWebUserRepository(NewOsuWebContext());
@@ -111,10 +120,11 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
         }
 
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { [BanchoHosts.DomainConfigKey] = "test.local" }).Build();
-        var maps = new MapCommands(services.GetRequiredService<IServiceScopeFactory>(), beatmapService, configuration);
+        var store = new NowPlayingStore();
+        var maps = new MapCommands(services.GetRequiredService<IServiceScopeFactory>(), beatmapService, store, configuration);
         var online = new PlayerRegistry().Add(new BanchoPresence { UserId = player.Id, Username = "Player" });
-        online.LastNowPlaying = new NowPlaying(100, 10, 0, Mods.None);
-        return (maps, services, online, nominator.Id);
+        store.Set(player.Id, new NowPlaying(100, 10, 0, Mods.None));
+        return (maps, services, online, nominator.Id, store);
     }
 
     /// <summary>pp = accuracy × 100, so the reply's numbers are predictable.</summary>

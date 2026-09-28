@@ -41,12 +41,14 @@ public sealed class MapCommands
 
     private readonly IServiceScopeFactory _scopes;
     private readonly BeatmapService _beatmaps;
+    private readonly NowPlayingStore _nowPlaying;
     private readonly string _site;
 
-    public MapCommands(IServiceScopeFactory scopes, BeatmapService beatmaps, IConfiguration configuration)
+    public MapCommands(IServiceScopeFactory scopes, BeatmapService beatmaps, NowPlayingStore nowPlaying, IConfiguration configuration)
     {
         _scopes = scopes;
         _beatmaps = beatmaps;
+        _nowPlaying = nowPlaying;
         _site = $"https://osu.{BanchoHosts.ResolveDomain(configuration)}";
     }
 
@@ -64,7 +66,7 @@ public sealed class MapCommands
         var mods = ModNames(np.Mods);
         var parts = new List<string>
         {
-            $"[{_site}/b/{beatmap.Id.ToString(CultureInfo.InvariantCulture)} {beatmap.FullName}]{(mods.Length > 0 ? " +" + mods : string.Empty)}",
+            $"[{_site}/b/{beatmap.Id.ToString(CultureInfo.InvariantCulture)} {beatmap.Artist} - {beatmap.Title} ({beatmap.Creator}) [{beatmap.Version}]]{(mods.Length > 0 ? " +" + mods : string.Empty)}",
             "★" + beatmap.StarRating.ToString("0.00", CultureInfo.InvariantCulture),
             StatusName(status),
         };
@@ -109,7 +111,7 @@ public sealed class MapCommands
             return "That command is for the Beatmap Nominators, NAT and admins.";
         if (services.GetService<BeatmapStatusChanger>() is not { } changer)
             return "Status changes need the website (osu-web mode).";
-        if (caller.LastNowPlaying is not { } np)
+        if (_nowPlaying.Get(caller.UserId) is not { } np)
             return "/np the map first.";
 
         var beatmap = await FindAsync(services, np, cancellationToken).ConfigureAwait(false);

@@ -44,7 +44,7 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
 
         // A /np in a channel (e.g. #multiplayer) also sets the map for BanchoBot's !map.
         if (NowPlaying.TryParse(text) is { } nowPlaying)
-            context.Player.LastNowPlaying = nowPlaying;
+            context.Services.GetService<NowPlayingStore>()?.Set(context.Player.UserId, nowPlaying);
 
         ChatChannel? channel;
         if (target == "#multiplayer")
