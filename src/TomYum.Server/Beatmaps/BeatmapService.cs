@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
+using TomYum.Domain.Repositories;
 
 namespace TomYum.Server.Beatmaps;
 
@@ -23,7 +24,16 @@ public sealed class BeatmapService
     private readonly ConcurrentDictionary<int, RankedStatus> _statusOverrides = new();
 
     /// <summary>Creates the service over the osu! API client.</summary>
-    public BeatmapService(IOsuApiClient api) => _api = api;
+    private readonly IServiceScopeFactory? _scopes;
+
+    /// <param name="api">The osu! API.</param>
+    /// <param name="scopes">When given, maps the API doesn't know are looked up in this server's own
+    /// beatmaps too: custom (uploaded) sets exist only there.</param>
+    public BeatmapService(IOsuApiClient api, IServiceScopeFactory? scopes = null)
+    {
+        _api = api;
+        _scopes = scopes;
+    }
 
     /// <summary>Number of MD5 hashes currently cached (including negative not-found entries).</summary>
     public int CachedCount => _byMd5.Count;
@@ -73,9 +83,10 @@ public sealed class BeatmapService
     }
 
     /// <summary>
-    /// Resolves a beatmap by its <c>.osu</c> MD5 hash. Returns <c>null</c> when the map is unknown
-    /// to the API (treat as <see cref="Domain.Enums.RankedStatus.NotSubmitted"/>). Results — including
-    /// the not-found result — are cached.
+    /// Resolves a beatmap by its <c>.osu</c> MD5 hash: the osu! API's map, or else a custom map of
+    /// this server's. Returns <c>null</c> when neither knows it (treat as
+    /// <see cref="Domain.Enums.RankedStatus.NotSubmitted"/>). Results — including the not-found
+    /// result — are cached.
     /// </summary>
     public async Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default)
     {
@@ -89,9 +100,39 @@ public sealed class BeatmapService
             return cached;
         }
 
-        var resolved = ApplyOverride(await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false));
+        var resolved = ApplyOverride(await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false)
+            ?? await GetCustomAsync(md5, cancellationToken).ConfigureAwait(false));
         _byMd5[md5] = resolved;
         return resolved;
+    }
+
+    /// <summary>
+    /// Takes custom maps just stored (an upload) instead of what was cached for their checksums, so a
+    /// client that asked before the upload sees them now.
+    /// </summary>
+    public void Remember(IEnumerable<Beatmap> beatmaps)
+    {
+        ArgumentNullException.ThrowIfNull(beatmaps);
+        foreach (var beatmap in beatmaps)
+        {
+            foreach (var (md5, cached) in _byMd5)
+            {
+                if (cached?.Id == beatmap.Id)
+                    _byMd5.TryRemove(md5, out _);
+            }
+            _byMd5[beatmap.Md5] = ApplyOverride(beatmap);
+        }
+    }
+
+    private async Task<Beatmap?> GetCustomAsync(string md5, CancellationToken cancellationToken)
+    {
+        if (_scopes is null)
+            return null;
+        await using var scope = _scopes.CreateAsyncScope();
+        if (scope.ServiceProvider.GetService<IBeatmapRepository>() is not { } repository)
+            return null;
+        var stored = await repository.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
+        return stored is { IsCustom: true } ? stored : null;
     }
 
     /// <summary>

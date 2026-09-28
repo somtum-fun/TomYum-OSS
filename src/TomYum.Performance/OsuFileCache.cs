@@ -84,6 +84,26 @@ public sealed class OsuFileCache
         return bytes;
     }
 
+    /// <summary>
+    /// Stores a map's file (a custom map the server made itself); later reads serve it instead of
+    /// downloading.
+    /// </summary>
+    public Task StoreAsync(int beatmapId, byte[] bytes, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bytes);
+        return WriteAtomicAsync(Path.Combine(_directory, beatmapId.ToString(CultureInfo.InvariantCulture) + ".osu"), bytes, cancellationToken);
+    }
+
+    /// <summary>
+    /// Changes whenever the map's cached file does (its write time; 0 when none), so results computed
+    /// from the file can be cached per version: a custom map updated in place gets its new difficulty.
+    /// </summary>
+    public long Stamp(int beatmapId)
+    {
+        var path = Path.Combine(_directory, beatmapId.ToString(CultureInfo.InvariantCulture) + ".osu");
+        return File.Exists(path) ? File.GetLastWriteTimeUtc(path).Ticks : 0;
+    }
+
     private static async Task WriteAtomicAsync(string path, byte[] bytes, CancellationToken cancellationToken)
     {
         // Write to a unique temp file then move into place, so a concurrent reader never observes a

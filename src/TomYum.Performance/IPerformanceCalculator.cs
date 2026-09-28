@@ -57,3 +57,16 @@ public sealed record PerformanceRequest(
     int CountGeki,
     int CountKatu,
     bool Passed);
+
+/// <summary>A map's own difficulty: star rating and max combo without mods.</summary>
+public sealed record BeatmapDifficulty(double StarRating, int MaxCombo);
+
+/// <summary>
+/// Optional: a map's difficulty from its file (custom uploads, which no API describes). A calculator
+/// that can't returns null.
+/// </summary>
+public interface IBeatmapDifficulty
+{
+    /// <summary>The map's difficulty in <paramref name="rulesetId"/> (converted if needed), or null when unknown.</summary>
+    Task<BeatmapDifficulty?> DifficultyAsync(int beatmapId, int rulesetId, CancellationToken cancellationToken = default);
+}

@@ -103,15 +103,20 @@ _Clean-room reimplementation from `memories/features/dan-mode.md` + `session.md`
   - [ ] Ship compiled `.dll` variant (net10.0 lib ref Abstractions + BCrypt.Net-Next).
 
 ## Phase 5 — Custom beatmaps 🔒 Phase 0 (storage/migrations); `!map` needs none
-_TomYum already **serves** status; it can't **accept uploads** yet. Split status-work (easy) from upload (hard)._
+_Custom sets are uploaded as `.osz` from the BN panel and served everywhere (docs/custom-beatmaps.md).
+Left: the stable client's own submission (`.osz2`) and lazer's._
 
 - [x] **`!map` rank/love/unrank/qualified** + `/np` last-map tracking — status-only, no osz2. `/np` to BanchoBot answers with the map, status and pp at 95–100%.
 - [ ] Custom-status model: `mapsets` table (ownership, `frozen`, `prod_only`), per-mode override,
       set-vs-diff granularity; exclude custom maps from osu!api re-sync.
 - [ ] ⚖️ **osz2 codec** — the single biggest build item. Decide: clean-room C# vs a sidecar (like the
       pp sidecar) wrapping an existing lib. Then the 3 stable submit endpoints + download-side osz2 endpoints.
-- [ ] Local serving — route `/d/{setId}` + search + `b.*` assets to local storage when `setId >= 10_000_000`
-      (currently always 302s to an external mirror, so custom sets are undownloadable).
+- [x] Local serving — `/d/{setId}`, osu!direct search/set info, `b.*` thumbnails and previews, the
+      website's covers and audio preview come from TomYum for sets from 10,000,000. `.osu` files are kept
+      for pp (TomYum's and ppy's processor). 2026-09-28
+- [x] **`.osz` upload in the BN panel** — new custom set or a new version of one (difficulties keep
+      their ids by name), ids written into the files, mapper owns it, pending status, covers made from
+      the background. 2026-09-28
 
 ## Phase 6 — Command framework refactor (polish, optional)
 - [ ] Sunrise-style `[ChatCommand(name, prefix, priv, isGlobal, isHidden)]` + reflection discovery;

@@ -166,6 +166,10 @@ builder.Services.AddHttpClient<IOsuApiClient, OsuApiClient>(http =>
     http.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddSingleton<BeatmapService>();
+// Custom (uploaded) beatmap sets: stored and served by this server (docs/custom-beatmaps.md).
+builder.Services.AddSingleton<CustomBeatmapStore>();
+builder.Services.AddSingleton<CustomBeatmapCatalog>();
+builder.Services.AddScoped<CustomBeatmapImporter>();
 // osu! API v2 (descriptions, nominators) when an OAuth application is configured.
 builder.Services.AddHttpClient<OsuApiV2Client>(http =>
 {
@@ -451,6 +455,8 @@ if (databaseOptions.UseOsuWebAccounts)
     app.MapAdmin(app.Configuration.GetSection("Admin:Hosts").Get<string[]>() is { Length: > 0 } adminHosts
         ? adminHosts
         : AdminEndpoints.DefaultHosts);
+    // Beatmap set uploads from the BN panel (a ticket signed by the website).
+    app.MapCustomUploads(BanchoHosts.Web(domain));
 }
 
 app.Run();

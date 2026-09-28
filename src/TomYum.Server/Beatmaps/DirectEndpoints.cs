@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
+using TomYum.Domain.Entities;
 
 namespace TomYum.Server.Beatmaps;
 
@@ -9,8 +11,9 @@ namespace TomYum.Server.Beatmaps;
 /// osu!Direct in-game beatmap browser endpoints. Proxies search and set-info requests to a
 /// mino.pw-compatible beatmap mirror and redirects downloads to that mirror. All three
 /// responses use the pipe-delimited plain-text format the osu!stable client expects.
+/// Custom (uploaded) sets are served from this server instead (<see cref="CustomBeatmapStore"/>).
 /// </summary>
-public static class DirectEndpoints
+public static partial class DirectEndpoints
 {
     // Named HttpClient key used throughout this class.
     internal const string HttpClientName = "BeatmapMirror";
@@ -33,7 +36,26 @@ public static class DirectEndpoints
         // from here (BEATMAP_DOWNLOAD_PATH), so custom maps (whose files are only in TomYum's
         // .osu cache) get pp too. No host restriction: it's called by the compose service name.
         app.MapGet("/osu/{beatmapId:int}", HandleOsuFileAsync);
+
+        // Custom sets' covers, where the website links them (Caddy sends these paths here; the
+        // official sets' covers are on ppy's asset server).
+        app.MapGet("/uploads/default/beatmaps/{setId:int}/covers/{file}", HandleCover);
+        // …and their audio preview (the website's player; the fork links custom sets here).
+        app.MapGet("/uploads/default/beatmaps/{setId:int}/preview.mp3", (int setId, CustomBeatmapStore store) =>
+            setId >= Beatmap.CustomIdFloor && store.PreviewPath(setId) is { } path ? Results.File(path, "audio/mpeg") : Results.NotFound());
     }
+
+    internal static IResult HandleCover(int setId, string file, CustomBeatmapStore store)
+    {
+        if (setId < Beatmap.CustomIdFloor || !file.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase))
+            return Results.NotFound();
+        var size = file[..^4];
+        var path = size is "raw" or "fullsize" ? store.BackgroundPath(setId) : store.CoverPath(setId, size);
+        return path is null ? Results.NotFound() : Results.File(path, ContentTypeOf(path));
+    }
+
+    private static string ContentTypeOf(string path) =>
+        path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
 
     private static async Task<IResult> HandleOsuFileAsync(int beatmapId, TomYum.Performance.OsuFileCache files, CancellationToken cancellationToken)
     {
@@ -69,10 +91,11 @@ public static class DirectEndpoints
 
     // ── /web/osu-search.php ────────────────────────────────────────────────────────────────
 
-    private static async Task<IResult> HandleSearchAsync(
+    internal static async Task<IResult> HandleSearchAsync(
         HttpContext context,
         IHttpClientFactory factory,
         IOptions<DirectOptions> opts,
+        CustomBeatmapCatalog custom,
         CancellationToken cancellationToken)
     {
         var cfg = opts.Value;
@@ -114,13 +137,18 @@ public static class DirectEndpoints
 
         var url = cfg.MirrorBaseUrl + cfg.SearchPath + qs;
 
+        // This server's own sets come first, on the first page.
+        var customSets = page == 0
+            ? await custom.SearchAsync(query is "Newest" or "Top+Rated" or "Most+Played" ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, cancellationToken).ConfigureAwait(false)
+            : [];
+
         JsonElement[] sets;
         try
         {
             using var http = factory.CreateClient(HttpClientName);
             using var response = await http.GetAsync(url, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
-                return Results.Text("-1\nFailed to retrieve beatmaps from the mirror.", "text/plain");
+                return MirrorFailed(customSets, custom);
 
             var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             using var doc = JsonDocument.Parse(json);
@@ -128,12 +156,14 @@ public static class DirectEndpoints
         }
         catch (Exception)
         {
-            return Results.Text("-1\nFailed to retrieve beatmaps from the mirror.", "text/plain");
+            return MirrorFailed(customSets, custom);
         }
 
         var sb = new StringBuilder();
         // If exactly 100 results are returned, signal "more pages available" by sending 101.
-        sb.AppendLine(sets.Length == 100 ? "101" : sets.Length.ToString(CultureInfo.InvariantCulture));
+        sb.AppendLine(sets.Length == 100 ? "101" : (sets.Length + customSets.Count).ToString(CultureInfo.InvariantCulture));
+        foreach (var set in customSets)
+            sb.AppendLine(custom.ToDirectLine(set));
 
         foreach (var set in sets)
         {
@@ -180,12 +210,25 @@ public static class DirectEndpoints
         return Results.Text(sb.ToString(), "text/plain");
     }
 
+    /// <summary>The mirror is down: this server's own sets still show, else the client's error.</summary>
+    private static IResult MirrorFailed(IReadOnlyList<CustomSet> customSets, CustomBeatmapCatalog custom)
+    {
+        if (customSets.Count == 0)
+            return Results.Text("-1\nFailed to retrieve beatmaps from the mirror.", "text/plain");
+        var sb = new StringBuilder();
+        sb.AppendLine(customSets.Count.ToString(CultureInfo.InvariantCulture));
+        foreach (var set in customSets)
+            sb.AppendLine(custom.ToDirectLine(set));
+        return Results.Text(sb.ToString(), "text/plain");
+    }
+
     // ── /web/osu-search-set.php ───────────────────────────────────────────────────────────
 
-    private static async Task<IResult> HandleSearchSetAsync(
+    internal static async Task<IResult> HandleSearchSetAsync(
         HttpContext context,
         IHttpClientFactory factory,
         IOptions<DirectOptions> opts,
+        CustomBeatmapCatalog custom,
         CancellationToken cancellationToken)
     {
         var cfg = opts.Value;
@@ -194,6 +237,18 @@ public static class DirectEndpoints
         var setIdStr  = context.Request.Query["s"].ToString();
         var mapIdStr  = context.Request.Query["b"].ToString();
         var checksum  = context.Request.Query["c"].ToString();
+
+        // This server's own sets: by id, or by checksum when the mirror wouldn't know it.
+        int? customSet = int.TryParse(setIdStr, CultureInfo.InvariantCulture, out var s) && s >= Beatmap.CustomIdFloor ? s : null;
+        int? customMap = int.TryParse(mapIdStr, CultureInfo.InvariantCulture, out var b) && b >= Beatmap.CustomIdFloor ? b : null;
+        var byChecksum = setIdStr.Length == 0 && mapIdStr.Length == 0 && checksum.Length == 32 ? checksum : null;
+        if (customSet is not null || customMap is not null || byChecksum is not null)
+        {
+            if (await custom.FindAsync(customSet, customMap, byChecksum, cancellationToken).ConfigureAwait(false) is { } local)
+                return Results.Text(custom.ToDirectLine(local, withDifficulties: false), "text/plain");
+            if (byChecksum is null)
+                return Results.Text(string.Empty, "text/plain");
+        }
 
         string mirrorUrl;
         if (!string.IsNullOrEmpty(setIdStr) && int.TryParse(setIdStr, out var setId))
@@ -239,11 +294,19 @@ public static class DirectEndpoints
 
     // ── /d/{setId} ────────────────────────────────────────────────────────────────────────
 
-    private static IResult HandleDownload(
+    internal static IResult HandleDownload(
         int setId,
         HttpRequest request,
-        IOptions<DirectOptions> opts)
+        IOptions<DirectOptions> opts,
+        CustomBeatmapStore store)
     {
+        if (setId >= Beatmap.CustomIdFloor)
+        {
+            return store.HasSet(setId)
+                ? Results.File(store.OszPath(setId), "application/x-osu-beatmap-archive", string.Create(CultureInfo.InvariantCulture, $"{setId}.osz"))
+                : Results.NotFound();
+        }
+
         var cfg = opts.Value;
         // Pass through ?novideo if the client sent it; osu-web (as a download mirror) sends nv=1.
         var noVideo = request.Query.ContainsKey("novideo") || request.Query["nv"] == "1" ? "?novideo" : string.Empty;
@@ -255,8 +318,17 @@ public static class DirectEndpoints
 
     // ── b.{domain} catch-all ──────────────────────────────────────────────────────────────
 
-    private static IResult HandleBeatmapAsset(HttpRequest request, IOptions<DirectOptions> opts)
+    internal static IResult HandleBeatmapAsset(HttpRequest request, IOptions<DirectOptions> opts, CustomBeatmapStore store)
     {
+        // Custom sets' thumbnails and previews are this server's.
+        var local = CustomAsset().Match(request.Path.Value ?? string.Empty);
+        if (local.Success && int.TryParse(local.Groups["id"].Value, CultureInfo.InvariantCulture, out var setId) && setId >= Beatmap.CustomIdFloor)
+        {
+            var preview = local.Groups["kind"].Value == "preview";
+            var path = preview ? store.PreviewPath(setId) : store.CoverPath(setId, local.Groups["large"].Success ? "thumbl" : "thumb");
+            return path is null ? Results.NotFound() : Results.File(path, preview ? "audio/mpeg" : "image/jpeg");
+        }
+
         // Forward the path verbatim to ppy's CDN — covers /thumb/{id}[l].jpg,
         // /preview/{id}.mp3, and anything else the client may request from b.*.
         // bancho.py map.py uses the same strategy: redirect f"https://b.ppy.sh{path}".
@@ -272,6 +344,9 @@ public static class DirectEndpoints
     /// causes the set line to be silently ignored. bancho.py applies the same fix.
     /// </summary>
     private static string SanitisePipeChar(string s) => s.Replace("|", "I");
+
+    [GeneratedRegex(@"^/(?<kind>thumb|preview)/(?<id>[0-9]+)(?<large>l)?\.(jpg|mp3)$")]
+    private static partial Regex CustomAsset();
 
     /// <summary>
     /// Maps the osu!Direct ranked-status filter code (sent by the client as <c>?r=</c>)
