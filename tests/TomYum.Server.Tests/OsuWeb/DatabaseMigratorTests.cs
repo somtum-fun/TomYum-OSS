@@ -32,6 +32,7 @@ public sealed class DatabaseMigratorTests : OsuWebDatabaseTest
             // Tables from later migrations didn't exist then either.
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE client_hashes");
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE verified_users");
+            await legacy.Database.ExecuteSqlRawAsync("DROP TABLE discord_links");
             legacy.UserStats.Add(new UserStats { UserId = 2, Mode = 0, Pp = 338.5 });
             legacy.Scores.Add(new Score { UserId = 2, BeatmapMd5 = "abc", Grade = "A", Passed = true, SubmittedAt = DateTimeOffset.UtcNow });
             await legacy.SaveChangesAsync();

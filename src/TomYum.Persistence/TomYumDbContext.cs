@@ -42,6 +42,9 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Accounts past the first-login ban-evasion check.</summary>
     public DbSet<VerifiedUser> VerifiedUsers => Set<VerifiedUser>();
 
+    /// <summary>Game accounts linked to Discord accounts.</summary>
+    public DbSet<DiscordLink> DiscordLinks => Set<DiscordLink>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
