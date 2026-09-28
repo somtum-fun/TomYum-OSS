@@ -44,6 +44,7 @@ public static class ScoreSubmissionEndpoint
         IPerformanceCalculator pp,
         IScoreQueue scoreQueue,
         IOsuWebSync osuWebSync,
+        TomYum.Plugins.Abstractions.IEventBus events,
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("TomYum.ScoreSubmission");
@@ -239,6 +240,17 @@ public static class ScoreSubmissionEndpoint
         var scoreStatus = passed
             ? (prevBest is null || ppValue > prevBest.Pp ? ScoreStatus.Best : ScoreStatus.Submitted)
             : ScoreStatus.Failed;
+
+        // Plugins may reject the score before anything is stored (e.g. a mode's own rules).
+        var submitting = new TomYum.Plugins.Abstractions.ScoreSubmittingEvent(
+            user.Id, bmk, (byte)gameMode, (uint)mods, ComputeAccuracy(mode, n300, n100, n50, ngeki, nkatu, nmiss),
+            maxCombo, passed, beatmap.FullName);
+        await events.PublishAsync(submitting, cancellationToken).ConfigureAwait(false);
+        if (submitting.IsVetoed)
+        {
+            logger.LogInformation("A plugin rejected {User}'s score on {Beatmap}.", user.Username, beatmap.Id);
+            return Results.Text("error: no", "text/plain");
+        }
 
         if (scoreStatus == ScoreStatus.Best && prevBest is not null)
             await scores.MarkPreviousBestAsync(user.Id, bmk, gameMode, cancellationToken).ConfigureAwait(false);
