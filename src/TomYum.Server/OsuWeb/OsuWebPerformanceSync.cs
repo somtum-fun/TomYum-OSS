@@ -93,11 +93,16 @@ public sealed class OsuWebPerformanceSync
 
 /// <summary>
 /// Picks up pp changes the game didn't cause (lazer scores, and the processor finishing after a
-/// stable submission stopped waiting) for players online in a stable mode.
+/// stable submission stopped waiting) for players online in a stable mode, and queues the scores
+/// the processor finished for the website's search index. The index is checked every
+/// <see cref="IndexInterval"/> (a lazer score shows on leaderboards only once it's re-indexed);
+/// the online players' pp every <see cref="PlayerInterval"/>.
 /// </summary>
 public sealed class OsuWebPerformanceWatcher : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(20);
+    public static readonly TimeSpan IndexInterval = TimeSpan.FromSeconds(2);
+
+    public static readonly TimeSpan PlayerInterval = TimeSpan.FromSeconds(20);
 
     private readonly IServiceScopeFactory _scopes;
     private readonly PlayerRegistry _registry;
@@ -112,7 +117,8 @@ public sealed class OsuWebPerformanceWatcher : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        using var timer = new PeriodicTimer(Interval);
+        using var timer = new PeriodicTimer(IndexInterval);
+        var nextPlayers = DateTimeOffset.UtcNow + PlayerInterval;
         while (await timer.WaitForNextTickAsync(stoppingToken).ConfigureAwait(false))
         {
             try
@@ -124,6 +130,9 @@ public sealed class OsuWebPerformanceWatcher : BackgroundService
 
                 await ReindexProcessedScoresAsync(scope.ServiceProvider, stoppingToken).ConfigureAwait(false);
 
+                if (DateTimeOffset.UtcNow < nextPlayers)
+                    continue;
+                nextPlayers = DateTimeOffset.UtcNow + PlayerInterval;
                 foreach (var player in _registry.All)
                 {
                     var mode = player.Presence.GameMode;
