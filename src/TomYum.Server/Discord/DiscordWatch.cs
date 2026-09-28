@@ -173,6 +173,49 @@ public sealed class DiscordWatch
         };
     }
 
+    /// <summary>A play circleguard flagged (and whether it restricted the player), to the reports channel.</summary>
+    public Task CircleguardAsync(ScoreCard score, Anticheat.CircleguardVerdict verdict, bool restricted, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        ArgumentNullException.ThrowIfNull(verdict);
+        var numbers = new List<string>();
+        if (verdict.ConvertedUnstableRate is { } ur)
+            numbers.Add(string.Create(CultureInfo.InvariantCulture, $"UR {ur:0.00}"));
+        if (verdict.Frametime is { } frametime)
+            numbers.Add(string.Create(CultureInfo.InvariantCulture, $"frametime {frametime:0.0}ms"));
+        numbers.Add(string.Create(CultureInfo.InvariantCulture, $"{verdict.SnapCount} snap(s)"));
+        if (verdict.Similarity is { } similarity && similarity.Comparisons.Count > 0)
+            numbers.Add(string.Create(CultureInfo.InvariantCulture, $"closest top play {similarity.Comparisons.Min(c => c.Distance):0.0}px ({similarity.Comparisons.Count} compared)"));
+
+        var headline = restricted ? $"⛔ **Restricted automatically** (risk {verdict.RiskScore}/100)" : $"⚠️ Risk **{verdict.RiskScore}/100**";
+        var reasons = verdict.Reasons.Count == 0 ? string.Empty : "\n" + string.Join('\n', verdict.Reasons.Select(r => "• " + DiscordFormat.Escape(r)));
+        var user = score.UserId.ToString(CultureInfo.InvariantCulture);
+        var why = Shorten($"circleguard risk {verdict.RiskScore} (score {score.ScoreId.ToString(CultureInfo.InvariantCulture)})", 60);
+        IReadOnlyList<DiscordButton> buttons = restricted
+            ?
+            [
+                new DiscordButton("Unrestrict (false alarm)", DiscordButtonStyle.Success, $"mod:unrestrict:{user}:circleguard false alarm"),
+                new DiscordButton("Dismiss", DiscordButtonStyle.Secondary, $"mod:dismiss:{user}:-"),
+                new DiscordButton("Profile", DiscordButtonStyle.Link, Url: _format.Profile(score.UserId)),
+            ]
+            : ModerationButtons(score.UserId, why, score.UserId);
+
+        return _gateway.PostAsync(_options.ReportsChannel, new DiscordPost(Embed: new DiscordEmbed
+        {
+            AuthorName = $"circleguard: {score.Username}",
+            AuthorUrl = _format.Profile(score.UserId),
+            AuthorIconUrl = _format.Avatar(score.UserId),
+            Title = DiscordFormat.ScoreTitle(score),
+            Url = $"{_format.Site}/scores/{score.ScoreId.ToString(CultureInfo.InvariantCulture)}",
+            Description = headline + reasons + "\n" + DiscordFormat.ScoreDetails(score),
+            Fields = [new DiscordField("Numbers", string.Join(" ▸ ", numbers), Inline: false)],
+            Color = restricted ? DiscordFormat.Danger : 0xF39C12,
+            Footer = $"{DiscordFormat.Ruleset(score.Ruleset)} ▸ {(score.IsStable ? "stable" : "lazer")} ▸ {verdict.Mods}" + (verdict.Note is { } note ? " ▸ " + note : string.Empty),
+            Timestamp = new DateTimeOffset(score.EndedAt, TimeSpan.Zero),
+        })
+        { Buttons = buttons }, cancellationToken);
+    }
+
     private IReadOnlyList<DiscordButton> ModerationButtons(int userId, string reason, int profileId)
     {
         // Button ids are split on ':' and capped at 100 characters.

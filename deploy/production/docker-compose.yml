@@ -93,6 +93,10 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       TOMYUM_SERVER__DOMAIN: ${DOMAIN}
+      # circleguard: replay checks (off while CIRCLEGUARD_KEY is empty).
+      TOMYUM_CIRCLEGUARD__URL: http://circleguard:8555
+      TOMYUM_CIRCLEGUARD__KEY: ${CIRCLEGUARD_KEY:-}
+      TOMYUM_CIRCLEGUARD__LAZERREPLAYSPATH: /app/lazer-replays
       TOMYUM_DATABASE__ENABLED: "true"
       TOMYUM_DATABASE__HOST: db
       TOMYUM_DATABASE__PORT: "3306"
@@ -111,6 +115,13 @@ services:
       - server-data:/app/data
       # Checks lazer logins for beatmap submission.
       - *oauth-key
+      # Lazer replays (written by the spectator server), for circleguard.
+      - type: volume
+        source: osu-web-uploads
+        target: /app/lazer-replays
+        read_only: true
+        volume:
+          subpath: replay
     depends_on:
       db:
         condition: service_healthy
@@ -217,9 +228,18 @@ services:
       db:
         condition: service_healthy
 
+  # Replay checks (sundeiii/lazer-circleguard, a checkout next to TomYum): TomYum sends it passes.
+  circleguard:
+    build:
+      context: ${CIRCLEGUARD_PATH:-../../../lazer-circleguard}
+    restart: unless-stopped
+    environment:
+      CIRCLEGUARD_KEY: ${CIRCLEGUARD_KEY:-}
+
+  # ppy's spectator server with TomYum's changes (sundeiii/tomyum-spectator, a checkout next to TomYum).
   spectator:
     build:
-      context: ${OSU_WEB_PATH:-../../../osu-web}/docker/spectator
+      context: ${SPECTATOR_PATH:-../../../tomyum-spectator}
     restart: unless-stopped
     environment:
       <<: *ppy-env

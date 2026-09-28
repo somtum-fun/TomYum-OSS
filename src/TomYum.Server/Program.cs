@@ -257,6 +257,17 @@ builder.Services.AddSingleton<IClientPacketHandler, CantSpectateHandler>();
 
 builder.Services.AddSingleton<BanchoPacketDispatcher>();
 
+// circleguard (sundeiii/lazer-circleguard): replay checks after each ranked pass, stable and lazer.
+var circleguardOptions = new TomYum.Server.Anticheat.CircleguardOptions();
+builder.Configuration.GetSection(TomYum.Server.Anticheat.CircleguardOptions.SectionName).Bind(circleguardOptions);
+if (circleguardOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
+{
+    builder.Services.AddSingleton(circleguardOptions);
+    builder.Services.AddHttpClient<TomYum.Server.Anticheat.CircleguardClient>(http => http.Timeout = TimeSpan.FromMinutes(2));
+    builder.Services.AddHttpClient<TomYum.Server.Anticheat.OfficialReplays>(http => http.Timeout = TimeSpan.FromSeconds(20));
+    builder.Services.AddHostedService<TomYum.Server.Anticheat.CircleguardWatch>();
+}
+
 // Where players log in to the game from (staff see it on Discord's /user).
 builder.Services.AddSingleton(sp => new LoginIps(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
 
