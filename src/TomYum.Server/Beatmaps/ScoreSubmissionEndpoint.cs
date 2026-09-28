@@ -383,15 +383,16 @@ public static class ScoreSubmissionEndpoint
         var prevBestPp = prevBest is not null ? prevBest.Pp : (double?)null;
 
         // Achievements (medals): unlock any newly-earned medal and hand them to the client via the
-        // overall chart's `achievements-new:` field, which drives the in-game unlock popups. Gate matches
-        // bancho.py: score passed + map awards ranked pp. (Restriction check lands with Phase 2 moderation.)
+        // overall chart's `achievements-new:` field, which drives the in-game unlock popups. osu!'s gate:
+        // a passed play on a map with a leaderboard, by a player who isn't restricted (MedalService).
         // Best-effort — a medal/DB hiccup must never fail the submission response.
         IReadOnlyList<Medal> newMedals = [];
-        if (passed && beatmap.Status.AwardsRankedPp())
+        if (MedalService.Eligible(passed, beatmap.Status, (Mods)mods, user.IsRestricted))
         {
             try
             {
-                var check = new MedalCheck(mode, (Mods)mods, maxCombo, beatmap.StarRating, perfect);
+                var stars = await MedalService.StarRatingAsync(pp, beatmap, mode, mods, cancellationToken).ConfigureAwait(false);
+                var check = new MedalCheck(mode, (Mods)mods, maxCombo, stars, perfect, beatmap.Status, beatmap.Id);
                 newMedals = await MedalService.AwardAsync(achievements, user.Id, check, DateTime.UtcNow, cancellationToken)
                     .ConfigureAwait(false);
             }

@@ -42,6 +42,11 @@ public sealed class RoutingPerformanceCalculator : IPerformanceCalculator, IAccu
             ? backend.ForAccuraciesAsync(beatmapId, rulesetId, mods, accuracies, cancellationToken)
             : Task.FromResult<IReadOnlyList<double>?>(null);
 
+    public Task<double?> StarRatingAsync(int beatmapId, int rulesetId, int mods, CancellationToken cancellationToken = default) =>
+        _registry.Resolve(ResolveBackendName(GameMode.FromLegacyMods(rulesetId, mods))) is IAccuracyPerformance backend
+            ? backend.StarRatingAsync(beatmapId, rulesetId, mods, cancellationToken)
+            : Task.FromResult<double?>(null);
+
     private string ResolveBackendName(int gameMode)
     {
         foreach (var route in _options.Routes)

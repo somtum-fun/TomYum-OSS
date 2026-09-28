@@ -134,6 +134,8 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
 
         public Task<IReadOnlyList<double>?> ForAccuraciesAsync(int beatmapId, int rulesetId, int mods, IReadOnlyList<double> accuracies, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<double>?>(accuracies.Select(a => a * 100).ToList());
+
+        public Task<double?> StarRatingAsync(int beatmapId, int rulesetId, int mods, CancellationToken cancellationToken = default) => Task.FromResult<double?>(null);
     }
 
     private sealed class NoApi : IOsuApiClient

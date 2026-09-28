@@ -25,6 +25,12 @@ public interface IAccuracyPerformance
 {
     /// <summary>pp for each of <paramref name="accuracies"/> (0–1), in order, or null when unknown.</summary>
     Task<IReadOnlyList<double>?> ForAccuraciesAsync(int beatmapId, int rulesetId, int mods, IReadOnlyList<double> accuracies, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The map's star rating in <paramref name="rulesetId"/> (converted if needed) with the legacy
+    /// <paramref name="mods"/> applied, or null when unknown. Medals are judged on this.
+    /// </summary>
+    Task<double?> StarRatingAsync(int beatmapId, int rulesetId, int mods, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Full set of inputs the pp calculator needs for one submitted score.</summary>
