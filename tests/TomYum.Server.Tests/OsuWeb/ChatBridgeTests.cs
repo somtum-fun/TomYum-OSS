@@ -106,7 +106,8 @@ public sealed class ChatBridgeTests
 
         // To BanchoBot: answered with the map.
         var reply = await bridge.AnswerWebsiteCommandAsync(new WebChatMessage(2, lilian, "Lilian", null, BanchoBot.UserId, np, IsAction: true), CancellationToken.None);
-        Assert.StartsWith($"[https://osu.{BanchoHosts.DefaultDomain}/b/4622078 Camellia - Parallel Universe Shifter (iLyne) [To Infinity and Beyond]] | ★6.66 | Loved", reply);
+        // In-game, maps are named as stable names them (the mapper is only added on Discord).
+        Assert.StartsWith($"[https://osu.{BanchoHosts.DefaultDomain}/b/4622078 Camellia - Parallel Universe Shifter [To Infinity and Beyond]] | ★6.66 | Loved", reply);
 
         // The same words typed without /np (not an action) are just chat.
         Assert.StartsWith("Hi!", await bridge.AnswerWebsiteCommandAsync(new WebChatMessage(3, lilian, "Lilian", null, BanchoBot.UserId, np, IsAction: false), CancellationToken.None));
