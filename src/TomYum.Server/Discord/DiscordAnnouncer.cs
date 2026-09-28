@@ -289,7 +289,7 @@ public sealed class DiscordAnnouncer : BackgroundService
         {
             "user.restrict" or "user.evasion_blocked" or "user.ban" or "user.delete" => DiscordFormat.Danger,
             "user.silence" => 0xFEE75Cu,
-            "user.unrestrict" or "user.unsilence" or "user.verify" => 0x57F287u,
+            "user.unrestrict" or "user.unsilence" or "user.verify" or "user.clear_standing" or "user.badge_add" => 0x57F287u,
             _ => DiscordFormat.Staff,
         };
         return new DiscordPost(Embed: new DiscordEmbed

@@ -30,6 +30,8 @@ x-osu-web: &osu-web
     OSU_API_KEY: ${OSU_API_KEY:-}
     # Medal icons from TomYum's asset host (it caches osu!'s icons, and serves custom ones).
     USER_ACHIEVEMENT_ICON_PREFIX: https://assets.${DOMAIN}/medals/client/
+    # Profile badges, the same way (osu!'s, and those added with the Discord bot).
+    USER_BADGE_IMAGE_PREFIX: https://assets.${DOMAIN}/profile-badges/
     # The red "development instance" banner: DEVELOPMENT_BANNER=true in .env shows it.
     IS_DEVELOPMENT_DEPLOY: ${DEVELOPMENT_BANNER:-false}
   volumes:

@@ -173,7 +173,7 @@ public sealed class DiscordWatch
         };
     }
 
-    /// <summary>A play circleguard flagged (and whether it restricted the player), to the reports channel.</summary>
+    /// <summary>A play circleguard flagged (and whether it restricted the player), to the circleguard channel.</summary>
     public Task CircleguardAsync(ScoreCard score, Anticheat.CircleguardVerdict verdict, bool restricted, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(score);
@@ -200,7 +200,7 @@ public sealed class DiscordWatch
             ]
             : ModerationButtons(score.UserId, why, score.UserId);
 
-        return _gateway.PostAsync(_options.ReportsChannel, new DiscordPost(Embed: new DiscordEmbed
+        return _gateway.PostAsync(_options.CircleguardChannel, new DiscordPost(Embed: new DiscordEmbed
         {
             AuthorName = $"circleguard: {score.Username}",
             AuthorUrl = _format.Profile(score.UserId),

@@ -51,6 +51,7 @@ public static class PersistenceServiceCollectionExtensions
 
             // Restrictions and silences, written like the website's GMT panel writes them.
             services.AddScoped<OsuWebModeration>();
+            services.AddScoped<OsuWebBadges>();
             services.AddScoped<OsuWebCommunity>();
             services.AddScoped<OsuWebRankHistory>();
             services.AddScoped<OsuWebPackCompletion>();

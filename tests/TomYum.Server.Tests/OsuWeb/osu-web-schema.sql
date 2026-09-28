@@ -807,3 +807,14 @@ CREATE TABLE osu_leaders_mania (
   PRIMARY KEY (beatmap_id),
   KEY user_id (user_id, score_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web database (SHOW CREATE TABLE osu_badges).
+DROP TABLE IF EXISTS osu_badges;
+CREATE TABLE osu_badges (
+  user_id int unsigned NOT NULL DEFAULT 0,
+  image varchar(255) NOT NULL,
+  description varchar(255) NOT NULL,
+  awarded timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  url varchar(255) NOT NULL DEFAULT '',
+  PRIMARY KEY (user_id, image)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

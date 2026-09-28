@@ -81,6 +81,28 @@ public sealed class OsuWebModeration
         return ModerationOutcome.Done;
     }
 
+    /// <summary>
+    /// Clears the player's account standing: deletes their history rows of the given kinds
+    /// (<see cref="OsuWebAccountHistory.Note"/>, <see cref="OsuWebAccountHistory.Restriction"/>,
+    /// <see cref="OsuWebAccountHistory.Silence"/>), so the profile shows nothing for them and an
+    /// active silence ends. A restricted player keeps their restriction rows: lift it first.
+    /// </summary>
+    public async Task<(ModerationOutcome Outcome, int Removed)> ClearStandingAsync(int userId, IReadOnlyCollection<sbyte> kinds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(kinds);
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.UserId == (uint)userId, cancellationToken).ConfigureAwait(false);
+        if (user is null)
+            return (ModerationOutcome.UnknownUser, 0);
+        if (kinds.Contains(OsuWebAccountHistory.Restriction) && OsuWebAccounts.IsRestricted(user.UserType, user.UserWarnings))
+            return (ModerationOutcome.AlreadyRestricted, 0);
+
+        var statuses = kinds.Select(k => (sbyte?)k).ToList();
+        var removed = await _db.AccountHistory
+            .Where(h => h.UserId == (uint)userId && statuses.Contains(h.BanStatus))
+            .ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        return (ModerationOutcome.Done, removed);
+    }
+
     /// <summary>When the player's silence ends, or null when they aren't silenced (osu-web's rule).</summary>
     public async Task<DateTimeOffset?> SilenceEndAsync(int userId, CancellationToken cancellationToken = default)
     {

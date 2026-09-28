@@ -31,12 +31,14 @@ public sealed class DiscordOptions
     /// <summary>Staff: actions on accounts (restrictions, silences, …), blocked ban evasion, links.</summary>
     public ulong UserLogChannelId { get; set; }
 
-    /// <summary>Discord roles given to linked players in these website groups.</summary>
     /// <summary>Where the self-updating status message is pinned (0: none).</summary>
     public ulong StatusChannelId { get; set; }
 
     /// <summary>Where reports and suspicious plays go, with staff buttons (0: the user log).</summary>
     public ulong ReportsChannelId { get; set; }
+
+    /// <summary>Where circleguard's flags and automatic restrictions go (0: the reports channel).</summary>
+    public ulong CircleguardChannelId { get; set; }
 
     /// <summary>Where the map of the day is posted (0: the public log).</summary>
     public ulong MapOfTheDayChannelId { get; set; }
@@ -44,6 +46,7 @@ public sealed class DiscordOptions
     /// <summary>The role the map of the day's winner holds for a week (0: the bot makes a "Map of the Day" role).</summary>
     public ulong MapOfTheDayRoleId { get; set; }
 
+    /// <summary>Discord roles given to linked players in these website groups.</summary>
     public ulong AdminRoleId { get; set; }
 
     public ulong GmtRoleId { get; set; }
@@ -101,6 +104,7 @@ public sealed class DiscordOptions
             UserLogChannelId = Id(nameof(UserLogChannelId)),
             StatusChannelId = Id(nameof(StatusChannelId)),
             ReportsChannelId = Id(nameof(ReportsChannelId)),
+            CircleguardChannelId = Id(nameof(CircleguardChannelId)),
             MapOfTheDayChannelId = Id(nameof(MapOfTheDayChannelId)),
             MapOfTheDayRoleId = Id(nameof(MapOfTheDayRoleId)),
             AdminRoleId = Id(nameof(AdminRoleId)),
@@ -117,13 +121,16 @@ public sealed class DiscordOptions
         };
     }
 
-    /// <summary>The Discord roles for website group identifiers.</summary>
     /// <summary>Where reports go.</summary>
     public ulong ReportsChannel => ReportsChannelId != 0 ? ReportsChannelId : UserLogChannelId;
+
+    /// <summary>Where circleguard's flags go.</summary>
+    public ulong CircleguardChannel => CircleguardChannelId != 0 ? CircleguardChannelId : ReportsChannel;
 
     /// <summary>Where the map of the day goes.</summary>
     public ulong MapOfTheDayChannel => MapOfTheDayChannelId != 0 ? MapOfTheDayChannelId : PublicLogChannelId;
 
+    /// <summary>The Discord roles for website group identifiers.</summary>
     public IReadOnlyDictionary<string, ulong> GroupRoles() => new Dictionary<string, ulong>(StringComparer.Ordinal)
     {
         ["admin"] = AdminRoleId,
