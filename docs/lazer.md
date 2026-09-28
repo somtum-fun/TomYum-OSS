@@ -16,7 +16,7 @@ Done (2026-09-27):
     has the new values.
 
 - **Multiplayer, spectating, online presence, lazer replays**: osu-web's compose builds ppy's
-  spectator server (`spectator`, from `docker/spectator/Dockerfile`) with one change: replays go
+  spectator server (`spectator`, from [sundeiii/tomyum-spectator](https://github.com/sundeiii/tomyum-spectator), a checkout next to TomYum) with one change: replays go
   to `public/uploads/replay` (where the website reads them) instead of Amazon S3. Caddy serves it
   as `https://spectator.localtest.me` (`deploy/caddy/Caddyfile.local`).
 
@@ -27,7 +27,7 @@ Done (2026-09-27):
 
 - **Presence across clients** (2026-09-28): the spectator build also publishes who's online on lazer,
   and what they're doing, to Redis every 5 seconds (`tomyum:lazer-presence`, from
-  `docker/spectator/TomYumPresencePublisher.cs`). TomYum merges it with stable players and website
+  `TomYumPresencePublisher.cs` in tomyum-spectator). TomYum merges it with stable players and website
   visitors (`OnlinePlayers`): the staff panel's online list, Discord's `/online`, `!alert`, and the
   website's online statistics (`osu_banchostats`, written every minute: the front page's counts and graph).
 

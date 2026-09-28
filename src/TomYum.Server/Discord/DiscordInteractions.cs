@@ -12,7 +12,7 @@ namespace TomYum.Server.Discord;
 /// checks as the command it stands for:
 /// <list type="bullet">
 /// <item><c>status:{status}:{set}:{beatmap|0}</c>: confirms <c>/rankmap</c>, <c>/lovemap</c>, <c>/qualify</c> (BN, NAT, admins);</item>
-/// <item><c>mod:{restrict|silence|dismiss}:{user}:{what}</c>: acts on a report or a suspicious play (staff);</item>
+/// <item><c>mod:{restrict|silence|unrestrict|dismiss}:{user}:{what}</c>: acts on a report, a suspicious play or a circleguard restriction (staff);</item>
 /// <item><c>cancel</c>: closes a confirmation.</item>
 /// </list>
 /// </summary>
@@ -97,6 +97,7 @@ public sealed class DiscordInteractions
         {
             "restrict" => ("restrict", new[] { target.Username, reason }, "Restricted"),
             "silence" => ("silence", new[] { target.Username, "1d", reason }, "Silenced for a day"),
+            "unrestrict" => ("unrestrict", new[] { target.Username, reason }, "Unrestricted"),
             _ => (string.Empty, Array.Empty<string>(), string.Empty),
         };
         if (command.Length == 0)
