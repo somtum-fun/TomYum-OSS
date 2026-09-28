@@ -52,6 +52,18 @@ public sealed class DiscordTests
         Assert.Equal(expected, DiscordChatRelay.ToDiscordLine(sender, text));
 
     [Theory]
+    [InlineData(
+        "\u0001ACTION is listening to [https://osu.sundei.eu/b/4622078 Camellia - Parallel Universe Shifter (iLyne) [To Infinity and Beyond]]\u0001",
+        "\\* **ThePooN** is listening to [Camellia - Parallel Universe Shifter (iLyne) [To Infinity and Beyond]](https://osu.sundei.eu/b/4622078)")]
+    [InlineData(
+        "\u0001ACTION is playing [https://osu.sundei.eu/beatmapsets/1#/2 A - B [Hard]] +Hidden\u0001",
+        "\\* **ThePooN** is playing [A - B [Hard]](https://osu.sundei.eu/beatmapsets/1#/2) +Hidden")]
+    [InlineData("see (this map)[https://osu.ppy.sh/b/1] *wow*", "**ThePooN**: see [this map](https://osu.ppy.sh/b/1) \\*wow\\*")]
+    [InlineData("[not a link] and [https://x.test/a]", "**ThePooN**: \\[not a link\\] and \\[https://x.test/a\\]")]
+    public void GameLinks_BecomeDiscordLinks(string text, string expected) =>
+        Assert.Equal(expected, DiscordChatRelay.ToDiscordLine("ThePooN", text));
+
+    [Theory]
     [InlineData("!link ABC123")]
     [InlineData("  !LINK abc123")]
     public void LinkCodes_AreNeverRelayed(string text) => Assert.Null(DiscordChatRelay.ToDiscordLine("Alpha", text));

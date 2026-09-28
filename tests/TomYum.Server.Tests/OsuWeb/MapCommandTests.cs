@@ -85,7 +85,7 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
         var (maps, _, _, _, _) = await SetUpAsync();
 
         var reply = await maps.DescribeAsync(new NowPlaying(101, 10, 0, Mods.Hidden | Mods.DoubleTime));
-        Assert.Equal("[https://osu.test.local/b/101 Artist - Song (Mapper) [Insane]] +HDDT | ★5.50 | Unranked | 95%: 95pp | 98%: 98pp | 99%: 99pp | 100%: 100pp", reply);
+        Assert.Equal("[https://osu.test.local/b/101 Artist - Song [Insane]] +HDDT | ★5.50 | Unranked | 95%: 95pp | 98%: 98pp | 99%: 99pp | 100%: 100pp", reply);
         Assert.StartsWith("I don't know that map", await maps.DescribeAsync(new NowPlaying(999, 0, 0, Mods.None)));
     }
 
