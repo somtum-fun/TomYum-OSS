@@ -85,6 +85,7 @@ else
     builder.Services.AddSingleton<IUserStatsRepository, InMemoryUserStatsRepository>();
     builder.Services.AddSingleton<IUserAchievementRepository, InMemoryUserAchievementRepository>();
     builder.Services.AddSingleton<IClientHashRepository, InMemoryClientHashRepository>();
+    builder.Services.AddSingleton<IDiscordLinkRepository, InMemoryDiscordLinkRepository>();
 }
 // Website sync (docs/osu-web.md): mirrors scores/stats to osu-web when accounts live there.
 if (databaseOptions.UseOsuWebAccounts)
@@ -227,6 +228,28 @@ builder.Services.AddSingleton<IClientPacketHandler, SpectateFramesHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, CantSpectateHandler>();
 
 builder.Services.AddSingleton<BanchoPacketDispatcher>();
+
+// The Discord bot (docs/discord.md): runs when Discord:Token and Discord:GuildId are set.
+var discordOptions = TomYum.Server.Discord.DiscordOptions.Read(builder.Configuration.GetSection(TomYum.Server.Discord.DiscordOptions.SectionName));
+if (discordOptions.IsConfigured)
+{
+    var discordDomain = BanchoHosts.ResolveDomain(builder.Configuration);
+    var discordErrors = new TomYum.Server.Discord.DiscordLogSink();
+    builder.Logging.AddProvider(discordErrors);
+    builder.Services.AddSingleton(discordOptions);
+    builder.Services.AddSingleton(discordErrors);
+    builder.Services.AddSingleton(new TomYum.Server.Discord.DiscordFormat(
+        string.IsNullOrWhiteSpace(discordOptions.SiteUrl) ? $"https://osu.{discordDomain}" : discordOptions.SiteUrl,
+        string.IsNullOrWhiteSpace(discordOptions.AvatarUrl) ? $"https://a.{discordDomain}" : discordOptions.AvatarUrl));
+    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordLinkCodes>();
+    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordBotService>();
+    builder.Services.AddSingleton<TomYum.Server.Discord.IDiscordGateway>(sp => sp.GetRequiredService<TomYum.Server.Discord.DiscordBotService>());
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<TomYum.Server.Discord.DiscordBotService>());
+    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordCommands>();
+    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordChatRelay>();
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<TomYum.Server.Discord.DiscordChatRelay>());
+    builder.Services.AddHostedService<TomYum.Server.Discord.DiscordAnnouncer>();
+}
 
 var app = builder.Build();
 

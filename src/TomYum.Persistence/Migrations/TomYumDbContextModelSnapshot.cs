@@ -180,6 +180,28 @@ namespace TomYum.Persistence.Migrations
                     b.ToTable("client_hashes", (string)null);
                 });
 
+            modelBuilder.Entity("TomYum.Domain.Entities.DiscordLink", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int")
+                        .HasColumnName("user_id");
+
+                    b.Property<ulong>("DiscordId")
+                        .HasColumnType("bigint unsigned")
+                        .HasColumnName("discord_id");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasColumnType("datetime(6)")
+                        .HasColumnName("linked_at");
+
+                    b.HasKey("UserId");
+
+                    b.HasIndex("DiscordId")
+                        .IsUnique();
+
+                    b.ToTable("discord_links", (string)null);
+                });
+
             modelBuilder.Entity("TomYum.Domain.Entities.Score", b =>
                 {
                     b.Property<long>("Id")

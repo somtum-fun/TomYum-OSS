@@ -95,7 +95,7 @@ public sealed class OsuWebChatBridge : BackgroundService
                 member.Enqueue(framed);
                 delivered++;
             }
-            _chatLog.Record(message.SenderId, message.Sender, channel.Name, message.Content);
+            _chatLog.Record(message.SenderId, message.Sender, channel.Name, message.Content, origin: ChatOrigin.Website);
         }
         else if (message.TargetId is { } targetId)
         {

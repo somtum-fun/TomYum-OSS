@@ -114,6 +114,7 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             {
                 member.Enqueue(botFramed);
             }
+            _chatLog?.Record(BanchoBot.UserId, BanchoBot.Name, target, reply);
             _website?.ForwardChannelMessage(BanchoBot.UserId, target, reply);
         }
     }

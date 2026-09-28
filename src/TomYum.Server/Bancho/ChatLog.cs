@@ -4,6 +4,14 @@ using TomYum.Domain.Repositories;
 
 namespace TomYum.Server.Bancho;
 
+/// <summary>Where a chat message was written.</summary>
+public enum ChatOrigin
+{
+    Game,
+    Website,
+    Discord,
+}
+
 /// <summary>
 /// Records in-game chat for staff (GMT panel). Chat handlers call <see cref="Record"/>, which only
 /// queues the message; the background writer saves them in batches, so chat never waits on the
@@ -30,10 +38,13 @@ public sealed class ChatLog : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>Raised for every recorded message (the Discord relay listens); handlers must be quick.</summary>
+    public event Action<ChatLogEntry, ChatOrigin>? Recorded;
+
     /// <summary>Queues a delivered message. <paramref name="recipientId"/> is set for private messages.</summary>
-    public void Record(int senderId, string senderName, string target, string text, int? recipientId = null)
+    public void Record(int senderId, string senderName, string target, string text, int? recipientId = null, ChatOrigin origin = ChatOrigin.Game)
     {
-        _pending.Writer.TryWrite(new ChatLogEntry
+        var entry = new ChatLogEntry
         {
             SentAt = _time.GetUtcNow().UtcDateTime,
             SenderId = senderId,
@@ -41,7 +52,19 @@ public sealed class ChatLog : BackgroundService
             Target = Cut(target, 64),
             RecipientId = recipientId,
             Text = Cut(text, 2048),
-        });
+        };
+        _pending.Writer.TryWrite(entry);
+
+        try
+        {
+            Recorded?.Invoke(entry, origin);
+        }
+#pragma warning disable CA1031 // a listener's fault must never break chat
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LogWarning(ex, "A chat listener failed.");
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)

@@ -30,6 +30,7 @@ public sealed class BanchoBotCommands
     private readonly PluginCommandRegistry _pluginCommands;
     private readonly LoadedPluginRegistry _loadedPlugins;
     private readonly ModerationCommands? _moderation;
+    private readonly Discord.DiscordLinkCodes? _discordCodes;
 
     public BanchoBotCommands(
         TomYumVersion version,
@@ -40,7 +41,8 @@ public sealed class BanchoBotCommands
         IServiceScopeFactory scopeFactory,
         PluginCommandRegistry pluginCommands,
         LoadedPluginRegistry loadedPlugins,
-        ModerationCommands? moderation = null)
+        ModerationCommands? moderation = null,
+        Discord.DiscordLinkCodes? discordCodes = null)
     {
         _version = version;
         _players = players;
@@ -51,6 +53,7 @@ public sealed class BanchoBotCommands
         _pluginCommands = pluginCommands;
         _loadedPlugins = loadedPlugins;
         _moderation = moderation;
+        _discordCodes = discordCodes;
     }
 
     public async Task<string?> TryHandleAsync(
@@ -79,11 +82,31 @@ public sealed class BanchoBotCommands
                 : StaffOnly,
             "mp" => await MpAsync(caller, parts, privileges, cancellationToken).ConfigureAwait(false),
             "plugins" => ListPlugins(),
+            "link" => await LinkDiscordAsync(caller, parts, cancellationToken).ConfigureAwait(false),
             _ when ModerationCommands.Handles(command) => _moderation is null
                 ? "Moderation isn't available on this server."
                 : await _moderation.RunAsync(caller.UserId, command, parts[1..], cancellationToken).ConfigureAwait(false),
             _ => await FallbackToPluginAsync(caller, command, parts, message, cancellationToken).ConfigureAwait(false),
         };
+    }
+
+    /// <summary><c>!link &lt;code&gt;</c>: links the caller's account to the Discord account that asked for the code.</summary>
+    private async Task<string> LinkDiscordAsync(OnlinePlayer caller, string[] parts, CancellationToken cancellationToken)
+    {
+        if (_discordCodes is null)
+            return "There's no Discord bot on this server.";
+        if (parts.Length < 2)
+            return "Use /link in our Discord to get a code, then send !link <code> here.";
+        if (_discordCodes.Redeem(parts[1]) is not { } discordId)
+            return "That code is wrong or expired. Get a new one with /link in Discord.";
+
+        using (var scope = _scopeFactory.CreateScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IDiscordLinkRepository>()
+                .LinkAsync(caller.UserId, discordId, DateTime.UtcNow, cancellationToken).ConfigureAwait(false);
+        }
+        await _discordCodes.OnLinkedAsync(caller.UserId, discordId).ConfigureAwait(false);
+        return "Linked to Discord! Your roles will show up there in a moment.";
     }
 
     /// <summary>Lists loaded plugins (the <c>!plugins</c> command).</summary>
@@ -127,10 +150,10 @@ public sealed class BanchoBotCommands
         privileges.HasFlag(BanchoPrivileges.Owner) || privileges.HasFlag(BanchoPrivileges.Developer);
 
     private static string Help(BanchoPrivileges privileges) => IsStaff(privileges)
-        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !stats (staff), !setpriv <user> <role> (staff). "
+        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !stats (staff), !setpriv <user> <role> (staff). "
           + "Moderation (staff): !restrict/!ban <user> <reason>, !unrestrict/!unban <user> <reason>, !silence <user> <10m|1h|1d|1w> <reason>, "
           + "!unsilence <user> [reason], !alert <message>, !alertu <user> <message>, !alts <user>, !verify <user>. Names with spaces: use _."
-        : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>.";
+        : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord).";
 
     private static string Roll(string sender, string[] parts)
     {
