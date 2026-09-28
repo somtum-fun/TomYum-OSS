@@ -55,6 +55,7 @@ public static class PersistenceServiceCollectionExtensions
             services.AddScoped<OsuWebRankHistory>();
             services.AddScoped<OsuWebPackCompletion>();
             services.AddScoped<OsuWebCustomSets>();
+            services.AddScoped<OsuWebLeaders>();
         }
         else
         {

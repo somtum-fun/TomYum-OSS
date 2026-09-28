@@ -13,8 +13,11 @@ public sealed record DiscordChoice(string Name, string Value);
 /// <summary>An option of a slash command.</summary>
 public sealed record DiscordOptionSpec(string Name, string Description, bool Required = false, IReadOnlyList<DiscordChoice>? Choices = null);
 
-/// <summary>A slash command as registered with Discord; <see cref="Staff"/> ones are hidden from members who can't moderate.</summary>
-public sealed record DiscordCommandSpec(string Name, string Description, IReadOnlyList<DiscordOptionSpec> Options, bool Staff = false);
+/// <summary>
+/// A slash command as registered with Discord; <see cref="Staff"/> ones are hidden from members who
+/// can't moderate, and <see cref="Private"/> ones (and staff ones) answer only the caller.
+/// </summary>
+public sealed record DiscordCommandSpec(string Name, string Description, IReadOnlyList<DiscordOptionSpec> Options, bool Staff = false, bool Private = false);
 
 /// <summary>
 /// The bot's slash commands. Player lookups read the website's data (stable and lazer together,
@@ -49,6 +52,16 @@ public sealed partial class DiscordCommands
             ["alert"] = (o, _) => [o.GetValueOrDefault("message") ?? string.Empty],
         };
 
+    private static readonly IReadOnlyList<DiscordChoice> WipeModes =
+        [new("every mode", "all"), new("osu!", "osu"), new("osu!taiko", "taiko"), new("osu!catch", "catch"), new("osu!mania", "mania")];
+
+    private static readonly IReadOnlyList<DiscordOptionSpec> StatusOptions =
+    [
+        new("beatmap", "Set or beatmap link (or a set id)", Required: true),
+        new("scope", "The whole set, or only that difficulty", Choices: [new("whole set", "set"), new("only this difficulty", "map")]),
+    ];
+
+    // Declared above: static fields initialise in order, and Specs uses these.
     /// <summary>Every command, for registration.</summary>
     public static readonly IReadOnlyList<DiscordCommandSpec> Specs =
     [
@@ -58,6 +71,10 @@ public sealed partial class DiscordCommands
         new("best", "A player's top plays", [UserOption, ModeOption]),
         new("top", "The pp ranking", [new("mode", "Ruleset (osu! if left out)", Choices: Rulesets), new("country", "Two-letter country code, e.g. NL")]),
         new("leaderboard", "A beatmap's leaderboard", [new("beatmap", "Beatmap id or link", Required: true), new("mode", "Ruleset (the map's own if left out)", Choices: Rulesets)]),
+        new("map", "A beatmap: difficulty, length, BPM and pp", [new("beatmap", "Beatmap or set link, or a beatmap id", Required: true), new("mods", "Mods, e.g. HDDT"), new("mode", "Ruleset (converts from osu!)", Choices: Rulesets)]),
+        new("graph", "A player's rank over the last 90 days", [UserOption, ModeOption]),
+        new("medals", "A player's medals: how many, the latest, what's left", [UserOption]),
+        new("compare", "Two players side by side (or both on one map)", [new("player", "Who to compare with", Required: true), new("user", "The first player; you if left out"), ModeOption, new("beatmap", "Compare both players' best on this map instead")]),
         new("online", "Who's in-game", []),
         new("link", "Link your game account to Discord", []),
         new("unlink", "Unlink your game account from Discord", []),
@@ -68,7 +85,14 @@ public sealed partial class DiscordCommands
         new("alts", "Staff: other accounts seen on the same computer", [PlayerOption], Staff: true),
         new("verify", "Staff: let in a new account that shares a computer with a restricted one", [PlayerOption], Staff: true),
         new("alert", "Staff: a pop-up notice to everyone in-game", [new("message", "What to say", Required: true)], Staff: true),
+        new("user", "Staff: a player's account: status, history, alts, IPs, recent plays", [PlayerOption], Staff: true),
+        new("wipe", "Staff: remove all of a player's scores (stable)", [PlayerOption, new("mode", "Which mode", Required: true, Choices: WipeModes), new("reason", "Why", Required: true)], Staff: true),
+        new("removescore", "Staff: remove one stable score", [new("score", "Score id (GMT panel) or the score's link", Required: true), new("reason", "Why")], Staff: true),
+        new("rankmap", "BN: rank a set (or one difficulty)", StatusOptions, Private: true),
+        new("lovemap", "BN: love a set (or one difficulty)", StatusOptions, Private: true),
+        new("qualify", "BN: qualify a set (or one difficulty)", StatusOptions, Private: true),
     ];
+
 
     private readonly IServiceScopeFactory _scopes;
     private readonly PlayerRegistry _players;
@@ -76,10 +100,14 @@ public sealed partial class DiscordCommands
     private readonly DiscordFormat _format;
     private readonly ModerationCommands? _moderation;
     private readonly OsuWeb.OnlinePlayers? _online;
+    private readonly LoginIps? _loginIps;
 
-    public DiscordCommands(IServiceScopeFactory scopes, PlayerRegistry players, DiscordLinkCodes codes, DiscordFormat format, ModerationCommands? moderation = null, OsuWeb.OnlinePlayers? online = null)
+    public DiscordCommands(
+        IServiceScopeFactory scopes, PlayerRegistry players, DiscordLinkCodes codes, DiscordFormat format,
+        ModerationCommands? moderation = null, OsuWeb.OnlinePlayers? online = null, LoginIps? loginIps = null)
     {
         _online = online;
+        _loginIps = loginIps;
         _scopes = scopes;
         _players = players;
         _codes = codes;
@@ -118,6 +146,14 @@ public sealed partial class DiscordCommands
 
             case var staff when StaffArguments.ContainsKey(staff):
                 return await StaffAsync(scope.ServiceProvider, links, staff, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "user":
+                return await UserCardAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "wipe":
+                return await WipeAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "removescore":
+                return await RemoveScoreAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case var status when StatusCommands.ContainsKey(status):
+                return await StatusRequestAsync(scope.ServiceProvider, links, status, options, callerId, cancellationToken).ConfigureAwait(false);
         }
 
         if (scope.ServiceProvider.GetService<OsuWebCommunity>() is not { } community)
@@ -129,6 +165,10 @@ public sealed partial class DiscordCommands
                 return await TopAsync(community, options, cancellationToken).ConfigureAwait(false);
             case "leaderboard":
                 return await LeaderboardAsync(community, options, cancellationToken).ConfigureAwait(false);
+            case "map":
+                return await MapAsync(scope.ServiceProvider, community, options, cancellationToken).ConfigureAwait(false);
+            case "compare":
+                return await CompareAsync(scope.ServiceProvider, community, links, options, callerId, cancellationToken).ConfigureAwait(false);
         }
 
         var target = await ResolvePlayerAsync(community, links, options, callerId, cancellationToken).ConfigureAwait(false);
@@ -149,6 +189,8 @@ public sealed partial class DiscordCommands
             "rank" => Rank(player),
             "recent" => await RecentAsync(community, player, cancellationToken).ConfigureAwait(false),
             "best" => await BestAsync(community, player, cancellationToken).ConfigureAwait(false),
+            "graph" => await GraphAsync(community, player, cancellationToken).ConfigureAwait(false),
+            "medals" => await MedalsAsync(community, player, cancellationToken).ConfigureAwait(false),
             _ => DiscordReply.Text("Unknown command.", isPrivate: true),
         };
     }

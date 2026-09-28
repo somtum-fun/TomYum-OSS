@@ -112,6 +112,14 @@ public static class BanchoEndpoints
         var countryIso = context.Request.Headers["CF-IPCountry"].ToString();
         var outcome = await loginHandler.HandleAsync(body, countryIso, cancellationToken).ConfigureAwait(false);
 
+        // Where they logged in from, for staff (a failed login has no session).
+        if (outcome.Token is { } token
+            && context.RequestServices.GetService<PlayerRegistry>()?.GetByToken(token) is { } player
+            && context.RequestServices.GetService<LoginIps>() is { } ips)
+        {
+            await ips.RecordAsync(player.UserId, LoginIps.ClientAddress(context)).ConfigureAwait(false);
+        }
+
         // The client reads cho-token from the response header on every login attempt; on
         // failure the value is irrelevant (it branches on the USER_ID packet) but must exist.
         context.Response.Headers[ChoTokenHeader] = outcome.Token ?? "no-token";

@@ -142,7 +142,7 @@ public sealed class MapCommands
     }
 
     /// <summary>Administrators and developers, or members of the website's BN/NAT/admin groups.</summary>
-    private static async Task<bool> MayChangeStatusAsync(IServiceProvider services, int userId, CancellationToken cancellationToken)
+    public static async Task<bool> MayChangeStatusAsync(IServiceProvider services, int userId, CancellationToken cancellationToken)
     {
         var user = await services.GetRequiredService<IUserRepository>().GetByIdAsync(userId, cancellationToken).ConfigureAwait(false);
         if (user is null || user.IsRestricted)

@@ -86,6 +86,7 @@ public sealed class BanchoBotCommands
             "mp" => await MpAsync(caller, parts, privileges, cancellationToken).ConfigureAwait(false),
             "plugins" => ListPlugins(),
             "link" => await LinkDiscordAsync(caller, parts, cancellationToken).ConfigureAwait(false),
+            "report" => await ReportAsync(caller, parts, cancellationToken).ConfigureAwait(false),
             "map" => _maps is null
                 ? "Status changes aren't available on this server."
                 : await _maps.RunAsync(caller, parts[1..], cancellationToken).ConfigureAwait(false),
@@ -113,6 +114,46 @@ public sealed class BanchoBotCommands
         }
         await _discordCodes.OnLinkedAsync(caller.UserId, discordId).ConfigureAwait(false);
         return "Linked to Discord! Your roles will show up there in a moment.";
+    }
+
+    /// <summary>Report reasons as players type them, and the website's name for each.</summary>
+    private static readonly Dictionary<string, string> ReportReasons = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["cheating"] = "Cheating", ["cheat"] = "Cheating", ["cheats"] = "Cheating", ["hacking"] = "Cheating",
+        ["multi"] = "MultipleAccounts", ["multiaccount"] = "MultipleAccounts", ["multiaccounting"] = "MultipleAccounts", ["alt"] = "MultipleAccounts",
+        ["insults"] = "Insults", ["insult"] = "Insults", ["toxic"] = "Insults",
+        ["spam"] = "Spam", ["chat"] = "InappropriateChat", ["inappropriate"] = "InappropriateChat",
+        ["other"] = "Other",
+    };
+
+    /// <summary>
+    /// <c>!report &lt;player&gt; &lt;reason&gt; [details]</c>: files a report like the website's (staff
+    /// see it in the GMT panel and on Discord). A few per hour at most.
+    /// </summary>
+    private async Task<string> ReportAsync(OnlinePlayer caller, string[] parts, CancellationToken cancellationToken)
+    {
+        const string usage = "Usage: !report <player> <cheating|multi|insults|spam|chat|other> [what happened]";
+        if (parts.Length < 3)
+            return usage;
+
+        using var scope = _scopeFactory.CreateScope();
+        if (scope.ServiceProvider.GetService<TomYum.Persistence.OsuWeb.OsuWebCommunity>() is not { } community)
+            return "Reports go through the website, which this server doesn't have.";
+        var target = await scope.ServiceProvider.GetRequiredService<IUserRepository>()
+            .GetBySafeNameAsync(User.MakeSafeName(parts[1]), cancellationToken).ConfigureAwait(false);
+        if (target is null)
+            return $"No such player \"{parts[1]}\".";
+        if (target.Id == caller.UserId || target.Id == BanchoBot.UserId)
+            return "You can't report that account.";
+
+        var known = ReportReasons.TryGetValue(parts[2], out var reason);
+        var details = string.Join(' ', parts[(known ? 3 : 2)..]);
+        if (await community.CountReportsByAsync(caller.UserId, TimeSpan.FromHours(1), cancellationToken).ConfigureAwait(false) >= 5)
+            return "You've sent a lot of reports this hour; please wait a bit.";
+
+        var comments = details.Length > 2000 ? details[..2000] : details;
+        await community.AddReportAsync(caller.UserId, target.Id, reason ?? "Other", comments + " (sent in-game)", cancellationToken).ConfigureAwait(false);
+        return $"Thanks, your report on {target.Username} went to the staff.";
     }
 
     /// <summary>Lists loaded plugins (the <c>!plugins</c> command).</summary>
@@ -156,10 +197,10 @@ public sealed class BanchoBotCommands
         privileges.HasFlag(BanchoPrivileges.Owner) || privileges.HasFlag(BanchoPrivileges.Developer);
 
     private static string Help(BanchoPrivileges privileges) => IsStaff(privileges)
-        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np), !stats (staff), !setpriv <user> <role> (staff). "
+        ? "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !report <player> <reason>, !map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np), !stats (staff), !setpriv <user> <role> (staff). "
           + "Moderation (staff): !restrict/!ban <user> <reason>, !unrestrict/!unban <user> <reason>, !silence <user> <10m|1h|1d|1w> <reason>, "
           + "!unsilence <user> [reason], !alert <message>, !alertu <user> <message>, !alts <user>, !verify <user>. Names with spaces: use _."
-        : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np).";
+        : "Commands: !help, !ping, !roll [max], !version, !mp <start|abort|countdown|host|kick>, !link <code> (Discord), !report <player> <reason>, !map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np).";
 
     private static string Roll(string sender, string[] parts)
     {

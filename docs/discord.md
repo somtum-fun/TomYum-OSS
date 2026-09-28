@@ -8,11 +8,16 @@ everything except the chat relay and `/online`.
 
 | Where | What |
 |---|---|
-| Slash commands | `/profile`, `/rank`, `/recent`, `/best` (user and mode optional; the caller's linked account and their main mode by default), `/top` (ranking, optional country), `/leaderboard` (a beatmap id or link), `/online` (stable in-game, plus lazer/website players the website shows online), `/link`, `/unlink` |
-| Staff commands | `/restrict`, `/unrestrict`, `/silence` (pick a length), `/unsilence`, `/alts`, `/verify`, `/alert`. The player is a name or an @mention of a linked member. Hidden from members without the *Timeout members* permission (Server Settings → Integrations → the bot changes that); the linked game account must be staff |
+| Slash commands | `/profile`, `/rank`, `/recent`, `/best` (user and mode optional; the caller's linked account and their main mode by default), `/top` (ranking, optional country), `/leaderboard` (a beatmap id or link), `/online` (stable in-game, plus lazer/website players the website shows online), `/link`, `/unlink`. `/map` (a map's card: stars, length, BPM, settings and pp at 95/98/99/100%; optional mods like `HDDT` and a ruleset for converts), `/graph` (the 90-day rank graph as an image), `/medals` (how many, per group, the latest, some still to get), `/compare` (two players side by side, or both players' best on a map) |
+| BN commands | `/rankmap`, `/lovemap`, `/qualify` (a set or beatmap link; the whole set or one difficulty). Only the caller sees a confirm card; its button makes the change as their linked account (BN, NAT, admins), which the beatmaps channel then announces |
+| Staff commands | `/restrict`, `/unrestrict`, `/silence` (pick a length), `/unsilence`, `/alts`, `/verify`, `/alert`, `/user` (the account card: standing, groups, Discord, account history, same-machine accounts, IP addresses, recent plays), `/wipe` (all stable scores, one mode or every mode), `/removescore` (a stable score id from the GMT panel, or its website link). The player is a name or an @mention of a linked member. Hidden from members without the *Timeout members* permission (Server Settings → Integrations → the bot changes that); the linked game account must be staff |
 | Chat channel | Two-way with in-game `#osu` (which the website and lazer share). Game → Discord is batched about once a second. Discord → game only for linked players, posted as them; silenced or restricted players get a 🔇 reaction, unlinked members a 🔗 |
 | Beatmaps channel | Sets ranked, approved, qualified or loved from the BN panel or BanchoBot, with the cover |
-| Public log | New #1s (a score beating every earlier score by other players on a ranked/qualified/loved map), plays of at least `BigPlayPp` pp (default 300) that are the player's best on the map, medals, new players |
+| Public log | New #1s (a score beating every earlier score by other players on a ranked/qualified/loved map), plays of at least `BigPlayPp` pp (default 300) that are the player's best on the map, medals, new players, milestones (global top 1000/500/100/50/10 and #1, #1 in their country, 1k/5k/10k/25k/50k/100k plays; only progress made while the bot watches) |
+| Map of the day | A random ranked map (3–6.5★, 1–7 minutes) each UTC day in `MapOfTheDayChannelId` (default: the public log). The next day the best pass on it that day (most pp, then score) is announced, and if the winner linked their Discord they hold the **Map of the Day** role for a week (`MapOfTheDayRoleId`, else the bot makes that role) |
+| Reports (staff) | Reports from the website and in-game `!report <player> <reason>` (cheating, multi, insults, spam, chat, other; five an hour at most), and suspicious plays: pp far above the player's best, a pass finished sooner after their previous one than the map is long, a #1 or big play from an account under a week old. Each has **Restrict**, **Silence 1 day** and **Dismiss** buttons (staff, as their linked account); the message then says who dealt with it. `ReportsChannelId`, default the user log |
+| Status channel | One pinned message the bot edits every minute: online on stable, lazer and the website, playing, multiplayer rooms, plays/peak/new players over 24 hours, players, ranked sets, uptime (`StatusChannelId`). The bot's own status says how many are in-game |
+| Any channel | A link to the website's maps (`/b/…`, `/beatmaps/…`, `/beatmapsets/…`) or players (`/u/…`, `/users/…`) gets a card in reply (three at most; links in `<…>` are left alone) |
 | User log (staff) | Everything in the staff log about accounts (`user.*`: restrictions, silences, verifications, blocked ban evasion, …) and Discord links |
 | Server log (staff) | The rest of the staff log (imports, status changes, recalculations, score removals), "server is up", and every error the server logs |
 
@@ -35,7 +40,9 @@ same permission checks, staff log and in-game effect; only the caller sees the r
    (keep it secret) and turn on **Message Content Intent** (for the chat relay).
 2. Invite it (replace the client id with your application id):
    `https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot%20applications.commands&permissions=268520512`
-   (view channels, send messages, embed links, read history, add reactions, manage roles).
+   (view channels, send messages, embed links, read history, add reactions, manage roles). For the
+   status message it also needs **Manage Messages** in that channel (to pin), and for the map of the
+   day **Manage Roles** (to make and give the role), with its role above that role.
 3. In the server's role list, drag the bot's role **above** the roles it gives, or Discord refuses.
 4. Settings (env file, e.g. `deploy/production/tomyum.env`; ids via Developer Mode → right-click → Copy ID):
 
@@ -53,6 +60,10 @@ TOMYUM_DISCORD__NATROLEID=...
 TOMYUM_DISCORD__BNROLEID=...
 # Optional
 TOMYUM_DISCORD__LINKEDROLEID=
+TOMYUM_DISCORD__STATUSCHANNELID=
+TOMYUM_DISCORD__REPORTSCHANNELID=      # default the user log
+TOMYUM_DISCORD__MAPOFTHEDAYCHANNELID=  # default the public log
+TOMYUM_DISCORD__MAPOFTHEDAYROLEID=     # default: the bot makes a "Map of the Day" role
 TOMYUM_DISCORD__BIGPLAYPP=300
 TOMYUM_DISCORD__CHATCHANNEL=#osu
 TOMYUM_DISCORD__SITEURL=        # default https://osu.<Server:Domain>
@@ -60,12 +71,17 @@ TOMYUM_DISCORD__AVATARURL=      # default https://a.<Server:Domain>
 ```
 
 An empty id turns that part off. Restart the server; its log says
-`Discord: connected to <server> as <bot>; 10 commands registered.`
+`Discord: connected to <server> as <bot>; 26 commands registered.`
 
 ## For contributors
 
 - `DiscordBotService` is the only class that talks to Discord.Net; everything else goes through
-  `IDiscordGateway` (post, sync roles), so it's tested with a fake (`tests/.../Discord`).
+  `IDiscordGateway` (post, edit, pin, roles, the bot's status), so it's tested with a fake (`tests/.../Discord`).
+- Buttons carry what they do in their id (`status:…`, `mod:…`, `cancel`); `DiscordInteractions` runs them.
+- `DiscordWatch` (reports, suspicious plays, milestones) rides on the announcer's score feed;
+  `DiscordDaily` runs the status message and the map of the day. What they need to remember is in
+  Redis (`DiscordState`, keys `tomyum:discord:*`).
+- Login IPs for `/user` are kept by `LoginIps` (stable logins; Redis, last 10 per player, 180 days).
 - `OsuWebCommunity` (Persistence) holds the website queries; `DiscordAnnouncer.TickAsync` is one
   pass of the feeds (scores by id, medals by time, users by id, the staff log by id).
 - The relay listens to `ChatLog.Recorded`; messages that came from Discord carry

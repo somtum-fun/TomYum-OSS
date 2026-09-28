@@ -117,6 +117,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddSingleton(sp => new LazerPresence(
         sp.GetRequiredService<ILogger<LazerPresence>>(), sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>()));
     builder.Services.AddHostedService<BanchoStatsJob>();
+    // The website's first places (profile "First Place Scores"), which nothing else keeps.
+    builder.Services.AddHostedService<OsuWebLeadersJob>();
 
     // ppy's score processor next to osu-web (lazer support, docs/lazer.md): it owns pp on the website.
     var mirrorOptions = new OsuWebMirrorOptions();
@@ -255,6 +257,9 @@ builder.Services.AddSingleton<IClientPacketHandler, CantSpectateHandler>();
 
 builder.Services.AddSingleton<BanchoPacketDispatcher>();
 
+// Where players log in to the game from (staff see it on Discord's /user).
+builder.Services.AddSingleton(sp => new LoginIps(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
+
 // The Discord bot (docs/discord.md): runs when Discord:Token and Discord:GuildId are set.
 var discordOptions = TomYum.Server.Discord.DiscordOptions.Read(builder.Configuration.GetSection(TomYum.Server.Discord.DiscordOptions.SectionName));
 if (discordOptions.IsConfigured)
@@ -274,7 +279,11 @@ if (discordOptions.IsConfigured)
     builder.Services.AddSingleton<TomYum.Server.Discord.DiscordCommands>();
     builder.Services.AddSingleton<TomYum.Server.Discord.DiscordChatRelay>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<TomYum.Server.Discord.DiscordChatRelay>());
+    builder.Services.AddSingleton(sp => new TomYum.Server.Discord.DiscordState(sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
+    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordInteractions>();
+    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordWatch>();
     builder.Services.AddHostedService<TomYum.Server.Discord.DiscordAnnouncer>();
+    builder.Services.AddHostedService<TomYum.Server.Discord.DiscordDaily>();
 }
 
 var app = builder.Build();
@@ -382,6 +391,9 @@ if (databaseOptions.Enabled)
         var copiedUnlocks = await medals.CopyUnlocksAsync();
         if (copiedUnlocks > 0)
             app.Logger.LogInformation("osu-web medals: {Unlocks} earlier unlock(s) copied.", copiedUnlocks);
+        var staleEvents = await medals.RemoveStaleMedalEventsAsync();
+        if (staleEvents > 0)
+            app.Logger.LogInformation("osu-web activity: {Count} entry(ies) for medals players don't have removed.", staleEvents);
         if (!scope.ServiceProvider.GetRequiredService<OsuWebInteropOptions>().IsConfigured)
             app.Logger.LogInformation("osu-web InterOp not configured (OsuWeb:InteropUrl/InteropSecret): medals are written directly, without activity entries.");
     }
