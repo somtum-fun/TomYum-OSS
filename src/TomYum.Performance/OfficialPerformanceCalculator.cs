@@ -96,6 +96,15 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
         return results;
     }
 
+    public async Task<double?> StarRatingAsync(int beatmapId, int rulesetId, int mods, CancellationToken cancellationToken = default)
+    {
+        if (rulesetId is < 0 or > 3)
+            return null;
+        var ruleset = GetRuleset(rulesetId);
+        var difficulty = await DifficultyAsync(beatmapId, rulesetId, mods, ruleset, StableMods(ruleset, mods), cancellationToken).ConfigureAwait(false);
+        return difficulty?.Attributes.StarRating;
+    }
+
     /// <summary>A map's difficulty attributes, and the map itself (the pp formula reads its AR/OD/CS/HP).</summary>
     private sealed record Difficulty(DifficultyAttributes Attributes, BeatmapInfo Beatmap);
 

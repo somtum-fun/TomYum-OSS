@@ -37,7 +37,8 @@ public sealed class ModerationCommands
     }
 
     /// <summary>An alert as a chat message (lazer and the website have no pop-up for it).</summary>
-    private static string WebsiteAlert(string text) => $"📢 Staff alert: {text}";
+    /// <remarks>No emoji: website chat shows them as "[emoji]".</remarks>
+    private static string WebsiteAlert(string text) => $"Staff alert: {text}";
 
     /// <summary>The moderation command words.</summary>
     public static bool Handles(string command) =>
@@ -73,7 +74,8 @@ public sealed class ModerationCommands
                     var stable = inGame.Select(p => p.UserId).ToHashSet();
                     foreach (var (userId, username) in await community.GetOnlineAsync(cancellationToken).ConfigureAwait(false))
                     {
-                        if (stable.Contains(userId))
+                        // The sender gets the reply instead.
+                        if (stable.Contains(userId) || userId == callerId)
                             continue;
                         _website.ForwardPrivateMessage(BanchoBot.UserId, username, WebsiteAlert(text));
                         elsewhere++;

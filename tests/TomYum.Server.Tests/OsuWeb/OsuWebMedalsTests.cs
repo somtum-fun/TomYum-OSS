@@ -26,16 +26,30 @@ public class OsuWebMedalsTests
     }
 
     [Theory]
-    [InlineData(21, "osu-combo-500", "Skill", 0, 1, 0)]        // combo row, first tier
-    [InlineData(1, "osu-skill-pass-1", "Skill", 1, 1, 0)]      // pass row, tier 1
-    [InlineData(35, "taiko-skill-fc-3", "Skill", 2, 3, 1)]     // full-combo row, taiko
-    [InlineData(24, "osu-combo-2000", "Skill", 0, 4, 0)]
-    [InlineData(56, "fruits-skill-fc-8", "Skill", 2, 8, 2)]
+    [InlineData(1, "osu-combo-500", "Skill & Dedication", 0, 1, 0)]
+    [InlineData(55, "osu-skill-pass-1", "Skill & Dedication", 1, 1, 0)]
+    [InlineData(97, "taiko-skill-fc-3", "Skill & Dedication", 2, 3, 1)]
+    [InlineData(110, "fruits-skill-fc-8", "Skill & Dedication", 2, 8, 2)]
     public void CatalogRows_GroupLikeTheProfilePage(int id, string slug, string grouping, int ordering, int progression, int mode)
     {
         var row = OsuWebMedals.CatalogRows().Single(r => r.Id == id);
 
         Assert.Equal((slug, grouping, ordering, progression, (int?)mode), (row.Slug, row.Grouping, row.Ordering, row.Progression, row.Mode));
+    }
+
+    [Fact]
+    public void TheOfficialList_IsReadFromAProfilePage()
+    {
+        const string json = """{"achievements":[{"id":55,"name":"Rising Star","slug":"osu-skill-pass-1","description":"d","grouping":"Skill & Dedication","ordering":1,"mode":"osu","instructions":"<i>Pass</i>"},{"id":56,"name":"Constellation Prize","slug":"osu-skill-pass-2","description":"d2","grouping":"Skill & Dedication","ordering":1,"mode":"osu","instructions":null},{"id":124,"name":"Blindsight","slug":"all-intro-hidden","description":"d3","grouping":"Mod Introduction","ordering":0,"mode":null,"instructions":null}],"user":{}}""";
+        var page = $"<div class=\"js-react\" data-initial-data=\"{System.Net.WebUtility.HtmlEncode(json)}\"></div>";
+
+        var rows = OsuWebMedals.ParseOfficialList(page)!;
+
+        Assert.Equal([55, 56, 124], rows.Select(r => r.Id));
+        Assert.Equal(("Rising Star", "osu-skill-pass-1", 0, 1, "<i>Pass</i>"), (rows[0].Name, rows[0].Slug, rows[0].Mode, rows[0].Progression, rows[0].Instructions));
+        Assert.Equal(2, rows[1].Progression); // second in its row
+        Assert.Null(rows[2].Mode);
+        Assert.Null(OsuWebMedals.ParseOfficialList("<html>changed</html>"));
     }
 
     [Fact]

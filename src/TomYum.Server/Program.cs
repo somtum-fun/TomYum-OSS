@@ -100,6 +100,7 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddSingleton(sp => new OsuWebScoreIndexing(
         sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>(), databaseOptions.OsuWebIndexPrefix));
     builder.Services.AddScoped<OsuWebMedals>();
+    builder.Services.AddScoped<TomYum.Server.Achievements.MedalRebuild>();
     var interopOptions = new OsuWebInteropOptions();
     builder.Configuration.GetSection(OsuWebInteropOptions.SectionName).Bind(interopOptions);
     builder.Services.AddSingleton(interopOptions);
@@ -323,12 +324,33 @@ if (databaseOptions.Enabled)
         if (replaysMarked > 0)
             app.Logger.LogInformation("Marked {Count} website score(s) as having a replay.", replaysMarked);
 
-        // Medals: osu-web's catalog starts empty, and profiles only show catalogued medals.
+        // Medals: osu-web's catalog starts empty, and profiles only show catalogued medals. It's
+        // osu!'s own list (ppy's processor awards lazer medals by osu!'s ids); TomYum's when offline.
         var medals = scope.ServiceProvider.GetRequiredService<OsuWebMedals>();
-        var catalogued = await medals.WriteCatalogAsync();
+        using (var medalHttp = app.Services.GetRequiredService<IHttpClientFactory>().CreateClient())
+        {
+            medalHttp.Timeout = TimeSpan.FromSeconds(20);
+            var official = await OsuWebMedals.FetchOfficialListAsync(medalHttp);
+            if (official is null)
+                app.Logger.LogWarning("Couldn't read osu!'s medal list from osu.ppy.sh; the website's catalog gets TomYum's own medals for now.");
+            var catalogued = await medals.WriteCatalogAsync(official ?? OsuWebMedals.CatalogRows(), complete: official is not null);
+            if (catalogued > 0)
+                app.Logger.LogInformation("osu-web medal catalog: {Count} medal(s) added or updated.", catalogued);
+        }
+        try
+        {
+            if (await scope.ServiceProvider.GetRequiredService<TomYum.Server.Achievements.MedalRebuild>().RunIfPendingAsync() is { } rebuilt)
+                app.Logger.LogInformation(
+                    "Medals recalculated under osu!'s ids and rules: {Scores} score(s) judged, {Added} medal(s) given, {Removed} taken back, {Legacy} old website copies removed.",
+                    rebuilt.Scores, rebuilt.Added, rebuilt.Removed, rebuilt.LegacyCopiesRemoved);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            app.Logger.LogError(ex, "Recalculating medals failed; it runs again at the next start.");
+        }
         var copiedUnlocks = await medals.CopyUnlocksAsync();
-        if (catalogued + copiedUnlocks > 0)
-            app.Logger.LogInformation("osu-web medals: {Catalogued} added to the catalog, {Unlocks} earlier unlock(s) copied.", catalogued, copiedUnlocks);
+        if (copiedUnlocks > 0)
+            app.Logger.LogInformation("osu-web medals: {Unlocks} earlier unlock(s) copied.", copiedUnlocks);
         if (!scope.ServiceProvider.GetRequiredService<OsuWebInteropOptions>().IsConfigured)
             app.Logger.LogInformation("osu-web InterOp not configured (OsuWeb:InteropUrl/InteropSecret): medals are written directly, without activity entries.");
     }
