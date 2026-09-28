@@ -89,7 +89,15 @@ public sealed partial class OsuWebCommunity
 
     private readonly OsuWebDbContext _db;
 
-    public OsuWebCommunity(OsuWebDbContext db) => _db = db;
+    private readonly IStarRatings? _stars;
+
+    /// <param name="db">The website's database.</param>
+    /// <param name="stars">Star ratings with mods (else cards show the map's own rating).</param>
+    public OsuWebCommunity(OsuWebDbContext db, IStarRatings? stars = null)
+    {
+        _db = db;
+        _stars = stars;
+    }
 
     /// <summary>Finds a player by name (case-insensitive; <c>_</c> may stand for a space).</summary>
     public async Task<(int UserId, string Username)?> FindUserAsync(string name, CancellationToken cancellationToken = default)
@@ -393,6 +401,7 @@ public sealed partial class OsuWebCommunity
               s.beatmap_id AS BeatmapId, COALESCE(b.beatmapset_id, 0) AS BeatmapsetId,
               COALESCE(bs.artist, '') AS Artist, COALESCE(bs.title, '') AS Title, COALESCE(b.version, '') AS Version,
               COALESCE(bs.creator, '') AS Creator, COALESCE(b.difficultyrating, 0) AS StarRating,
+              CAST(COALESCE(b.playmode, 0) AS SIGNED) AS MapRuleset,
               COALESCE(b.approved, 0) AS BeatmapStatus, CAST(COALESCE(b.max_combo, 0) AS SIGNED) AS BeatmapMaxCombo,
               s.accuracy AS Accuracy, CAST(s.max_combo AS SIGNED) AS MaxCombo, s.`rank` AS Grade, s.passed AS Passed,
               s.pp AS Pp, CAST(s.total_score AS SIGNED) AS TotalScore, CAST(s.legacy_total_score AS SIGNED) AS LegacyTotalScore,
@@ -406,8 +415,23 @@ public sealed partial class OsuWebCommunity
             LIMIT {{limit.ToString(CultureInfo.InvariantCulture)}}
             """;
         var rows = await _db.Database.SqlQueryRaw<ScoreRow>(sql, parameters).ToListAsync(cancellationToken).ConfigureAwait(false);
-        return rows.Select(ToCard).ToList();
+        var cards = new List<ScoreCard>(rows.Count);
+        foreach (var row in rows)
+        {
+            var card = ToCard(row);
+            // The stored rating is the map's own ruleset without mods: others need working out.
+            if (_stars is not null && card.BeatmapId > 0 && (card.Ruleset != row.MapRuleset || card.Mods.Any(StarRatingMods.Contains))
+                && await _stars.GetAsync(card.BeatmapId, card.Ruleset, card.Mods, cancellationToken).ConfigureAwait(false) is { } stars)
+            {
+                card = card with { StarRating = stars };
+            }
+            cards.Add(card);
+        }
+        return cards;
     }
+
+    /// <summary>Mods that change a map's star rating.</summary>
+    public static readonly IReadOnlySet<string> StarRatingMods = new HashSet<string>(StringComparer.Ordinal) { "EZ", "HR", "DT", "NC", "HT", "DC", "FL" };
 
     private static ScoreCard ToCard(ScoreRow row)
     {
@@ -519,6 +543,8 @@ public sealed partial class OsuWebCommunity
         public string Version { get; set; } = string.Empty;
         public string Creator { get; set; } = string.Empty;
         public double StarRating { get; set; }
+
+        public long MapRuleset { get; set; }
         public int BeatmapStatus { get; set; }
         public long BeatmapMaxCombo { get; set; }
         public double Accuracy { get; set; }
