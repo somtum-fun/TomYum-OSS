@@ -45,6 +45,8 @@ public sealed class OsuWebLeaders
             .Where(s => s.Id > afterScoreId)
             .GroupBy(s => new { s.BeatmapId, s.RulesetId })
             .Select(g => new { g.Key.BeatmapId, g.Key.RulesetId, Newest = g.Max(s => s.Id) })
+            // Oldest changes first: the mark then never passes a map that wasn't looked at.
+            .OrderBy(g => g.Newest)
             .Take(2000)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         return (rows.Select(r => ((int)r.BeatmapId, (int)r.RulesetId)).ToList(), rows.Count == 0 ? afterScoreId : rows.Max(r => r.Newest));
