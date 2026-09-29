@@ -329,7 +329,7 @@ public sealed partial class DiscordCommands
 
         var first = scores[0];
         var lines = scores.Select((s, i) => string.Create(CultureInfo.InvariantCulture,
-            $"**{i + 1}.** [{DiscordFormat.LinkLabel(s.Username)}]({_format.Profile(s.UserId)}) {DiscordFormat.Mods(s.Mods)} ▸ {DiscordFormat.Number(s.TotalScore)} ▸ {DiscordFormat.Percent(s.Accuracy)} ▸ {(s.Pp is { } pp ? DiscordFormat.Pp(pp) : "-")}"));
+            $"**{i + 1}.** {DiscordFormat.GradeMark(s.Grade)}[{DiscordFormat.LinkLabel(s.Username)}]({_format.Profile(s.UserId)}) {DiscordFormat.Mods(s.Mods)} ▸ {DiscordFormat.Number(s.TotalScore)} ▸ {DiscordFormat.Percent(s.Accuracy)} ▸ {(s.Pp is { } pp ? DiscordFormat.Pp(pp) : "-")}"));
         return new DiscordReply(new DiscordPost(Embed: new DiscordEmbed
         {
             Title = $"{first.MapName} {DiscordFormat.Stars(first.StarRating)}",

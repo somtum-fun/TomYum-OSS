@@ -309,6 +309,7 @@ builder.Services.AddSingleton(sp => new LoginIps(TimeProvider.System, sp.GetServ
 var discordOptions = TomYum.Server.Discord.DiscordOptions.Read(builder.Configuration.GetSection(TomYum.Server.Discord.DiscordOptions.SectionName));
 if (discordOptions.IsConfigured)
 {
+    TomYum.Server.Discord.DiscordFormat.UseGradeEmojis(discordOptions.GradeEmojis);
     var discordDomain = BanchoHosts.ResolveDomain(builder.Configuration);
     var discordErrors = new TomYum.Server.Discord.DiscordLogSink();
     builder.Logging.AddProvider(discordErrors);

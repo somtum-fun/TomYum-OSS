@@ -101,13 +101,15 @@ public static partial class DirectEndpoints
         var cfg = opts.Value;
 
         // Query params the osu! client sends:
-        //   r = ranked filter (0=pending,2=pending,3=qualified,4=all,5=graveyard,7=ranked,8=loved)
-        //   q = search text  ("Newest"/"Top+Rated"/"Most+Played" are special sort keys, not text)
+        //   r = status filter (0=ranked, 2=pending, 3=qualified, 4=all, 5=graveyard, 7=ranked (played), 8=loved)
+        //   q = search text ("Newest", "Top Rated", "Most Played" are the tabs, not text; the
+        //       client writes them with '+', which arrives here as a space)
         //   m = mode (-1=all, 0=osu!, 1=taiko, 2=catch, 3=mania)
         //   p = page number (0-indexed; 100 results per page)
         if (!int.TryParse(context.Request.Query["r"].ToString(), out var directStatus))
             directStatus = 4; // all
         var query = context.Request.Query["q"].ToString();
+        var isTab = IsTab(query);
         if (!int.TryParse(context.Request.Query["m"].ToString(), out var mode))
             mode = -1;
         if (!int.TryParse(context.Request.Query["p"].ToString(), out var page))
@@ -116,7 +118,7 @@ public static partial class DirectEndpoints
         var qs = new StringBuilder("?amount=100&offset=");
         qs.Append((page * 100).ToString(CultureInfo.InvariantCulture));
 
-        if (query is not ("Newest" or "Top+Rated" or "Most+Played"))
+        if (!isTab)
         {
             qs.Append("&query=");
             qs.Append(Uri.EscapeDataString(query));
@@ -139,7 +141,7 @@ public static partial class DirectEndpoints
 
         // This server's own sets come first, on the first page.
         var customSets = page == 0
-            ? await custom.SearchAsync(query is "Newest" or "Top+Rated" or "Most+Played" ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, cancellationToken).ConfigureAwait(false)
+            ? await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, cancellationToken).ConfigureAwait(false)
             : [];
 
         JsonElement[] sets;
@@ -369,15 +371,20 @@ public static partial class DirectEndpoints
          _ => 0,
     };
 
-    private static int? ToMirrorStatus(int directStatus) => directStatus switch
+    /// <summary>The osu!direct tabs the client sends as its search text.</summary>
+    internal static bool IsTab(string query) =>
+        query.Replace('+', ' ').Trim() is "Newest" or "Top Rated" or "Most Played";
+
+    /// <summary>The client's status filter as the mirror's status (osu!'s: 1 ranked, 0 pending, …); null: all.</summary>
+    internal static int? ToMirrorStatus(int directStatus) => directStatus switch
     {
-        0 => 0,   // Pending
-        2 => 0,   // Pending (alternate code)
-        3 => 3,   // Qualified
-        4 => null, // All — omit the filter
-        5 => -2,  // Graveyard
-        7 => 1,   // Ranked
-        8 => 4,   // Loved
+        0 => 1,    // Ranked
+        2 => 0,    // Pending
+        3 => 3,    // Qualified
+        4 => null, // All: no filter
+        5 => -2,   // Graveyard
+        7 => 1,    // Ranked (played): the mirror can't tell what the player played, so ranked
+        8 => 4,    // Loved
         _ => null,
     };
 }
