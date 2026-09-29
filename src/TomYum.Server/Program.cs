@@ -309,12 +309,16 @@ if (circleguardOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
 // Where players log in to the game from (staff see it on Discord's /user).
 builder.Services.AddSingleton(sp => new LoginIps(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
 
-// IRC (osu!-style, port 6667): chat and bots from IRC clients; passwords from BanchoBot's !irc.
-builder.Services.AddSingleton(sp => new TomYum.Server.Irc.IrcTokens(sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
+// IRC (osu!-style, port 6667): chat and bots from IRC clients; passwords are the website's IRC keys
+// (account settings), or from BanchoBot's !irc without website accounts.
+builder.Services.AddSingleton(sp => new TomYum.Server.Irc.IrcTokens(sp.GetService<StackExchange.Redis.IConnectionMultiplexer>(),
+    databaseOptions.UseOsuWebAccounts ? sp.GetRequiredService<IServiceScopeFactory>() : null));
 var ircOptions = new TomYum.Server.Irc.IrcOptions();
 builder.Configuration.GetSection(TomYum.Server.Irc.IrcOptions.SectionName).Bind(ircOptions);
 if (string.IsNullOrWhiteSpace(ircOptions.ServerName))
     ircOptions.ServerName = "irc." + (BanchoHosts.ResolveDomain(builder.Configuration) is { Length: > 0 } ircDomain ? ircDomain : "localhost");
+if (databaseOptions.UseOsuWebAccounts && ircOptions.KeyPageUrl is null && BanchoHosts.ResolveDomain(builder.Configuration) is { Length: > 0 } keyDomain)
+    ircOptions.KeyPageUrl = $"https://osu.{keyDomain}/home/account/edit#legacy-api";
 builder.Services.AddSingleton(ircOptions);
 if (ircOptions.Enabled)
     builder.Services.AddHostedService<TomYum.Server.Irc.IrcServer>();

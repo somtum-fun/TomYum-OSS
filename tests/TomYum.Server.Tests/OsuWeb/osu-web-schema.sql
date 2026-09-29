@@ -870,3 +870,11 @@ CREATE TABLE beatmap_owners (
   user_id int unsigned NOT NULL,
   PRIMARY KEY (beatmap_id, user_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web migration 2023_04_07_051227_create_user_ircauth: IRC keys from the account settings.
+DROP TABLE IF EXISTS osu_user_ircauth;
+CREATE TABLE osu_user_ircauth (
+  user_id int unsigned NOT NULL PRIMARY KEY,
+  token varchar(50) NULL UNIQUE,
+  `timestamp` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

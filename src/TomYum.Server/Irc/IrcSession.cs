@@ -155,7 +155,9 @@ public sealed class IrcSession : IDisposable
             .GetBySafeNameAsync(User.MakeSafeName(nick), cancellationToken).ConfigureAwait(false);
         if (user is null || password is null || !await _tokens.VerifyAsync(user.Id, password).ConfigureAwait(false))
         {
-            await SendAsync(Host, "464", nick, "Bad username or IRC password. Send !irc to BanchoBot in the game or on the website for your IRC password.").ConfigureAwait(false);
+            await SendAsync(Host, "464", nick, _tokens.FromWebsite
+                ? $"Bad username or IRC key. Make your IRC key in the website's account settings{(_options.KeyPageUrl is { } page ? ": " + page : ".")}"
+                : "Bad username or IRC password. Send !irc to BanchoBot in the game or on the website for your IRC password.").ConfigureAwait(false);
             await ErrorAsync("Bad authentication").ConfigureAwait(false);
             return false;
         }

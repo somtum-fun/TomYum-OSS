@@ -151,6 +151,9 @@ public sealed class BanchoBotCommands
         using var scope = _scopeFactory.CreateScope();
         if (scope.ServiceProvider.GetService<Irc.IrcTokens>() is not { } tokens || scope.ServiceProvider.GetService<Irc.IrcOptions>() is not { Enabled: true } options)
             return "There's no IRC on this server.";
+        if (tokens.FromWebsite)
+            return string.Create(CultureInfo.InvariantCulture,
+                $"Your IRC key is in the website's account settings{(options.KeyPageUrl is { } page ? " (" + page + ")" : string.Empty)} — server {options.ServerName}, port {options.Port}, nick {TomYum.Irc.IrcLine.Nick(context.Caller.Presence.Username)}.");
         var password = await tokens.CreateAsync(context.Caller.UserId).ConfigureAwait(false);
         var text = string.Create(CultureInfo.InvariantCulture,
             $"Your IRC password: {password} — server {options.ServerName}, port {options.Port}, nick {TomYum.Irc.IrcLine.Nick(context.Caller.Presence.Username)}. Asking again makes a new one.");
