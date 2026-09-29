@@ -164,6 +164,10 @@ accounts, chat and leaderboards with them._
 - [x] Stable map ratings (`osu-rate.php`, kept with the website's ratings; the leaderboard shows the average),
       the client's anti-cheat flags (`lastfm.php`: hq!osu restricts, relife traces warn and alert staff),
       osu!'s beatmap tags synced daily for lazer's tag voting. 2026-09-29
+- [x] Admin panel: seasonal backgrounds (lazer + stable's `osu-getseasonal.php`), Quick Play / Ranked Play
+      pools (the spectator server fills them with featured-artist maps; extra maps added there), news posts
+      (osu-wiki markdown, not synced from GitHub). The changelog from git history (`deploy/production/changelog.sh`,
+      run by `deploy.sh`); popular beatmaps from this week's plays. 2026-09-29
 - [ ] Stable tournament client (`TournamentMatchInfoRequest`, match channel join/leave); lazer Quick Play
       (matchmaking pools: none set up yet).
 
