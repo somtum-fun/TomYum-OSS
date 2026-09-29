@@ -161,6 +161,7 @@ if (databaseOptions.UseOsuWebAccounts)
     // Lazer's Relax plays on TomYum's relax leaderboards (ppy's processor doesn't rank them).
     builder.Services.AddHostedService<LazerRelaxImport>();
     builder.Services.AddHostedService<TagSync>();
+    builder.Services.AddHostedService<WebsiteLastVisit>();
     builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     // Beatmap submission from the game clients (stable's .osz2, lazer's submission service).

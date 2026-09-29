@@ -59,6 +59,7 @@ public static class AdminEndpoints
         admin.MapBadges();
         admin.MapModeStats();
         admin.MapModeScores();
+        admin.MapModeRankings();
         admin.MapPost("/beatmaps/import", ImportBeatmapAsync);
         admin.MapGet("/beatmapsets/{setId:int}", GetSetAsync);
         admin.MapPost("/beatmapsets/{setId:int}/status", ChangeStatusAsync);
