@@ -155,6 +155,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService<ScoreRankEvents>();
     // Custom sets nobody updated for four weeks go to the graveyard, as on osu!.
     builder.Services.AddHostedService<CustomGraveyardJob>();
+    // Lazer's Relax plays on TomYum's relax leaderboards (ppy's processor doesn't rank them).
+    builder.Services.AddHostedService<LazerRelaxImport>();
     builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     // Beatmap submission from the game clients (stable's .osz2, lazer's submission service).
