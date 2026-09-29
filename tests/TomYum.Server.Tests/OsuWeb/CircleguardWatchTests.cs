@@ -86,16 +86,74 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
         var log = await new StaffLogRepository(NewTomYumContext()).ListAsync(new StaffLogQuery(Action: "user.restrict"));
         Assert.StartsWith("circleguard restricted Cheater (risk 80/100", Assert.Single(log).Summary, StringComparison.Ordinal);
 
-        var report = Assert.Single(gateway.In(DiscordFakeGateway.UserLog), p => p.Embed?.AuthorName == "circleguard: Cheater");
-        Assert.Contains("Restricted automatically", report.Embed!.Description, StringComparison.Ordinal);
+        var report = Assert.Single(gateway.In(DiscordFakeGateway.UserLog), p => p.Embed?.AuthorName == "circleguard ▸ Cheater");
+        Assert.StartsWith("**⛔ Restricted automatically** ▸ risk **80**/100\n`████████████████░░░░`", report.Embed!.Description, StringComparison.Ordinal);
         Assert.Contains("• Un-human play detected", report.Embed.Description, StringComparison.Ordinal);
         Assert.Equal($"mod:unrestrict:{cheater}:circleguard false alarm", report.Buttons[0].CustomId);
         Assert.Equal($"https://osu.test/scores/{played}", report.Embed.Url);
+        Assert.Equal("1 here ▸ 0 on osu!", report.Embed.Fields.Single(f => f.Name == "Compared with").Value);
+        Assert.Equal("circleguard ▸ HD", report.Embed.Footer);
+    }
+
+    [MySqlFact]
+    public async Task Staff_CanScanAnyScore()
+    {
+        await NewTomYumContextAsync();
+        var users = new OsuWebUserRepository(NewOsuWebContext());
+        var suspect = (await users.AddAsync(NewUser("Suspect"))).Id;
+        var staff = (await users.AddAsync(new User
+        {
+            Username = "Gmt", SafeName = "gmt", Email = "gmt@x.dev", PasswordBcrypt = "x", Country = "nl",
+            Privileges = UserPrivileges.Normal | UserPrivileges.Moderator,
+        })).Id;
+        await new OsuWebBeatmapMirror(NewOsuWebContext()).WriteAsync(new Beatmap { Id = 100, SetId = 10, Md5 = "a", Status = RankedStatus.Ranked, OsuApiStatus = 1, Version = "Hard", Artist = "A", Title = "T", Creator = "M" });
+        var replays = Path.Combine(_directory, "replays");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Replays:Path"] = replays }).Build();
+        Directory.CreateDirectory(Path.Combine(_directory, "osu"));
+        await File.WriteAllTextAsync(Path.Combine(_directory, "osu", "100.osu"), "osu file format v14\n[HitObjects]\n");
+        var others = new List<int>();
+        for (var i = 0; i < 3; i++)
+        {
+            var other = (await users.AddAsync(NewUser("Other" + i.ToString(CultureInfo.InvariantCulture)))).Id;
+            await InsertStableAsync(other, (uint)(990_000 - i), replays, "top play");
+        }
+        var played = await InsertStableAsync(suspect, 900_000, replays, "cheater's play");
+
+        var service = new FakeCircleguard(risk: 45);
+        var links = new InMemoryDiscordLinkRepository();
+        await links.LinkAsync(staff, 1002, DateTime.UtcNow);
+        await links.LinkAsync(suspect, 1001, DateTime.UtcNow);
+        var services = Services(configuration, service, links);
+        var commands = new DiscordCommands(services.GetRequiredService<IServiceScopeFactory>(), new PlayerRegistry(), new DiscordLinkCodes(), new DiscordFormat("https://osu.test", "https://a.test"));
+
+        Assert.Equal("That command is staff-only.", (await commands.RunAsync("scan", new Dictionary<string, string> { ["score"] = played.ToString(CultureInfo.InvariantCulture) }, 1001)).Post.Content);
+        Assert.Contains("no such score", (await commands.RunAsync("scan", new Dictionary<string, string> { ["score"] = "999999" }, 1002)).Post.Content, StringComparison.Ordinal);
+
+        var reply = await commands.RunAsync("scan", new Dictionary<string, string> { ["score"] = $"https://osu.test/scores/{played}" }, 1002);
+        Assert.True(reply.Private);
+        var embed = reply.Post.Embed!;
+        Assert.StartsWith("**🟠 Suspicious** ▸ risk **45**/100", embed.Description, StringComparison.Ordinal);
+        Assert.Equal("3 here ▸ 0 on osu!", embed.Fields.Single(f => f.Name == "Compared with").Value);
+        Assert.EndsWith("scanned by Gmt", embed.Footer, StringComparison.Ordinal);
+        Assert.Equal("Restrict", reply.Post.Buttons[0].Label);
+        // All three top plays went along, not only five... or one.
+        Assert.Equal(3, service.Requests.Single(r => FakeCircleguard.Judged(r) == "cheater's play").Split("top play").Length - 1);
     }
 
     private CircleguardWatch NewWatch(IConfiguration configuration, FakeCircleguard service, DiscordFakeGateway gateway)
     {
-        var services = new ServiceCollection()
+        var services = Services(configuration, service, new InMemoryDiscordLinkRepository());
+        var options = services.GetRequiredService<CircleguardOptions>();
+        var discord = new DiscordWatch(DiscordFakeGateway.Options(), gateway, new DiscordFormat("https://osu.test", "https://a.test"), new DiscordState(), TimeProvider.System);
+        return new CircleguardWatch(
+            options, services.GetRequiredService<CircleguardScanner>(),
+            services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CircleguardWatch>.Instance, discord);
+    }
+
+    private ServiceProvider Services(IConfiguration configuration, FakeCircleguard service, IDiscordLinkRepository links)
+    {
+        var options = new CircleguardOptions { Url = "http://circleguard.test", Key = "k", CompareOfficial = false };
+        return new ServiceCollection()
             .AddLogging()
             .AddSingleton(configuration)
             .AddSingleton(TimeProvider.System)
@@ -108,13 +166,13 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
             .AddSingleton(new TomYum.Domain.Services.RestrictedUsers())
             .AddScoped<UserModerationSync>()
             .AddSingleton(new OsuFileCache(Path.Combine(_directory, "osu"), new HttpClient(), NullLogger<OsuFileCache>.Instance))
+            .AddSingleton(options)
+            .AddSingleton(links)
+            .AddSingleton(new CircleguardScanner(
+                options, new CircleguardClient(new HttpClient(service), options),
+                new OfficialReplays(new HttpClient(), new OsuApiOptions(), configuration, TimeProvider.System, NullLogger<OfficialReplays>.Instance),
+                configuration, NullLogger<CircleguardScanner>.Instance))
             .BuildServiceProvider();
-        var options = new CircleguardOptions { Url = "http://circleguard.test", Key = "k", CompareOfficial = false };
-        var discord = new DiscordWatch(DiscordFakeGateway.Options(), gateway, new DiscordFormat("https://osu.test", "https://a.test"), new DiscordState(), TimeProvider.System);
-        return new CircleguardWatch(
-            options, new CircleguardClient(new HttpClient(service), options),
-            new OfficialReplays(new HttpClient(), new OsuApiOptions(), configuration, TimeProvider.System, NullLogger<OfficialReplays>.Instance),
-            services.GetRequiredService<IServiceScopeFactory>(), configuration, TimeProvider.System, NullLogger<CircleguardWatch>.Instance, discord);
     }
 
     /// <summary>A stable pass with its replay file (the text stands in for the replay).</summary>
