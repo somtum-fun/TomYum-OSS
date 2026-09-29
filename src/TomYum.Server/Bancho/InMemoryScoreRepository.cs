@@ -52,10 +52,16 @@ public sealed class InMemoryScoreRepository : IScoreRepository
         return Task.FromResult(best);
     }
 
-    public Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId = null, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId = null, CancellationToken cancellationToken = default) =>
+        GetLeaderboardAsync(beatmapMd5, mode, count, viewerId, new LeaderboardFilter(), cancellationToken);
+
+    public Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId, LeaderboardFilter filter, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(filter);
         var filtered = _scores.Values
             .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)
+            .Where(s => filter.Mods is not { } mods || s.Mods == mods)
+            .Where(s => filter.UserIds is not { } ids || ids.Contains(s.UserId))
             .Where(s => _restricted is null || s.UserId == viewerId || !_restricted.Contains(s.UserId));
 
         // Relax/Autopilot leaderboards rank by pp; vanilla ranks by score (bancho.py's rule).

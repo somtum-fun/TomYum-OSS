@@ -79,6 +79,12 @@ public sealed class OsuWebStableClient
         return added;
     }
 
+    /// <summary>The sets the player favourited, newest first (song select's favourites filter).</summary>
+    public async Task<IReadOnlyList<int>> FavouriteSetIdsAsync(int userId, CancellationToken cancellationToken = default) =>
+        await _db.Database.SqlQuery<int>(
+            $"SELECT CAST(beatmapset_id AS SIGNED) AS Value FROM osu_favouritemaps WHERE user_id = {userId} ORDER BY dateadded DESC")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
     /// <summary>Fills in file names the website doesn't have yet, from the maps' metadata (once, at start).</summary>
     public Task<int> FillMissingFilenamesAsync(CancellationToken cancellationToken = default) =>
         _db.Database.ExecuteSqlRawAsync(

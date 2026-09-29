@@ -31,6 +31,7 @@ public sealed class BanchoLoginHandler
     private readonly IClientHashRepository? _clientHashes;
     private readonly IStaffLogRepository? _staffLog;
     private readonly PresenceStats? _presenceStats;
+    private readonly IFriendRepository? _friends;
 
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
@@ -53,8 +54,10 @@ public sealed class BanchoLoginHandler
         TomYum.Plugins.Abstractions.IEventBus? events = null,
         IClientHashRepository? clientHashes = null,
         IStaffLogRepository? staffLog = null,
-        PresenceStats? presenceStats = null)
+        PresenceStats? presenceStats = null,
+        IFriendRepository? friends = null)
     {
+        _friends = friends;
         _presenceStats = presenceStats;
         _users = users;
         _passwordHasher = passwordHasher;
@@ -129,6 +132,8 @@ public sealed class BanchoLoginHandler
         var player = _registry.Add(presence);
         player.IsRestricted = user.IsRestricted;
         player.SilenceEndUtc = user.SilenceEndUtc;
+        IReadOnlyList<int> friendIds = _friends is null ? [] : await _friends.GetFriendIdsAsync(user.Id, cancellationToken).ConfigureAwait(false);
+        player.Friends = [.. friendIds];
 
         // Plugins (welcome messages, per-login state). A plugin fault is logged, never breaks login.
         if (_events is not null)
@@ -167,7 +172,7 @@ public sealed class BanchoLoginHandler
         // are already in the burst (BuildSuccess), so skip self here to avoid a duplicate.
         var writer = new BanchoPacketWriter(1024);
         writer.WriteRaw(LoginResponseBuilder.BuildSuccess(
-            presence, welcome, WriteChannels, player.SilenceSecondsLeft(DateTimeOffset.UtcNow)));
+            presence, welcome, WriteChannels, player.SilenceSecondsLeft(DateTimeOffset.UtcNow), friendIds));
         if (player.IsRestricted)
             ModerationPackets.WriteRestricted(writer);
 

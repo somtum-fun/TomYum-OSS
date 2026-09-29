@@ -31,10 +31,21 @@ public sealed class ScoreRepository : IScoreRepository
             .Where(s => s.UserId == userId && s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)
             .FirstOrDefaultAsync(cancellationToken);
 
-    public async Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId = null, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId = null, CancellationToken cancellationToken = default) =>
+        GetLeaderboardAsync(beatmapMd5, mode, count, viewerId, new LeaderboardFilter(), cancellationToken);
+
+    public async Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId, LeaderboardFilter filter, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(filter);
         var query = _db.Scores.AsNoTracking()
             .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best);
+        if (filter.Mods is { } mods)
+            query = query.Where(s => s.Mods == mods);
+        if (filter.UserIds is { } userIds)
+        {
+            var ids = userIds.ToList();
+            query = query.Where(s => ids.Contains(s.UserId));
+        }
 
         // Restricted players stay off leaderboards (their scores are kept for if they're unrestricted),
         // but see their own (bancho.py's shadow leaderboard).

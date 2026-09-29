@@ -154,6 +154,11 @@ accounts, chat and leaderboards with them._
       lazer score submission, lazer beatmap submission.
 - [x] Relax on lazer — lazer RX plays go on TomYum's relax leaderboards with relax pp and stats. 2026-09-29
 - [x] Deployment — players use the stock lazer client with the injection ruleset (docs/lazer.md).
+- [x] Stable friends (the website's `phpbb_zebra`, shared with lazer and the site): login list, add/remove,
+      `osu-getfriends.php`; the selected mods / friends / country leaderboard tabs; `osu-getfavourites.php`;
+      away messages and friends-only PMs (also IRC's `AWAY`). 2026-09-29
+- [ ] Stable tournament client (`TournamentMatchInfoRequest`, match channel join/leave); in-game map comments
+      (`osu-comment.php`); the presence filter (`ReceiveUpdates`).
 
 ## osu-web website 🔒 Phase A: none · Phase B: decisions below
 _osu-web (ppy's Laravel site) runs unmodified as the website; long-term it owns the schema and TomYum
