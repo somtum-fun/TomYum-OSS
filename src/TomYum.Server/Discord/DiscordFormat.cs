@@ -162,17 +162,21 @@ public sealed class DiscordFormat
         return $"[{LinkLabel(score.MapName)}]({Beatmap(score.BeatmapId)})";
     }
 
-    /// <summary>Two lines about a score: pp · accuracy · grade, then score · combo · hits.</summary>
+    /// <summary>
+    /// Two lines about a score, Bathbot-style: grade, score and accuracy, then pp, combo and misses
+    /// ("FC" for a full combo). The title carries the mods.
+    /// </summary>
     public static string ScoreDetails(ScoreCard score)
     {
         ArgumentNullException.ThrowIfNull(score);
-        var pp = score.Pp is { } value ? Pp(value) : score.Passed ? "no pp" : "failed";
-        var combo = score.BeatmapMaxCombo > 0
-            ? string.Create(CultureInfo.InvariantCulture, $"x{score.MaxCombo}/{score.BeatmapMaxCombo}")
-            : string.Create(CultureInfo.InvariantCulture, $"x{score.MaxCombo}");
-        var hits = string.Create(CultureInfo.InvariantCulture, $"[{score.Great}/{score.Ok}/{score.Meh}/{score.Miss}]");
         var total = score.IsStable && score.LegacyTotalScore > 0 ? score.LegacyTotalScore : score.TotalScore;
-        return $"▸ **{pp}** ▸ {Percent(score.Accuracy)} ▸ {Grade(score.Grade)}\n▸ {Number(total)} ▸ {combo} ▸ {hits}";
+        var pp = score.Pp is { } value ? $"**{Pp(value)}**" : score.Passed ? "**no pp**" : "**failed**";
+        var combo = score.BeatmapMaxCombo > 0
+            ? string.Create(CultureInfo.InvariantCulture, $"**{score.MaxCombo}x**/{score.BeatmapMaxCombo}x")
+            : string.Create(CultureInfo.InvariantCulture, $"**{score.MaxCombo}x**");
+        var fullCombo = score.Passed && score.Miss == 0 && (score.BeatmapMaxCombo == 0 || score.MaxCombo >= score.BeatmapMaxCombo - 1);
+        var misses = fullCombo ? "FC" : string.Create(CultureInfo.InvariantCulture, $"{score.Miss} ❌");
+        return $"{Grade(score.Grade)}  {Number(total)}  {Percent(score.Accuracy)}\n{pp} • {combo} • {misses}";
     }
 
     /// <summary>A score as one block in a list.</summary>

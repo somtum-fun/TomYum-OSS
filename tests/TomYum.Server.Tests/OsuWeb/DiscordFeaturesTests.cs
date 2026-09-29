@@ -53,6 +53,50 @@ public sealed class DiscordFeaturesTests : OsuWebDatabaseTest
     public void NonsenseMods_AreRefused(string text) => Assert.Null(NowPlaying.ParseAcronyms(text));
 
     [MySqlFact]
+    public async Task Recent_ShowsTheTry_TheRanks_AndPagesBack()
+    {
+        var (alpha, _, _, _) = await SeedAsync();
+        var links = new InMemoryDiscordLinkRepository();
+        await links.LinkAsync(alpha, 1001, DateTime.UtcNow);
+        var commands = NewCommands(links, out var services);
+
+        await InsertScoreAsync(alpha, OtherMap, 700_000, pp: 90);   // older, another map
+        await InsertScoreAsync(alpha, Map, 800_000, pp: 120);
+        await InsertScoreAsync(alpha, Map, 850_000, pp: 130);        // latest: 2nd try in a row
+
+        var reply = await commands.RunAsync("rs", new Dictionary<string, string>(), 1001);
+        Assert.Equal("Try #2", reply.Post.Content);
+        var card = reply.Post.Embed!;
+        Assert.StartsWith("Alpha: 500.00pp (", card.AuthorName, StringComparison.Ordinal);
+        Assert.Matches(@"\(#\d+ NL\d+\)$", card.AuthorName);
+        Assert.Equal("https://flagcdn.com/w40/nl.png", card.AuthorIconUrl);
+        Assert.Equal("Artist - Song [Hard] [4.50★]", card.Title);
+        Assert.StartsWith("S +NM  850,000  97.00%  <t:", card.Description, StringComparison.Ordinal);
+        Assert.Contains("**130.00**pp • **400x**", card.Description, StringComparison.Ordinal);
+        Assert.Contains("`02:00` • `CS: 4 AR: 9 OD: 8 HP: 5` • 🎵 120", card.Description, StringComparison.Ordinal);
+        Assert.StartsWith("Mapset by Mapper", card.Footer, StringComparison.Ordinal);
+        Assert.Equal([true, true, false, false, false], reply.Post.Buttons.Select(b => b.Disabled));
+
+        // Back through the plays: the first try on the map, then the other map.
+        var interactions = new DiscordInteractions(services.GetRequiredService<IServiceScopeFactory>(), commands: commands);
+        var older = (await interactions.PressAsync(reply.Post.Buttons[3].CustomId!, 9999)).Update!; // anyone may page
+        Assert.Equal("Try #1", older.Content);
+        Assert.Contains("800,000", older.Embed!.Description, StringComparison.Ordinal);
+        var oldest = (await interactions.PressAsync(older.Buttons[4].CustomId!, 9999)).Update!;
+        Assert.Equal("Artist - Song [Insane] [5.50★]", oldest.Embed!.Title);
+        Assert.True(oldest.Buttons[4].Disabled);
+    }
+
+    [Fact]
+    public void MapNumbers_FollowTheMods()
+    {
+        var map = new MapCard(1, 1, "A", "T", "V", "M", 0, 1, 5, 120, 110, 120, 4, 9, 8, 5, 500, 0, 0);
+        var (cs, ar, od, hp, rate) = DiscordCommands.WithMods(map, TomYum.Bancho.Mods.HardRock | TomYum.Bancho.Mods.DoubleTime, 0);
+        // HR: CS ×1.3, the rest ×1.4 (at most 10); DT then speeds approach and hit windows up by 1.5.
+        Assert.Equal((5.2, 11.0, 11.1, 7.0, 1.5), (Math.Round(cs, 1), Math.Round(ar, 1), Math.Round(od, 1), Math.Round(hp, 1), rate));
+    }
+
+    [MySqlFact]
     public async Task MapCards_Graphs_Medals_AndComparisons()
     {
         var (alpha, bravo, _, _) = await SeedAsync();

@@ -75,7 +75,8 @@ public sealed partial class DiscordCommands
     [
         new("profile", "A player's profile", [UserOption, ModeOption]),
         new("rank", "A player's rank and pp", [UserOption, ModeOption]),
-        new("recent", "A player's latest play", [UserOption, ModeOption]),
+        new("recent", "A player's latest play (buttons go back through the last 50)", [UserOption, ModeOption]),
+        new("rs", "Same as /recent", [UserOption, ModeOption]),
         new("best", "A player's top plays", [UserOption, ModeOption]),
         new("top", "The pp ranking", [new("mode", "Ruleset (osu! if left out)", Choices: Rulesets), new("country", "Two-letter country code, e.g. NL")]),
         new("leaderboard", "A beatmap's leaderboard", [new("beatmap", "Beatmap id or link", Required: true), new("mode", "Ruleset (the map's own if left out)", Choices: Rulesets)]),
@@ -215,7 +216,7 @@ public sealed partial class DiscordCommands
         {
             "profile" => Profile(player),
             "rank" => Rank(player),
-            "recent" => await RecentAsync(community, player, cancellationToken).ConfigureAwait(false),
+            "recent" or "rs" => await RecentAsync(scope.ServiceProvider, community, player, cancellationToken).ConfigureAwait(false),
             "best" => await BestAsync(community, player, cancellationToken).ConfigureAwait(false),
             "graph" => await GraphAsync(community, player, cancellationToken).ConfigureAwait(false),
             "medals" => await MedalsAsync(community, player, cancellationToken).ConfigureAwait(false),
@@ -258,23 +259,10 @@ public sealed partial class DiscordCommands
         return DiscordReply.Text(text, player.IsRestricted);
     }
 
-    private async Task<DiscordReply> RecentAsync(OsuWebCommunity community, PlayerCard player, CancellationToken cancellationToken)
-    {
-        if (await community.GetRecentAsync(player.UserId, player.Ruleset, 1, cancellationToken).ConfigureAwait(false) is not [var score, ..])
-            return DiscordReply.Text($"{DiscordFormat.Escape(player.Username)} has no {DiscordFormat.Ruleset(player.Ruleset)} plays yet.", player.IsRestricted);
-
-        return new DiscordReply(new DiscordPost(Embed: new DiscordEmbed
-        {
-            AuthorName = $"{player.Username}: {DiscordFormat.Pp(player.Pp)}",
-            AuthorUrl = _format.Profile(player.UserId),
-            AuthorIconUrl = _format.Avatar(player.UserId),
-            Title = DiscordFormat.ScoreTitle(score),
-            Url = _format.Beatmap(score.BeatmapId),
-            Description = DiscordFormat.ScoreDetails(score) + $"\n▸ {(score.IsStable ? "stable" : "lazer")} ▸ {DiscordFormat.Relative(score.EndedAt)}",
-            ThumbnailUrl = _format.ListCover(score.BeatmapsetId),
-            Color = score.Passed ? DiscordFormat.Accent : DiscordFormat.Danger,
-        }), player.IsRestricted);
-    }
+    private async Task<DiscordReply> RecentAsync(IServiceProvider services, OsuWebCommunity community, PlayerCard player, CancellationToken cancellationToken) =>
+        await RecentCardAsync(services, community, player, 0, cancellationToken).ConfigureAwait(false) is { } card
+            ? new DiscordReply(card, player.IsRestricted)
+            : DiscordReply.Text($"{DiscordFormat.Escape(player.Username)} has no {DiscordFormat.Ruleset(player.Ruleset)} plays yet.", player.IsRestricted);
 
     private async Task<DiscordReply> BestAsync(OsuWebCommunity community, PlayerCard player, CancellationToken cancellationToken)
     {

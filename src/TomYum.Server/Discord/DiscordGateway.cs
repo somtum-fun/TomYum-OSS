@@ -56,7 +56,11 @@ public enum DiscordButtonStyle
 /// A button: an action (<see cref="CustomId"/>, handled by <see cref="DiscordInteractions"/>) or a
 /// <see cref="DiscordButtonStyle.Link"/> to <see cref="Url"/>.
 /// </summary>
-public sealed record DiscordButton(string Label, DiscordButtonStyle Style, string? CustomId = null, string? Url = null);
+public sealed record DiscordButton(string Label, DiscordButtonStyle Style, string? CustomId = null, string? Url = null)
+{
+    /// <summary>Shown greyed out (e.g. "previous" on the first page).</summary>
+    public bool Disabled { get; init; }
+}
 
 /// <summary>A file sent with a message.</summary>
 public sealed record DiscordFile(string Name, byte[] Bytes);

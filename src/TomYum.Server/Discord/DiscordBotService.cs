@@ -686,7 +686,7 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
                 DiscordButtonStyle.Success => ButtonStyle.Success,
                 DiscordButtonStyle.Danger => ButtonStyle.Danger,
                 _ => ButtonStyle.Secondary,
-            });
+            }, disabled: button.Disabled);
         }
         return builder.Build();
     }
