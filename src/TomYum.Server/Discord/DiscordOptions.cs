@@ -24,6 +24,12 @@ public sealed partial class DiscordOptions
     /// <summary>Two-way relay with the in-game chat channel <see cref="ChatChannel"/>.</summary>
     public ulong ChatChannelId { get; set; }
 
+    /// <summary>
+    /// The emoji the bot reacts with to messages saying "kfc" (people's, and the game chat it relays);
+    /// empty for none.
+    /// </summary>
+    public string KfcReaction { get; set; } = "<::1554593460869267476>";
+
     /// <summary>Ranked, qualified and loved maps.</summary>
     public ulong BeatmapsChannelId { get; set; }
 
