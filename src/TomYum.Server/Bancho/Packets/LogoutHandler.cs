@@ -18,6 +18,15 @@ public sealed class LogoutHandler : IClientPacketHandler
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        // A tournament client window closing: only what it did itself (the player is still online).
+        if (context.Player.IsTournamentClient)
+        {
+            TournamentWatching.Stop(context.Player, context.Matches);
+            SpectatorManager.TeardownForLeaver(context.Player, context.Registry);
+            context.Registry.Remove(context.Player.Token);
+            return;
+        }
+
         // Private messages that reached the player in-game count as read on the website too.
         if (context.Services.GetService<TomYum.Persistence.OsuWeb.OsuWebPrivateMessages>() is { } messages)
         {

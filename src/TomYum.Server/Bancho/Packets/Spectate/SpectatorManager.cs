@@ -57,7 +57,8 @@ internal static class SpectatorManager
         var fellowJoined = FellowSpectatorJoined(spectator.UserId);
         foreach (var existingId in host.Spectators) // existing spectators, before this one is added
         {
-            registry.GetByUserId(existingId)?.Enqueue(fellowJoined);      // they learn about the newcomer
+            foreach (var session in registry.SpectatingSessions(existingId, host.UserId))
+                session.Enqueue(fellowJoined);                            // they learn about the newcomer
             spectator.Enqueue(FellowSpectatorJoined(existingId));         // newcomer learns about them
         }
 
@@ -88,7 +89,8 @@ internal static class SpectatorManager
 
         var fellowLeft = FellowSpectatorLeft(spectator.UserId);
         foreach (var remainingId in host.Spectators) // now excludes the leaver
-            registry.GetByUserId(remainingId)?.Enqueue(fellowLeft);
+            foreach (var session in registry.SpectatingSessions(remainingId, host.UserId))
+                session.Enqueue(fellowLeft);
 
         host.Enqueue(SpectatorLeft(spectator.UserId));
 
@@ -125,7 +127,8 @@ internal static class SpectatorManager
         var fellowJoined = FellowSpectatorJoined(spectator.UserId);
         foreach (var otherId in host.Spectators)
             if (otherId != spectator.UserId)
-                registry.GetByUserId(otherId)?.Enqueue(fellowJoined);
+                foreach (var session in registry.SpectatingSessions(otherId, host.UserId))
+                    session.Enqueue(fellowJoined);
     }
 
     /// <summary>
@@ -145,10 +148,10 @@ internal static class SpectatorManager
 
         foreach (var spectatorId in leaver.Spectators) // snapshot; Detach mutates the set
         {
-            var spectator = registry.GetByUserId(spectatorId);
-            if (spectator is not null)
+            var sessions = registry.SpectatingSessions(spectatorId, leaver.UserId).ToList();
+            foreach (var spectator in sessions)
                 Detach(leaver, spectator, registry);
-            else
+            if (sessions.Count == 0)
                 leaver.RemoveSpectator(spectatorId);
         }
     }

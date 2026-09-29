@@ -51,6 +51,9 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Difficulty ids handed out for custom sets.</summary>
     public DbSet<CustomBeatmapSlot> CustomBeatmapSlots => Set<CustomBeatmapSlot>();
 
+    /// <summary>Relax/Autopilot ranks by day (the profile's rank graph in those modes).</summary>
+    public DbSet<ModeRankSnapshot> ModeRankHistory => Set<ModeRankSnapshot>();
+
     /// <summary>osu!stable's in-game comments.</summary>
     public DbSet<BeatmapComment> BeatmapComments => Set<BeatmapComment>();
 

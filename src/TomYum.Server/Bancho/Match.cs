@@ -53,6 +53,9 @@ public sealed class Match
     public int    Seed          { get; set; }
     public bool   InProgress    { get; set; }
 
+    /// <summary>Tournament client windows watching the match: they get its packets like its players.</summary>
+    public HashSet<OnlinePlayer> TournamentWatchers { get; } = [];
+
     /// <summary>The per-match chat channel (<c>#multiplayer</c> from the client's view).</summary>
     public ChatChannel Channel { get; } = new("#multiplayer", "Match chat", autoJoin: false);
 

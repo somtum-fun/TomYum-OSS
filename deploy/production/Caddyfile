@@ -48,9 +48,11 @@ http://c.{$DOMAIN}, http://ce.{$DOMAIN}, http://c4.{$DOMAIN}, http://cho.{$DOMAI
 
 # Avatars (a.<domain>/<user id>): the website's uploads; users without one get its guest avatar.
 http://a.{$DOMAIN} {
+	import access-log
 	header Cache-Control "no-cache"
 
-	@user path_regexp user ^/([0-9]+)$
+	# /<id>, and /<id>.png, /<id>_<time>.png (what clients ask for; bancho.py serves them all).
+	@user path_regexp user ^/([0-9]+)(?:[_.][^/]*)?$
 	handle @user {
 		rewrite * /uploads/avatar/{re.user.1}
 		reverse_proxy osu-web:8080 {

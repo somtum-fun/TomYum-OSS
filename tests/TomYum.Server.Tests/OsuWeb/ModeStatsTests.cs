@@ -77,6 +77,34 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
         Assert.Equal("1: 11", await List("firsts"));            // player 2 is ahead on map 10
     }
 
+    [MySqlFact]
+    public async Task RankHistory_IsSnapshotted_AndShownAsTheGraph()
+    {
+        var db = await NewTomYumContextAsync();
+        var users = new OsuWebUserRepository(NewOsuWebContext());
+        var me = await users.AddAsync(new User { Username = "Me", SafeName = "me", Email = "m@x.dev", PasswordBcrypt = "x", Country = "nl" });
+        var other = await users.AddAsync(new User { Username = "Other", SafeName = "other", Email = "o@x.dev", PasswordBcrypt = "x", Country = "nl" });
+        db.UserStats.AddRange(
+            new UserStats { UserId = me.Id, Mode = 4, Pp = 100 },
+            new UserStats { UserId = other.Id, Mode = 4, Pp = 200 });
+        // Ten days ago I was first.
+        db.ModeRankHistory.Add(new ModeRankSnapshot { UserId = me.Id, Mode = 4, Day = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(-10), Rank = 1 });
+        await db.SaveChangesAsync();
+
+        using var services = new ServiceCollection().AddScoped(_ => NewTomYumContext()).BuildServiceProvider();
+        var job = new ModeRankHistoryJob(services.GetRequiredService<IServiceScopeFactory>(), new RestrictedUsers(), TimeProvider.System,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ModeRankHistoryJob>.Instance);
+        Assert.Equal(2, await job.SnapshotAsync());
+        Assert.Equal(2, await job.SnapshotAsync());   // again the same day: replaced, not doubled
+
+        var json = await Body(await AdminModeStatsEndpoints.GetAsync(me.Id, 4, users, NewTomYumContext(), new RestrictedUsers(), CancellationToken.None));
+        var graph = json.GetProperty("rank_history").EnumerateArray().Select(r => r.GetInt32()).ToArray();
+        Assert.Equal(ModeRankHistoryJob.Days, graph.Length);
+        Assert.Equal((1, 2), (graph[^11], graph[^1]));   // 10 days ago, and today
+        Assert.Equal(0, graph[0]);
+        Assert.Equal(1, json.GetProperty("rank_highest").GetProperty("rank").GetInt32());
+    }
+
     private static async Task<JsonElement> Body(IResult result)
     {
         var context = new DefaultHttpContext { RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider() };

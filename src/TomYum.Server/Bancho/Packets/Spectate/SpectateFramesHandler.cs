@@ -27,7 +27,8 @@ public sealed class SpectateFramesHandler : IClientPacketHandler
         var framed = writer.ToArray();
 
         foreach (var spectatorId in spectators)
-            context.Registry.GetByUserId(spectatorId)?.Enqueue(framed);
+            foreach (var session in context.Registry.SpectatingSessions(spectatorId, context.Player.UserId))
+                session.Enqueue(framed);
 
         // Plugins watching play (e.g. pause detection) get the raw bundle. A copy: the packet buffer
         // isn't the plugin's to keep.
