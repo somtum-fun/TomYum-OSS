@@ -109,6 +109,31 @@ public sealed class OsuWebStableClient
         return average;
     }
 
+    /// <summary>
+    /// The seasonal backgrounds shown now (the admin panel's: a contest's entries marked for the client,
+    /// until the season's end), as their paths under the website's uploads; empty out of season.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> SeasonalBackgroundPathsAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        var settings = await _db.Database.SqlQuery<SeasonalCount>(
+                $"SELECT name AS Name, CAST(count AS SIGNED) AS Value FROM osu_counts WHERE name IN ('tomyum_seasonal_contest', 'tomyum_seasonal_ends_at')")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var contest = settings.FirstOrDefault(c => c.Name == "tomyum_seasonal_contest")?.Value;
+        var endsAt = settings.FirstOrDefault(c => c.Name == "tomyum_seasonal_ends_at")?.Value;
+        if (contest is null || endsAt is null || endsAt <= now.ToUnixTimeSeconds())
+            return [];
+
+        var entries = await _db.Database.SqlQuery<SeasonalEntry>(
+                $"SELECT CAST(id AS SIGNED) AS Id, hash AS Hash FROM user_contest_entries WHERE contest_id = {contest} AND show_in_client = 1 AND deleted_at IS NULL AND hash IS NOT NULL ORDER BY id")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        // The clients' copy sits next to the upload: its name without the extension, plus "_opt.jpg".
+        return [.. entries.Select(e => $"user-contest-entries/{e.Id}/{Path.GetFileNameWithoutExtension(e.Hash)}_opt.jpg")];
+    }
+
+    private sealed record SeasonalCount(string Name, long Value);
+
+    private sealed record SeasonalEntry(long Id, string Hash);
+
     /// <summary>The sets the player favourited, newest first (song select's favourites filter).</summary>
     public async Task<IReadOnlyList<int>> FavouriteSetIdsAsync(int userId, CancellationToken cancellationToken = default) =>
         await _db.Database.SqlQuery<int>(

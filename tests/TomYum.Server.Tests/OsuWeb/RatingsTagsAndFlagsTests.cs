@@ -94,6 +94,21 @@ public sealed class RatingsTagsAndFlagsTests : OsuWebDatabaseTest
         Assert.Contains(log, e => e.Action == ClientFlags.RegistryAction && e.TargetId == relife.Id);
     }
 
+    [MySqlFact]
+    public async Task SeasonalBackgrounds_AreTheShownEntries_UntilTheSeasonEnds()
+    {
+        var now = DateTimeOffset.UtcNow;
+        await ExecuteAsync($"""
+            INSERT INTO user_contest_entries (id, hash, contest_id, show_in_client, deleted_at) VALUES
+              (1, 'aaa.png', 5, 1, NULL), (2, 'bbb.jpg', 5, 0, NULL), (3, 'ccc.jpg', 5, 1, NOW()), (4, 'ddd.jpg', 6, 1, NULL);
+            INSERT INTO osu_counts (name, count) VALUES ('tomyum_seasonal_contest', 5), ('tomyum_seasonal_ends_at', {now.AddDays(3).ToUnixTimeSeconds()});
+            """);
+        var website = new OsuWebStableClient(NewOsuWebContext());
+
+        Assert.Equal(["user-contest-entries/1/aaa_opt.jpg"], await website.SeasonalBackgroundPathsAsync(now));
+        Assert.Empty(await website.SeasonalBackgroundPathsAsync(now.AddDays(4)));   // the season is over
+    }
+
     private static List<ushort> PacketIds(byte[] body)
     {
         var ids = new List<ushort>();

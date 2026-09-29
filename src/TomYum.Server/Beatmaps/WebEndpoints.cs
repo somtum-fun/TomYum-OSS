@@ -29,8 +29,8 @@ public static class WebEndpoints
             .RequireHost(hosts);
         app.MapScoreSubmission(hosts);
 
-        // Seasonal backgrounds: return an empty array to suppress the feature.
-        app.MapGet("/web/osu-getseasonal.php", () => Results.Json(Array.Empty<string>()))
+        // Seasonal backgrounds (the admin panel's; none out of season or without the website).
+        app.MapGet("/web/osu-getseasonal.php", HandleSeasonalAsync)
             .RequireHost(hosts);
 
         // webfm.php: osu!stable hits this from the multiplayer lobby; an empty 200 is sufficient.
@@ -142,6 +142,16 @@ public static class WebEndpoints
         }
 
         return Results.Text(sb.ToString(), "text/plain");
+    }
+
+    /// <summary>The menu backgrounds for osu!stable: a JSON list of image URLs on the website.</summary>
+    internal static async Task<IResult> HandleSeasonalAsync(HttpContext context, IConfiguration configuration, CancellationToken cancellationToken)
+    {
+        if (context.RequestServices?.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is not { } website)
+            return Results.Json(Array.Empty<string>());
+        var uploads = $"https://osu.{BanchoHosts.ResolveDomain(configuration)}/uploads/default/";
+        var paths = await website.SeasonalBackgroundPathsAsync(DateTimeOffset.UtcNow, cancellationToken).ConfigureAwait(false);
+        return Results.Json(paths.Select(path => uploads + path).ToArray());
     }
 
     /// <summary>
