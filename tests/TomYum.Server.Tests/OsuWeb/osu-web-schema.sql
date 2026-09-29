@@ -862,3 +862,11 @@ CREATE TABLE osu_favouritemaps (
   dateadded timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (user_id, beatmapset_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web database (SHOW CREATE TABLE beatmap_owners): difficulties' mappers (guest difficulties).
+DROP TABLE IF EXISTS beatmap_owners;
+CREATE TABLE beatmap_owners (
+  beatmap_id mediumint unsigned NOT NULL,
+  user_id int unsigned NOT NULL,
+  PRIMARY KEY (beatmap_id, user_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

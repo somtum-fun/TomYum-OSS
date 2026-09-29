@@ -25,13 +25,15 @@ public sealed class OsuWebCustomSets
     }
 
     /// <summary>
-    /// Finishes an upload the mirror has written: <paramref name="ownerId"/> owns the set and its
-    /// difficulties, the cover is marked as updated (or absent), and difficulties of the set not in
-    /// <paramref name="beatmapIds"/> (dropped by an update) are deleted.
+    /// Finishes an upload the mirror has written: <paramref name="ownerId"/> owns the set, the cover
+    /// is marked as updated (or absent), and difficulties of the set not in <paramref name="beatmapIds"/>
+    /// (dropped by an update) are deleted. Difficulties in <paramref name="guests"/> (beatmap → user)
+    /// are guest difficulties, owned by that player; the others keep the owners they have (set on
+    /// the website's beatmap page, say), and new ones belong to the set's owner.
     /// </summary>
     public async Task FinishUploadAsync(
         int setId, int ownerId, IReadOnlyCollection<int> beatmapIds, bool hasCover, long fileSize,
-        string? artistUnicode, string? titleUnicode, CancellationToken cancellationToken = default)
+        string? artistUnicode, string? titleUnicode, IReadOnlyDictionary<int, int>? guests = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(beatmapIds);
         await _db.Database.ExecuteSqlInterpolatedAsync(
@@ -52,6 +54,24 @@ public sealed class OsuWebCustomSets
         await _db.Database.ExecuteSqlRawAsync(
             $"UPDATE osu_beatmaps SET user_id = {owner}, deleted_at = NULL WHERE beatmapset_id = {set} AND beatmap_id IN ({ids})",
             cancellationToken).ConfigureAwait(false);
+        foreach (var beatmapId in beatmapIds)
+        {
+            if (guests is not null && guests.TryGetValue(beatmapId, out var guest))
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($"DELETE FROM beatmap_owners WHERE beatmap_id = {beatmapId}", cancellationToken).ConfigureAwait(false);
+                await _db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO beatmap_owners (beatmap_id, user_id) VALUES ({beatmapId}, {guest})", cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync(
+                    $"INSERT INTO beatmap_owners (beatmap_id, user_id) SELECT {beatmapId}, {ownerId} FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM beatmap_owners WHERE beatmap_id = {beatmapId})",
+                    cancellationToken).ConfigureAwait(false);
+            }
+            // The difficulty's mapper is its (first) owner.
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE osu_beatmaps SET user_id = (SELECT MIN(o.user_id) FROM beatmap_owners o WHERE o.beatmap_id = {beatmapId}) WHERE beatmap_id = {beatmapId}",
+                cancellationToken).ConfigureAwait(false);
+        }
         await _db.Database.ExecuteSqlRawAsync(
             $"UPDATE osu_beatmaps SET deleted_at = NOW() WHERE beatmapset_id = {set} AND deleted_at IS NULL AND beatmap_id NOT IN ({ids})",
             cancellationToken).ConfigureAwait(false);

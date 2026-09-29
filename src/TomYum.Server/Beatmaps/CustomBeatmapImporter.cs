@@ -267,8 +267,17 @@ public sealed class CustomBeatmapImporter
             }, ids.Select(i => i.Id).ToList(), cancellationToken).ConfigureAwait(false);
         }
 
+        // Guest difficulties: one whose own Creator is another player (lazer keeps a creator per difficulty).
+        var guests = new Dictionary<int, int>();
+        foreach (var (map, beatmap, _) in maps)
+        {
+            var creator = map.File.Get("Metadata", "Creator") ?? string.Empty;
+            if (creator.Length > 0 && await _users.GetByUsernameAsync(creator, cancellationToken).ConfigureAwait(false) is { } guest && guest.Id != ownerId)
+                guests[beatmap.Id] = guest.Id;
+        }
+
         _resolver?.Remember(maps.Select(m => m.Beatmap));
-        await FinishOnWebsiteAsync(setId, ownerId, difficulties.Select(d => d.BeatmapId).ToList(), archive.Length, first, cancellationToken).ConfigureAwait(false);
+        await FinishOnWebsiteAsync(setId, ownerId, difficulties.Select(d => d.BeatmapId).ToList(), archive.Length, first, guests, cancellationToken).ConfigureAwait(false);
         return new CustomUploadResult(setId, first.Get("Metadata", "Artist") ?? string.Empty, first.Get("Metadata", "Title") ?? string.Empty,
             first.Get("Metadata", "Creator") ?? string.Empty, ownerId, existing.Count > 0, difficulties);
     }
@@ -310,12 +319,13 @@ public sealed class CustomBeatmapImporter
         }
     }
 
-    private async Task FinishOnWebsiteAsync(int setId, int ownerId, IReadOnlyCollection<int> beatmapIds, long size, OsuFileText first, CancellationToken cancellationToken)
+    private async Task FinishOnWebsiteAsync(
+        int setId, int ownerId, IReadOnlyCollection<int> beatmapIds, long size, OsuFileText first, IReadOnlyDictionary<int, int> guests, CancellationToken cancellationToken)
     {
         if (_website is not null)
         {
             await _website.FinishUploadAsync(setId, ownerId, beatmapIds, _store.HasBackground(setId), size,
-                first.Get("Metadata", "ArtistUnicode"), first.Get("Metadata", "TitleUnicode"), cancellationToken).ConfigureAwait(false);
+                first.Get("Metadata", "ArtistUnicode"), first.Get("Metadata", "TitleUnicode"), guests, cancellationToken).ConfigureAwait(false);
         }
 
         if (_interop is { IsConfigured: true })

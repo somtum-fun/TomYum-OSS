@@ -143,6 +143,37 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
     }
 
     [MySqlFact]
+    public async Task GuestDifficulties_BelongToTheirMappers_AndHandSetOwnersStay()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        var users = new OsuWebUserRepository(NewOsuWebContext());
+        var mapper = await users.AddAsync(NewUser("Mapper"));
+        var guest = await users.AddAsync(NewUser("Guest"));
+        var other = await users.AddAsync(NewUser("Other"));
+        var (importer, _, _, _, _) = NewImporter(tomyum, users);
+        byte[] Package() => Zip(
+            ("Normal.osu", Encoding.UTF8.GetBytes(Osu("Normal", 0))),
+            ("Guest's Insane.osu", Encoding.UTF8.GetBytes(Osu("Guest's Insane", 0, 50, creator: "Guest"))),
+            ("Hard.osu", Encoding.UTF8.GetBytes(Osu("Hard", 0, 100))),
+            ("bg.png", Png()), ("audio.mp3", new byte[] { 0xFF, 0xFB, 0x90, 0x00 }));
+
+        var result = await importer.ImportAsync(Package(), mapper.Id);
+        var insane = result.Difficulties.Single(d => d.Version == "Guest's Insane").BeatmapId;
+        var hard = result.Difficulties.Single(d => d.Version == "Hard").BeatmapId;
+        Assert.Equal(mapper.Id, result.OwnerId);
+        Assert.Equal((long)guest.Id, await ScalarAsync<long>($"SELECT user_id FROM beatmap_owners WHERE beatmap_id = {insane}"));
+        Assert.Equal((long)guest.Id, await ScalarAsync<long>($"SELECT user_id FROM osu_beatmaps WHERE beatmap_id = {insane}"));
+        Assert.Equal((long)mapper.Id, await ScalarAsync<long>($"SELECT user_id FROM beatmap_owners WHERE beatmap_id = {hard}"));
+
+        // The mapper gives Hard to someone on the website; an update of the set keeps that.
+        await ExecuteAsync($"UPDATE beatmap_owners SET user_id = {other.Id} WHERE beatmap_id = {hard}");
+        await importer.ImportAsync(Package(), mapper.Id, updateSetId: result.SetId);
+        Assert.Equal((long)other.Id, await ScalarAsync<long>($"SELECT user_id FROM beatmap_owners WHERE beatmap_id = {hard}"));
+        Assert.Equal((long)other.Id, await ScalarAsync<long>($"SELECT user_id FROM osu_beatmaps WHERE beatmap_id = {hard}"));
+        Assert.Equal((long)guest.Id, await ScalarAsync<long>($"SELECT user_id FROM beatmap_owners WHERE beatmap_id = {insane}"));
+    }
+
+    [MySqlFact]
     public async Task AnUpdate_KeepsTheIdsOfDifficultiesItKeeps()
     {
         await using var tomyum = await NewTomYumContextAsync();
@@ -317,7 +348,7 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
     }
 
     /// <summary>A small but real map: 20 circles, a slider and a spinner (their times shifted by <paramref name="shift"/> ms).</summary>
-    private static string Osu(string version, int mode, int shift = 0)
+    private static string Osu(string version, int mode, int shift = 0, string creator = "Mapper")
     {
         var objects = new StringBuilder();
         for (var i = 0; i < 20; i++)
@@ -337,7 +368,7 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
             TitleUnicode:ソング
             Artist:Artist
             ArtistUnicode:アーティスト
-            Creator:Mapper
+            Creator:{creator}
             Version:{version}
             Source:
             Tags:test words
