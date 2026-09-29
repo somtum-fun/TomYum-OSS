@@ -173,6 +173,8 @@ public sealed class OsuWebBeatmapMirror
         }
         map.BeatmapsetId = (uint)beatmap.SetId;
         map.Checksum = beatmap.Md5;
+        if (!string.IsNullOrEmpty(beatmap.Artist) || !string.IsNullOrEmpty(beatmap.Title))
+            map.Filename = OsuWebBeatmaps.Truncate(TomYum.Domain.Services.OsuFileName.For(beatmap.Artist, beatmap.Title, beatmap.Creator, beatmap.Version), 150);
         map.Version = OsuWebBeatmaps.Truncate(beatmap.Version);
         map.TotalLength = (uint)Math.Max(0, beatmap.TotalLength);
         map.HitLength = map.TotalLength;

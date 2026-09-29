@@ -118,10 +118,11 @@ served everywhere (docs/custom-beatmaps.md)._
       always full uploads, so no bsdiff. 2026-09-28
 - [x] **Lazer beatmap submission** (`/beatmap-submission`, ppy's protocol and rules; lazer's JWT checked
       against the website's Passport key). 2026-09-28
-- [ ] Download-side osz2 endpoints (`osu-gethashes.php`, `osu-osz2-getfileinfo.php`, …): stable's
-      in-place map updates. Without them the client downloads the whole set again.
-- [ ] Graveyard: sets untouched for four weeks still show as pending (they only stop counting toward
-      the quota).
+- [x] In-place map updates in stable: an unknown hash whose file name is a known difficulty (here or
+      in osu!'s set) answers "update available", and `/web/maps/{file}` gives the new `.osu` (custom
+      maps from here, osu!'s from osu!). File names follow osu!'s rule (`OsuFileName`). 2026-09-29
+- [x] Graveyard: custom sets still WIP/pending and untouched for four weeks go to the graveyard
+      (daily); an update brings them back. 2026-09-29
 - [x] Local serving — `/d/{setId}`, osu!direct search/set info, `b.*` thumbnails and previews, the
       website's covers and audio preview come from TomYum for sets from 10,000,000. `.osu` files are kept
       for pp (TomYum's and ppy's processor). 2026-09-28

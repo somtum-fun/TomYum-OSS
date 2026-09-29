@@ -1,0 +1,228 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using TomYum.Domain.Entities;
+using TomYum.Domain.Repositories;
+using TomYum.Domain.Services;
+using TomYum.Performance;
+using TomYum.Persistence.OsuWeb;
+using TomYum.Server.Bancho;
+
+namespace TomYum.Server.Beatmaps;
+
+/// <summary>
+/// The rest of what osu!stable asks the server (bancho.py's set): the pre-login check, song
+/// select's map statuses and grades (<c>osu-getbeatmapinfo.php</c>), outdated maps' new files
+/// (<c>/web/maps/{file}</c>), favourites, screenshots (<c>osu-screenshot.php</c>, shown at
+/// <c>/ss/{file}</c>), star ratings with mods (<c>/difficulty-rating</c>), and the calls that only
+/// need an answer.
+/// </summary>
+public static partial class StableClientEndpoints
+{
+    private const int MaxScreenshotBytes = 8 * 1024 * 1024;
+
+    public static void MapStableClient(this IEndpointRouteBuilder app, params string[] hosts)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+
+        // Answers the client only needs to get (bancho.py answers these the same way).
+        app.MapGet("/web/bancho_connect.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        app.MapGet("/web/osu-markasread.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        app.MapPost("/web/osu-session.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        app.MapPost("/web/osu-error.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        app.MapGet("/web/check-updates.php", (HttpContext context) =>
+            Results.Redirect("https://osu.ppy.sh/web/check-updates.php" + context.Request.QueryString.Value)).RequireHost(hosts);
+
+        app.MapPost("/web/osu-getbeatmapinfo.php", HandleBeatmapInfoAsync).RequireHost(hosts);
+        app.MapGet("/web/maps/{filename}", HandleMapFileAsync).RequireHost(hosts);
+        app.MapGet("/web/osu-addfavourite.php", HandleAddFavouriteAsync).RequireHost(hosts);
+        app.MapPost("/web/osu-screenshot.php", HandleScreenshotAsync).RequireHost(hosts).DisableAntiforgery();
+        app.MapGet("/ss/{file}", HandleScreenshotFile).RequireHost(hosts);
+        app.MapPost("/difficulty-rating", HandleDifficultyRatingAsync).RequireHost(hosts);
+    }
+
+    /// <summary>
+    /// Song select's statuses for the player's local maps, by file name:
+    /// <c>{index}|{beatmap}|{set}|{md5}|{status}|{grade osu!}|{taiko}|{catch}|{mania}</c> (N: no grade).
+    /// </summary>
+    internal static async Task<IResult> HandleBeatmapInfoAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        if (context.RequestServices.GetService<OsuWebStableClient>() is not { } website)
+            return Results.Text(string.Empty, "text/plain");
+        var user = await UserAsync(context, context.Request.Query["u"], context.Request.Query["h"], cancellationToken).ConfigureAwait(false);
+        if (user is null)
+            return Results.Unauthorized();
+
+        List<string> filenames;
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
+            filenames = document.RootElement.TryGetProperty("Filenames", out var list) && list.ValueKind == JsonValueKind.Array
+                ? list.EnumerateArray().Select(f => f.GetString() ?? string.Empty).ToList()
+                : [];
+        }
+        catch (JsonException)
+        {
+            return Results.BadRequest();
+        }
+
+        var found = (await website.FindByFilenamesAsync(filenames.Take(2000).ToList(), cancellationToken).ConfigureAwait(false))
+            .GroupBy(m => m.Filename, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+        var grades = await website.BestGradesAsync(user.Id, found.Values.Select(m => m.BeatmapId).ToList(), cancellationToken).ConfigureAwait(false);
+
+        var text = new StringBuilder();
+        for (var index = 0; index < filenames.Count; index++)
+        {
+            if (!found.TryGetValue(filenames[index], out var map))
+                continue;
+            var perMode = Enumerable.Range(0, 4).Select(ruleset => grades.TryGetValue((map.BeatmapId, ruleset), out var grade) ? grade : "N");
+            text.Append(CultureInfo.InvariantCulture, $"{index}|{map.BeatmapId}|{map.BeatmapsetId}|{map.Checksum}|{map.Approved}|{string.Join('|', perMode)}\n");
+        }
+        return Results.Text(text.ToString(), "text/plain");
+    }
+
+    /// <summary>
+    /// An outdated map's new <c>.osu</c> (stable's "update" button): custom maps from this server's
+    /// copy, osu!'s from osu!.
+    /// </summary>
+    internal static async Task<IResult> HandleMapFileAsync(string filename, HttpContext context, OsuFileCache files, CancellationToken cancellationToken)
+    {
+        if (context.RequestServices.GetService<OsuWebStableClient>() is { } website
+            && await website.FindByFilenamesAsync([filename], cancellationToken).ConfigureAwait(false) is [var map, ..]
+            && map.BeatmapId >= Beatmap.CustomIdFloor)
+        {
+            try
+            {
+                var bytes = await files.GetAsync((int)map.BeatmapId, cancellationToken).ConfigureAwait(false);
+                return Results.File(bytes, "application/octet-stream", map.Filename);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
+            {
+                return Results.NotFound();
+            }
+        }
+        return Results.Redirect("https://osu.ppy.sh/web/maps/" + Uri.EscapeDataString(filename));
+    }
+
+    /// <summary>The ♥ in song select: <c>?u=&amp;h=&amp;a={set}</c>.</summary>
+    internal static async Task<IResult> HandleAddFavouriteAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        if (context.RequestServices.GetService<OsuWebStableClient>() is not { } website)
+            return Results.Text(string.Empty, "text/plain");
+        var user = await UserAsync(context, context.Request.Query["u"], context.Request.Query["h"], cancellationToken).ConfigureAwait(false);
+        if (user is null)
+            return Results.Unauthorized();
+        if (!int.TryParse(context.Request.Query["a"], NumberStyles.None, CultureInfo.InvariantCulture, out var setId))
+            return Results.BadRequest();
+        return await website.AddFavouriteAsync(user.Id, setId, cancellationToken).ConfigureAwait(false)
+            ? Results.Text(string.Empty, "text/plain")
+            : Results.Text("You've favourited this beatmap already!", "text/plain");
+    }
+
+    /// <summary>An uploaded screenshot (form: <c>u</c>, <c>p</c>, file <c>ss</c>); answers its file name.</summary>
+    internal static async Task<IResult> HandleScreenshotAsync(HttpContext context, IConfiguration configuration, CancellationToken cancellationToken)
+    {
+        if (!context.Request.HasFormContentType)
+            return Results.BadRequest();
+        var form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+        if (await UserAsync(context, form["u"], form["p"], cancellationToken).ConfigureAwait(false) is null)
+            return Results.Unauthorized();
+        if (form.Files.GetFile("ss") is not { Length: > 0 and <= MaxScreenshotBytes } upload)
+            return Results.BadRequest();
+
+        using var buffer = new MemoryStream();
+        await upload.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
+        var bytes = buffer.ToArray();
+        var extension = bytes is [0x89, 0x50, 0x4E, 0x47, ..] ? "png" : bytes is [0xFF, 0xD8, ..] ? "jpg" : null;
+        if (extension is null)
+            return Results.BadRequest();
+
+        var name = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(6)) + "." + extension;
+        var directory = ScreenshotDirectory(configuration);
+        Directory.CreateDirectory(directory);
+        await File.WriteAllBytesAsync(Path.Combine(directory, name), bytes, cancellationToken).ConfigureAwait(false);
+        return Results.Text(name, "text/plain");
+    }
+
+    internal static IResult HandleScreenshotFile(string file, IConfiguration configuration)
+    {
+        if (!ScreenshotName().IsMatch(file))
+            return Results.NotFound();
+        var path = Path.Combine(ScreenshotDirectory(configuration), file);
+        return File.Exists(path) ? Results.File(path, file.EndsWith(".png", StringComparison.Ordinal) ? "image/png" : "image/jpeg") : Results.NotFound();
+    }
+
+    /// <summary>
+    /// A star rating with mods (osu.ppy.sh's <c>/difficulty-rating</c>: <c>{beatmap_id, ruleset_id,
+    /// mods: [{acronym}]}</c>, answered with the number), from this server's calculator; osu!'s when
+    /// that can't tell.
+    /// </summary>
+    internal static async Task<IResult> HandleDifficultyRatingAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        int beatmapId, ruleset;
+        var mods = TomYum.Bancho.Mods.None;
+        try
+        {
+            using var document = await JsonDocument.ParseAsync(context.Request.Body, cancellationToken: cancellationToken).ConfigureAwait(false);
+            var root = document.RootElement;
+            beatmapId = root.GetProperty("beatmap_id").GetInt32();
+            ruleset = root.TryGetProperty("ruleset_id", out var r) && r.ValueKind == JsonValueKind.Number ? r.GetInt32() : 0;
+            if (root.TryGetProperty("mods", out var list))
+            {
+                if (list.ValueKind == JsonValueKind.Number)
+                {
+                    mods = (TomYum.Bancho.Mods)list.GetInt32();
+                }
+                else if (list.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var mod in list.EnumerateArray())
+                    {
+                        var acronym = mod.ValueKind == JsonValueKind.String ? mod.GetString() : mod.TryGetProperty("acronym", out var a) ? a.GetString() : null;
+                        if (NowPlaying.ParseAcronyms(acronym) is { } known)
+                            mods |= known;
+                    }
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException or FormatException)
+        {
+            return Results.BadRequest();
+        }
+
+        if (context.RequestServices.GetService<IPerformanceCalculator>() is IAccuracyPerformance calculator)
+        {
+            try
+            {
+                if (await calculator.StarRatingAsync(beatmapId, ruleset, (int)mods, cancellationToken).ConfigureAwait(false) is { } stars)
+                    return Results.Content(stars.ToString("0.0###", CultureInfo.InvariantCulture), "application/json");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or IOException)
+            {
+                // Fall through to osu!.
+            }
+        }
+        return beatmapId >= Beatmap.CustomIdFloor ? Results.Content("0.0", "application/json") : Results.Redirect("https://osu.ppy.sh/difficulty-rating", preserveMethod: true);
+    }
+
+    private static string ScreenshotDirectory(IConfiguration configuration) =>
+        Path.GetFullPath(configuration["Screenshots:Path"] is { Length: > 0 } path ? path : "data/screenshots");
+
+    /// <summary>The player, when the name and password md5 check out.</summary>
+    private static async Task<User?> UserAsync(HttpContext context, string? username, string? passwordMd5, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(passwordMd5))
+            return null;
+        var users = context.RequestServices.GetRequiredService<IUserRepository>();
+        var passwords = context.RequestServices.GetRequiredService<IPasswordHasher>();
+        return await users.GetBySafeNameAsync(User.MakeSafeName(username), cancellationToken).ConfigureAwait(false) is { } user
+               && passwords.Verify(passwordMd5, user.PasswordBcrypt)
+            ? user
+            : null;
+    }
+
+    [GeneratedRegex(@"^[0-9a-f]{12}\.(png|jpg)$")]
+    private static partial Regex ScreenshotName();
+}

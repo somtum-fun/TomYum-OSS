@@ -61,7 +61,8 @@ public static class WebEndpoints
         var beatmap = await beatmaps.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
         if (beatmap is null)
         {
-            return Results.Text(NotSubmitted, "text/plain");
+            // An unknown hash may be an old version of a known map: then the client offers an update.
+            return Results.Text(await IsOutdatedAsync(context, beatmaps, cancellationToken).ConfigureAwait(false) ? UpdateAvailable : NotSubmitted, "text/plain");
         }
 
         if (!beatmap.Status.HasLeaderboard())
@@ -191,6 +192,36 @@ public static class WebEndpoints
         var leaderboardValue = showPp ? (long)Math.Round(s.Pp, MidpointRounding.AwayFromZero) : s.ScoreValue;
         return string.Create(CultureInfo.InvariantCulture,
             $"{s.Id}|{username}|{leaderboardValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? 1 : 0)}|{s.Mods}|{s.UserId}|{rank}|{s.SubmittedAt.ToUnixTimeSeconds()}|{(hasReplay ? 1 : 0)}");
+    }
+
+    private static readonly string UpdateAvailable = string.Create(CultureInfo.InvariantCulture, $"{(int)RankedStatus.UpdateAvailable}|false");
+
+    /// <summary>
+    /// Whether the client's map (file <c>f</c> of set <c>i</c>) is an outdated copy: a difficulty of that
+    /// name is known here, or osu! has one in the set (bancho.py's check).
+    /// </summary>
+    private static async Task<bool> IsOutdatedAsync(HttpContext context, BeatmapService beatmaps, CancellationToken cancellationToken)
+    {
+        var filename = context.Request.Query["f"].ToString();
+        if (filename.Length == 0)
+            return false;
+        if (context.RequestServices.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is { } website
+            && (await website.FindByFilenamesAsync([filename], cancellationToken).ConfigureAwait(false)).Count > 0)
+        {
+            return true;
+        }
+        if (!int.TryParse(context.Request.Query["i"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var setId) || setId <= 0)
+            return false;
+        IReadOnlyList<TomYum.Domain.Entities.Beatmap> set;
+        try
+        {
+            set = await beatmaps.FetchSetOnceAsync(setId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException)
+        {
+            return false; // osu! unreachable: say "not submitted", as before
+        }
+        return set.Any(b => string.Equals(OsuFileName.For(b.Artist, b.Title, b.Creator, b.Version), filename, StringComparison.OrdinalIgnoreCase));
     }
 
     private static readonly string NotSubmitted =

@@ -37,12 +37,21 @@ public sealed partial class DiscordCommands
         var map = await community.GetMapAsync(score.BeatmapId, cancellationToken).ConfigureAwait(false);
         var mods = LegacyMods(score.Mods);
         IReadOnlyList<double>? pp = null;
-        if (services.GetService<IPerformanceCalculator>() is IAccuracyPerformance calculator)
+        var playPp = score.Pp;
+        var performance = services.GetService<IPerformanceCalculator>();
+        if (performance is IAccuracyPerformance calculator)
         {
             try
             {
                 // The full-combo pp at this accuracy, and the map's max (SS).
                 pp = await calculator.ForAccuraciesAsync(score.BeatmapId, score.Ruleset, (int)mods, [score.Accuracy, 1.0], cancellationToken).ConfigureAwait(false);
+                // A fail has no pp of its own: what the part it got through is worth.
+                if (!score.Passed && performance is IPartialPerformance partial)
+                {
+                    playPp = await partial.PartialAsync(new PerformanceRequest(
+                        score.BeatmapId, score.Ruleset, (int)mods, score.MaxCombo, score.Great, score.Ok, score.Meh, score.Miss, 0, 0, Passed: false),
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
 #pragma warning disable CA1031 // pp is a bonus: the .osu may be unreachable, the card still helps
             catch (Exception)
@@ -59,7 +68,7 @@ public sealed partial class DiscordCommands
             Title = $"{score.Artist} - {score.Title} [{score.Version}] [{score.StarRating.ToString("0.00", CultureInfo.InvariantCulture)}★]",
             Url = _format.Beatmap(score.BeatmapId),
             ThumbnailUrl = _format.ListCover(score.BeatmapsetId),
-            Description = RecentLines(score, map, mods, pp),
+            Description = RecentLines(score, map, mods, pp, playPp),
             Color = score.Passed ? DiscordFormat.Accent : DiscordFormat.Danger,
             Footer = (score.IsStable ? "Played on osu!stable" : "Played on osu!lazer") + (map is null ? string.Empty : " • " + MapFooter(map)),
         };
@@ -107,7 +116,7 @@ public sealed partial class DiscordCommands
     }
 
     /// <summary>The three lines under the title (see the class remarks).</summary>
-    private static string RecentLines(ScoreCard score, MapCard? map, TomYum.Bancho.Mods mods, IReadOnlyList<double>? pp)
+    private static string RecentLines(ScoreCard score, MapCard? map, TomYum.Bancho.Mods mods, IReadOnlyList<double>? pp, double? playPp)
     {
         var total = score.IsStable && score.LegacyTotalScore > 0 ? score.LegacyTotalScore : score.TotalScore;
         var completion = !score.Passed && map is { ObjectCount: > 0 }
@@ -118,7 +127,7 @@ public sealed partial class DiscordCommands
             .Append(CultureInfo.InvariantCulture, $"{DiscordFormat.Grade(score.Grade)} {completion}{modText}  {DiscordFormat.Number(total)}  {DiscordFormat.Percent(score.Accuracy)}  {DiscordFormat.Relative(score.EndedAt)}\n");
 
         var fullCombo = score.Miss == 0 && (score.BeatmapMaxCombo == 0 || score.MaxCombo >= score.BeatmapMaxCombo - 1);
-        var ppText = score.Pp is { } value ? value.ToString("0.00", CultureInfo.InvariantCulture) : "-";
+        var ppText = playPp is { } value ? value.ToString("0.00", CultureInfo.InvariantCulture) : "-";
         text.Append(CultureInfo.InvariantCulture, $"**{ppText}**");
         if (pp is [var ifFc, var max])
         {

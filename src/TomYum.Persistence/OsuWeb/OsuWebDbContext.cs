@@ -147,6 +147,7 @@ public sealed class OsuWebDbContext : DbContext
             map.Property(b => b.BeatmapId).HasColumnName("beatmap_id").ValueGeneratedNever();
             map.Property(b => b.BeatmapsetId).HasColumnName("beatmapset_id");
             map.Property(b => b.Checksum).HasColumnName("checksum");
+            map.Property(b => b.Filename).HasColumnName("filename");
             map.Property(b => b.Version).HasColumnName("version");
             map.Property(b => b.TotalLength).HasColumnName("total_length");
             map.Property(b => b.HitLength).HasColumnName("hit_length");

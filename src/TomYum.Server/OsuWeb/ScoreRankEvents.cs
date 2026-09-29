@@ -14,11 +14,16 @@ namespace TomYum.Server.OsuWeb;
 /// <item>a new #1: the previous holder's "has lost first place on …" entry, and BanchoBot says so in
 /// <c>#announce</c> (in-game, and in website/lazer chat).</item>
 /// </list>
+/// Plays from before this existed get their entries once, on the first start (dated that day; no
+/// <c>#announce</c> for old plays), marked <see cref="BackfillName"/> in <c>osu_counts</c>.
 /// </summary>
 public sealed class ScoreRankEvents : BackgroundService
 {
     /// <summary>Positions up to this get an activity entry (osu!'s rule).</summary>
     public const int MaxPosition = 1000;
+
+    /// <summary>The <c>osu_counts</c> row marking the one-off backfill done.</summary>
+    public const string BackfillName = "tomyum_rank_events_backfill";
 
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(3);
 
@@ -51,6 +56,8 @@ public sealed class ScoreRankEvents : BackgroundService
         if (_mark is not { } mark)
         {
             _mark = await community.GetLatestScoreIdAsync(cancellationToken).ConfigureAwait(false);
+            if (!await community.WasDoneAsync(BackfillName, cancellationToken).ConfigureAwait(false))
+                await BackfillAsync(community, interop, _mark.Value, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -82,6 +89,39 @@ public sealed class ScoreRankEvents : BackgroundService
             }
             await Task.Delay(Interval, stoppingToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// The entries for plays set before these entries existed: up to <paramref name="upTo"/>, or the
+    /// first entry written live, whichever is earlier.
+    /// </summary>
+    private async Task BackfillAsync(OsuWebCommunity community, OsuWebInterop interop, ulong upTo, CancellationToken cancellationToken)
+    {
+        var liveSince = await community.FirstRankEventAtAsync(cancellationToken).ConfigureAwait(false);
+        var written = 0;
+        ulong after = 0;
+        while (true)
+        {
+            var page = await community.GetScoresAfterAsync(after, 200, cancellationToken).ConfigureAwait(false);
+            if (page.Count == 0)
+                break;
+            foreach (var score in page)
+            {
+                after = score.ScoreId;
+                if (score.ScoreId > upTo || (liveSince is { } since && score.EndedAt >= since))
+                    continue;
+                if (await community.GetPlacementAsync(score, cancellationToken).ConfigureAwait(false) is not { Position: <= MaxPosition } placement)
+                    continue;
+                await interop.RankAchievedAsync(score.UserId, score.BeatmapId, score.Ruleset, placement.Position, score.Grade, score.IsStable, cancellationToken).ConfigureAwait(false);
+                if (placement.Position == 1 && placement.PreviousLeaderId is { } previous && previous != score.UserId)
+                    await interop.FirstPlaceLostAsync(previous, score.BeatmapId, score.Ruleset, score.IsStable, cancellationToken).ConfigureAwait(false);
+                written++;
+            }
+            if (after >= upTo)
+                break;
+        }
+        await community.MarkDoneAsync(BackfillName, cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation("Rank events: {Count} entry(ies) written for earlier plays.", written);
     }
 
     private async Task AnnounceAsync(OsuWebInterop interop, ScoreCard score, ScorePlacement placement, CancellationToken cancellationToken)

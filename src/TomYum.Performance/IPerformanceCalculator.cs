@@ -33,6 +33,16 @@ public interface IAccuracyPerformance
     Task<double?> StarRatingAsync(int beatmapId, int rulesetId, int mods, CancellationToken cancellationToken = default);
 }
 
+/// <summary>
+/// Optional: pp for a failed play, on the part of the map it got through (the map's difficulty up to
+/// the last object reached, as Bathbot shows a fail's pp).
+/// </summary>
+public interface IPartialPerformance
+{
+    /// <summary>pp for <paramref name="request"/>'s hits over the first objects of the map, or null when unknown.</summary>
+    Task<double?> PartialAsync(PerformanceRequest request, CancellationToken cancellationToken = default);
+}
+
 /// <summary>Full set of inputs the pp calculator needs for one submitted score.</summary>
 /// <param name="BeatmapId">Online beatmap id.</param>
 /// <param name="RulesetId">0 = osu!, 1 = taiko, 2 = catch, 3 = mania.</param>
