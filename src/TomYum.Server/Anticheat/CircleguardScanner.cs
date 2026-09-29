@@ -97,7 +97,8 @@ public sealed class CircleguardScanner
                 if (await ReplayPathAsync(community, top, cancellationToken).ConfigureAwait(false) is { } topPath && File.Exists(topPath))
                 {
                     var play = await PlayAsync(services, community, top, topPath, cancellationToken).ConfigureAwait(false);
-                    references.Add(new CircleguardReference((long)top.ScoreId, top.Username, play.Mods, play.Data, play.FramesOnly));
+                    references.Add(new CircleguardReference((long)top.ScoreId, top.Username, play.Mods, play.Data, play.FramesOnly,
+                        play.Count300, play.Count100, play.Count50, play.CountMiss));
                 }
                 progress?.Invoke(new CircleguardScanProgress(CircleguardScanStep.TopPlays, index + 1, candidates.Count));
             }

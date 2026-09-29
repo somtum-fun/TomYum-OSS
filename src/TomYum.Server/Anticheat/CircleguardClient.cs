@@ -38,8 +38,13 @@ public sealed record CircleguardPlay(
     byte[] Data, bool FramesOnly, int Ruleset = 0, int Mods = 0, string Username = "", int MaxCombo = 0,
     int Count300 = 0, int Count100 = 0, int Count50 = 0, int CountGeki = 0, int CountKatu = 0, int CountMiss = 0);
 
-/// <summary>A top play to compare against: an <c>.osr</c>, or bare frames (stable's, the osu! API's).</summary>
-public sealed record CircleguardReference(long ScoreId, string Username, int Mods, byte[] Data, bool FramesOnly);
+/// <summary>
+/// A top play to compare against: an <c>.osr</c>, or bare frames (stable's, the osu! API's). Its results
+/// tell a copy (which keeps them) from an honest play that merely comes close; 0s when unknown.
+/// </summary>
+public sealed record CircleguardReference(
+    long ScoreId, string Username, int Mods, byte[] Data, bool FramesOnly,
+    int Count300 = 0, int Count100 = 0, int Count50 = 0, int CountMiss = 0);
 
 /// <summary>The closest top play.</summary>
 public sealed record CircleguardMatch(
@@ -114,6 +119,10 @@ public sealed class CircleguardClient
                 username = r.Username,
                 mods = r.Mods,
                 frames_only = r.FramesOnly,
+                count_300 = r.Count300,
+                count_100 = r.Count100,
+                count_50 = r.Count50,
+                count_miss = r.CountMiss,
             }))), "reference_meta");
         }
 
