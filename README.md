@@ -13,56 +13,47 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 
 ## Progress
 
-> Status: **early development.** A player can register in-client, log in, chat, play maps,
-> submit scores, and compete in multiplayer rooms. Accounts, scores, and beatmap metadata are
-> persisted to MySQL. Many features are still to come — see the TODO list below.
+> Status: **in production** at [sundei.eu](https://osu.sundei.eu) (osu!stable, osu!lazer and the
+> website on one account system). Version `0.1.0-dev`. The detailed checklist, with what's left, is
+> [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Features
 
-- osu!stable login handshake (binary packet protocol, `cho-token` session)
-- In-game registration (`POST /users`) + real password auth (`bcrypt(md5_hex(plaintext))`)
-- Post-login packet dispatch: presence, stats, status changes, logout
-- Chat: server-side channels (`#osu`, `#announce`, `#lobby`, …), public + private messages
-- BanchoBot: resident bot answering `!`-commands (`!help`, `!stats`, `!setpriv`, `!roll`, `!mp …`)
-- Role/privilege system: staff tiers (owner/admin/dev/mod) + supporter, mapped to client badges
-- MySQL persistence (EF Core + Pomelo): user, score, and beatmap repositories
-- Score submission (`POST /web/osu-submit-modular-selector.php`): Rijndael-256 CBC decryption, status tracking (Best/Submitted/Failed), leaderboard update
-- Real PP calculation via `ppy.osu.Game.Rulesets.*` (all four rulesets); weighted PP + accuracy using the standard osu! formula
-- Replay save (`data/replays/{id}.osr`) and serve (`GET /web/osu-getreplay.php`)
-- Leaderboards (`GET /web/osu-osz2-getscores.php`) with personal-best row
-- Beatmap ranked-status lookup via the osu! v1 API (keyed `old.ppy.sh` / keyless `osu.direct`)
-- Host-aware subdomain routing (`c`/`c4`/`ce`/`cho` for bancho, `osu` for `/web/*`)
-- **Multiplayer**: 16-slot lobby + match rooms with full lifecycle (create/join/part, ready, start, score updates, skip, fail, complete), per-match `#multiplayer` chat, host transfer, invites, password, freemods
-- **BanchoBot `!mp` commands**: `!mp start [s]` (immediate or countdown-then-start), `!mp countdown <s>` (count down only), `!mp abort`, `!mp host <player>`, `!mp kick <player>`
-- **Redis score queue**: `TomYum.ScoreQueue` background worker reads from a Redis Stream consumer group, publishes `osu-channel:score:processed` pub/sub, and ACKs
+**osu!stable (bancho)**
+- Login, in-game registration, presence, stats, chat channels and PMs, spectating
+- Score submission with pp for all four modes, plus Relax and Autopilot leaderboards and stats
+- Global leaderboards, replays, map updates, song select statuses and grades, adding favourites,
+  screenshots, star ratings with mods, osu!direct
+- Multiplayer: lobby, rooms, the full match lifecycle, BanchoBot's `!mp` commands
+- BanchoBot `!`-commands, staff tiers and supporter mapped to client badges
+- Medals, rank history, country from the client's IP
 
-## In development / TODO
+**osu!lazer**
+- Runs on the official [osu-web](https://github.com/ppy/osu-web) website and
+  [osu-server-spectator](https://github.com/ppy/osu-server-spectator) (spectating, multiplayer,
+  playlists, the daily challenge), sharing accounts, scores and rankings with stable
+- Lazer plays with Relax get relax pp and leaderboards like stable's
 
-- [x] Score submission with Rijndael-256 CBC decryption, status tracking, and chart response
-- [x] Real PP calculation (all four rulesets) + weighted PP/accuracy formula
-  - ✅ **"Catch convert = 180pp" bug fixed (2026-07-07) — it was a beatmap MD5→ID resolution
-    bug, not a PP bug.** `OsuApiClient.GetByMd5Async` took `FirstOrDefault()` of the
-    `get_beatmaps?h={md5}` response. With no API key set (the default) the request hits the
-    keyless osu.direct mirror, which **returns every difficulty in the set** — so plays on any
-    non-first difficulty were filed under the set's *first* difficulty's id, and pp was computed
-    against the wrong (often much harder) map. Example: an SS on beatmap 1801936 (1★→~12pp
-    catch) was stored as 1797542 (4.48★) → ~188pp. Fix: match on `file_md5` instead of taking
-    the first entry (regression tests in `OsuApiClientResolutionTests`). The PP calculator
-    itself was verified correct. Existing misfiled scores need a re-resolve + `RecalcPp --force`
-    migration. See CHANGELOG 2026-07-07.
-- [x] Replay save and serve (`/web/osu-getreplay.php`)
-- [x] Redis score queue (`TomYum.ScoreQueue` background worker, Redis Stream consumer group)
-- [x] Multiplayer: lobby, match rooms, full lifecycle, per-match chat, BanchoBot `!mp` commands
-- [ ] Redis-backed online state for cross-node fan-out (100–1000+ players)
-- [ ] EF Core migrations (currently `EnsureCreated`; schema cannot evolve without data loss)
-- [ ] Spectating
-- [ ] osu!lazer support (osu-web REST API + SignalR hubs)
-- [ ] IRC server for external bots (auth via osu! API key)
-- [ ] Plugin system (`.dll` + runtime-compiled loose `.cs`); DAN Mode & Session as plugins
-- [ ] Configurable multi-target storage (R2 / AWS S3 / OVH S3 / Azure Blob / local)
-- [ ] Custom beatmap submission (reserved ID range `10000000+`)
-- [ ] Geolocation for presence (lon/lat/country from client IP)
-- [ ] Docker / k8s deployment
+**Everything around it**
+- Moderation: restrictions, silences, a chat log, score removal, staff panels on the website
+  (BN imports, GMT tools, admin, the daily challenge map picker)
+- Anti-cheat: hardware/client hash checks and alt detection, circleguard replay scans
+- Custom beatmaps (uploaded sets, graveyard, guest difficulties) next to the official ones
+- A Discord bot: profiles, `/recent`, `/best`, `/compare`, `/scan`, badges, staff tools
+- An IRC server (port 6667) for IRC clients and bots, logging in with the website's IRC key
+- Plugins: compiled `.dll` or loose `.cs`, with events, commands and HTTP routes
+- EF Core migrations, Docker Compose / k8s deployment, Caddy and a Cloudflare tunnel in front
+
+**Not done yet** (see the roadmap): on stable, friends, the country / friends / selected-mods
+leaderboards, the favourites list, away messages and the tournament client; the DAN mode plugin, custom medals, multi-instance (Redis-backed)
+online state, and multi-target storage.
+
+## Documentation by topic
+
+[osu-web](docs/osu-web.md) · [lazer](docs/lazer.md) · [spectating](docs/spectating.md) ·
+[custom beatmaps](docs/custom-beatmaps.md) · [anti-cheat](docs/anticheat.md) ·
+[achievements](docs/achievements.md) · [Discord](docs/discord.md) · [IRC](docs/irc.md) ·
+[plugins](docs/plugins.md) · [local testing](docs/local-testing.md)
 
 ## Building
 
