@@ -5,10 +5,12 @@ channels and PMs as the game, the website, lazer and Discord (`src/TomYum.Server
 
 ## Connecting
 
-1. Send `!irc` to BanchoBot (in the game or on the website). It answers with your IRC password in
-   a private message, and the server and port. Asking again makes a new password.
+1. Get your IRC key from the website: account settings → *Legacy API* → *irc*
+   (`/home/account/edit#legacy-api`), like osu!'s. Deleting it there and making a new one changes it.
+   Without website accounts, send `!irc` to BanchoBot instead: it answers with a password in a PM
+   (asking again makes a new one).
 2. In your IRC client: server `irc.<domain>` (see below), port **6667**, no TLS, nick = your
-   username with `_` for spaces, server password = the IRC password.
+   username with `_` for spaces, server password = the IRC key.
 3. `/join #osu` (or any channel). PMs to players and to BanchoBot (`!help`) work as in the game.
 
 One session per player: while you're in the game, IRC refuses you; logging into the game ends your

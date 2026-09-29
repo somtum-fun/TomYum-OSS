@@ -16,6 +16,9 @@ public sealed class IrcOptions
 
     /// <summary>The server's name in replies, e.g. <c>irc.sundei.eu</c>; defaults to <c>irc.&lt;Server:Domain&gt;</c>.</summary>
     public string ServerName { get; set; } = string.Empty;
+
+    /// <summary>With website accounts: the account settings page where players make their IRC key.</summary>
+    public string? KeyPageUrl { get; set; }
 }
 
 /// <summary>
