@@ -76,14 +76,33 @@ public sealed class DiscordFormat
 
     public static string Mods(IReadOnlyList<string> mods) => mods.Count == 0 ? string.Empty : "+" + string.Concat(mods);
 
-    public static string Grade(string grade) => grade switch
+    private static Dictionary<string, string> _gradeEmojis = new(StringComparer.Ordinal);
+
+    /// <summary>Emojis to show for grades (<see cref="DiscordOptions.GradeEmojis"/>); set once at startup.</summary>
+    public static void UseGradeEmojis(IReadOnlyDictionary<string, string> emojis) =>
+        _gradeEmojis = new Dictionary<string, string>(emojis ?? throw new ArgumentNullException(nameof(emojis)), StringComparer.Ordinal);
+
+    /// <summary>A grade (<c>XH</c>, <c>X</c>, <c>SH</c>, <c>S</c> … <c>D</c>, <c>F</c>): its emoji when one is set, else in words.</summary>
+    public static string Grade(string grade) => Grade(grade, _gradeEmojis);
+
+    public static string Grade(string grade, IReadOnlyDictionary<string, string> emojis)
     {
-        "XH" => "SS (silver)",
-        "X" => "SS",
-        "SH" => "S (silver)",
-        "" => "F",
-        _ => grade,
-    };
+        ArgumentNullException.ThrowIfNull(emojis);
+        var key = string.IsNullOrEmpty(grade) ? "F" : grade;
+        if (emojis.TryGetValue(key, out var emoji))
+            return emoji;
+        return key switch
+        {
+            "XH" => "SS (silver)",
+            "X" => "SS",
+            "SH" => "S (silver)",
+            _ => key,
+        };
+    }
+
+    /// <summary>The grade's emoji followed by a space, or nothing when there's no emoji for it.</summary>
+    public static string GradeMark(string grade) =>
+        _gradeEmojis.TryGetValue(string.IsNullOrEmpty(grade) ? "F" : grade, out var emoji) ? emoji + " " : string.Empty;
 
     /// <summary>A Discord timestamp (shown in the reader's time zone), e.g. "3 minutes ago".</summary>
     public static string Relative(DateTime utc) =>

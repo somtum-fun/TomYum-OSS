@@ -6,8 +6,13 @@ namespace TomYum.Server.Discord;
 /// (Developer Mode → right-click → Copy ID); a channel or role left at 0 is simply not used.
 /// See docs/discord.md.
 /// </summary>
-public sealed class DiscordOptions
+public sealed partial class DiscordOptions
 {
+    private static readonly HashSet<string> GradeNames = new(StringComparer.Ordinal) { "XH", "X", "SH", "S", "A", "B", "C", "D", "F" };
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^<a?:\w{2,32}:\d{1,20}>$")]
+    private static partial System.Text.RegularExpressions.Regex EmojiPattern();
+
     public const string SectionName = "Discord";
 
     /// <summary>The bot token (Discord developer portal → Bot → Reset Token). Secret.</summary>
@@ -45,6 +50,13 @@ public sealed class DiscordOptions
 
     /// <summary>The role the map of the day's winner holds for a week (0: the bot makes a "Map of the Day" role).</summary>
     public ulong MapOfTheDayRoleId { get; set; }
+
+    /// <summary>
+    /// Emojis for grades (<c>XH</c>, <c>X</c>, <c>SH</c>, <c>S</c>, <c>A</c>, <c>B</c>, <c>C</c>, <c>D</c>,
+    /// <c>F</c>), e.g. <c>TOMYUM_DISCORD__GRADEEMOJIS__XH=&lt;:rankingXH:123&gt;</c>; the bot's own
+    /// (application) emojis work everywhere. A grade without one is written out.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> GradeEmojis { get; set; } = new Dictionary<string, string>(StringComparer.Ordinal);
 
     /// <summary>Discord roles given to linked players in these website groups.</summary>
     public ulong AdminRoleId { get; set; }
@@ -117,6 +129,9 @@ public sealed class DiscordOptions
                 ? pp
                 : defaults.BigPlayPp,
             SiteUrl = Text(nameof(SiteUrl), string.Empty),
+            GradeEmojis = section.GetSection(nameof(GradeEmojis)).GetChildren()
+                .Where(c => GradeNames.Contains(c.Key.ToUpperInvariant()) && EmojiPattern().IsMatch(c.Value?.Trim() ?? string.Empty))
+                .ToDictionary(c => c.Key.ToUpperInvariant(), c => c.Value!.Trim(), StringComparer.Ordinal),
             AvatarUrl = Text(nameof(AvatarUrl), string.Empty),
         };
     }

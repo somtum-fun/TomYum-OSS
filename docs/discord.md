@@ -63,6 +63,8 @@ TOMYUM_DISCORD__LINKEDROLEID=
 TOMYUM_DISCORD__STATUSCHANNELID=
 TOMYUM_DISCORD__REPORTSCHANNELID=      # default the user log
 TOMYUM_DISCORD__CIRCLEGUARDCHANNELID=  # circleguard flags; default the reports channel
+# Grade emojis (the bot's own emojis work everywhere): XH, X, SH, S, A, B, C, D, F
+TOMYUM_DISCORD__GRADEEMOJIS__XH=<:rankingXH:123456789012345678>
 TOMYUM_DISCORD__MAPOFTHEDAYCHANNELID=  # default the public log
 TOMYUM_DISCORD__MAPOFTHEDAYROLEID=     # default: the bot makes a "Map of the Day" role
 TOMYUM_DISCORD__BIGPLAYPP=300
