@@ -30,7 +30,7 @@ public static partial class StableClientEndpoints
 
         // Answers the client only needs to get (bancho.py answers these the same way).
         app.MapGet("/web/bancho_connect.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
-        app.MapGet("/web/osu-markasread.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        app.MapGet("/web/osu-markasread.php", HandleMarkAsReadAsync).RequireHost(hosts);
         app.MapPost("/web/osu-session.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapPost("/web/osu-error.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapGet("/web/check-updates.php", (HttpContext context) =>
@@ -124,6 +124,31 @@ public static partial class StableClientEndpoints
         return await website.AddFavouriteAsync(user.Id, setId, cancellationToken).ConfigureAwait(false)
             ? Results.Text(string.Empty, "text/plain")
             : Results.Text("You've favourited this beatmap already!", "text/plain");
+    }
+
+    /// <summary>
+    /// <c>?u=&amp;h=&amp;channel=</c>: the player opened a chat tab; a conversation (a player's name) or a
+    /// channel (<c>#osu</c>) is marked read on the website, so its messages aren't shown again at login.
+    /// </summary>
+    internal static async Task<IResult> HandleMarkAsReadAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        var user = await UserAsync(context, context.Request.Query["u"], context.Request.Query["h"], cancellationToken).ConfigureAwait(false);
+        if (user is null)
+            return Results.Unauthorized();
+        var channel = context.Request.Query["channel"].ToString().Trim();
+        if (channel.Length == 0 || context.RequestServices.GetService<OsuWebPrivateMessages>() is not { } messages)
+            return Results.Text(string.Empty, "text/plain");
+
+        if (channel.StartsWith('#'))
+        {
+            await messages.MarkChannelReadAsync(user.Id, channel, cancellationToken).ConfigureAwait(false);
+        }
+        else if (await context.RequestServices.GetRequiredService<IUserRepository>()
+                     .GetBySafeNameAsync(User.MakeSafeName(channel), cancellationToken).ConfigureAwait(false) is { } other)
+        {
+            await messages.MarkConversationReadAsync(user.Id, other.Id, cancellationToken).ConfigureAwait(false);
+        }
+        return Results.Text(string.Empty, "text/plain");
     }
 
     /// <summary>The player's favourite sets, one id per line (<c>?u=&amp;h=</c>).</summary>

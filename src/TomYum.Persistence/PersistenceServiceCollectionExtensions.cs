@@ -57,6 +57,7 @@ public static class PersistenceServiceCollectionExtensions
             services.AddScoped<OsuWebLazerRelax>();
             services.AddScoped<OsuWebIrcKeys>();
             services.AddScoped<OsuWebTags>();
+            services.AddScoped(sp => new OsuWebPrivateMessages(sp.GetRequiredService<OsuWebDbContext>(), options.OsuWebChatName));
             services.AddScoped<IFriendRepository, OsuWebFriends>();
             services.AddScoped<OsuWebCommunity>();
             services.AddScoped<OsuWebRankHistory>();

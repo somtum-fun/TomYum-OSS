@@ -32,6 +32,10 @@ public sealed class BanchoLoginHandler
     private readonly IStaffLogRepository? _staffLog;
     private readonly PresenceStats? _presenceStats;
     private readonly IFriendRepository? _friends;
+    private readonly TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? _privateMessages;
+
+    /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
+    public const int UnreadLimit = 50;
 
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
@@ -55,9 +59,11 @@ public sealed class BanchoLoginHandler
         IClientHashRepository? clientHashes = null,
         IStaffLogRepository? staffLog = null,
         PresenceStats? presenceStats = null,
-        IFriendRepository? friends = null)
+        IFriendRepository? friends = null,
+        TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? privateMessages = null)
     {
         _friends = friends;
+        _privateMessages = privateMessages;
         _presenceStats = presenceStats;
         _users = users;
         _passwordHasher = passwordHasher;
@@ -188,6 +194,9 @@ public sealed class BanchoLoginHandler
             LoginResponseBuilder.WriteStats(writer, other.Presence);
         }
 
+        if (_privateMessages is not null)
+            await WriteUnreadAsync(writer, _privateMessages, user, cancellationToken).ConfigureAwait(false);
+
         var responseBody = writer.ToArray();
 
         // Announce the newcomer to everyone already online so they appear in others' user lists.
@@ -282,5 +291,37 @@ public sealed class BanchoLoginHandler
             Summary = $"{user.Username} (id {user.Id.ToString(CultureInfo.InvariantCulture)}) logged in from the same machine as restricted {restricted.Username} (id {pair}). They got in before that account was restricted, or were verified by hand; nothing was done to them.",
             Result = pair,
         }, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Private messages that came while the player was away (on the website, or in-game before they
+    /// logged in), as osu! shows missed messages: in their conversations, with a word from BanchoBot.
+    /// They stay unread until the conversation is opened (<c>osu-markasread.php</c>) or the player logs out.
+    /// </summary>
+    private async Task WriteUnreadAsync(BanchoPacketWriter writer, TomYum.Persistence.OsuWeb.OsuWebPrivateMessages messages, User user, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<TomYum.Persistence.OsuWeb.UnreadMessage> unread;
+        try
+        {
+            unread = await messages.UnreadAsync(user.Id, UnreadLimit, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Unread messages for {UserId} couldn't be read.", user.Id);
+            return;
+        }
+        if (unread.Count == 0)
+            return;
+
+        var senders = unread.Select(m => m.SenderName).Distinct(StringComparer.Ordinal).ToList();
+        var note = senders.Count == 1
+            ? $"You have unread messages from {senders[0]}."
+            : $"You have unread messages from {string.Join(", ", senders.Take(5))}{(senders.Count > 5 ? " and others" : string.Empty)}.";
+        ChatEncoder.WriteMessage(writer, new BanchoMessage(BanchoBot.Name, note, user.Username, BanchoBot.UserId));
+        foreach (var message in unread)
+        {
+            var text = message.IsAction ? $"\u0001ACTION {message.Content}\u0001" : message.Content;
+            ChatEncoder.WriteMessage(writer, new BanchoMessage(message.SenderName, text, user.Username, message.SenderId));
+        }
     }
 }
