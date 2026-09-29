@@ -141,6 +141,25 @@ public sealed class BanchoBotCommands
     [ChatCommand("link", Usage = "<code>", Help = "Discord")]
     private Task<string> Link(ChatCommandContext context) => LinkDiscordAsync(context.Caller, context.Parts, context.CancellationToken);
 
+    /// <summary>
+    /// <c>!irc</c>: a new IRC password (the old one stops working), always sent as a private message,
+    /// even when asked in a channel.
+    /// </summary>
+    [ChatCommand("irc", Help = "your IRC password")]
+    private async Task<string?> Irc(ChatCommandContext context)
+    {
+        using var scope = _scopeFactory.CreateScope();
+        if (scope.ServiceProvider.GetService<Irc.IrcTokens>() is not { } tokens || scope.ServiceProvider.GetService<Irc.IrcOptions>() is not { Enabled: true } options)
+            return "There's no IRC on this server.";
+        var password = await tokens.CreateAsync(context.Caller.UserId).ConfigureAwait(false);
+        var text = string.Create(CultureInfo.InvariantCulture,
+            $"Your IRC password: {password} — server {options.ServerName}, port {options.Port}, nick {TomYum.Irc.IrcLine.Nick(context.Caller.Presence.Username)}. Asking again makes a new one.");
+        var writer = new BanchoPacketWriter(256);
+        ChatEncoder.WriteMessage(writer, new BanchoMessage(BanchoBot.Name, text, context.Caller.Presence.Username, BanchoBot.UserId));
+        context.Caller.Enqueue(writer.ToArray());
+        return "I sent you your IRC password in a private message.";
+    }
+
     [ChatCommand("report", Usage = "<player> <reason>")]
     private Task<string> Report(ChatCommandContext context) => ReportAsync(context.Caller, context.Parts, context.CancellationToken);
 

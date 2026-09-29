@@ -44,6 +44,9 @@ public sealed class OnlinePlayer
     /// <summary>When this session last sent or was sent data; used to reap dead sessions.</summary>
     public DateTimeOffset LastActivityUtc { get; set; }
 
+    /// <summary>An IRC session (<see cref="Irc.IrcSession"/>) rather than a game client.</summary>
+    public bool IsIrc { get; set; }
+
     /// <summary>Whether this player currently has the multiplayer lobby open.</summary>
     public bool InLobby { get; set; }
 
