@@ -34,10 +34,12 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
   [osu-server-spectator](https://github.com/ppy/osu-server-spectator) (spectating, multiplayer,
   playlists, the daily challenge), sharing accounts, scores and rankings with stable
 - Lazer plays with Relax get relax pp and leaderboards like stable's
+- Quick Play and Ranked Play (matchmaking pools set up from the admin panel)
 
 **Everything around it**
 - Moderation: restrictions, silences, a chat log, score removal, staff panels on the website
-  (BN imports, GMT tools, admin, the daily challenge map picker)
+  (BN imports, GMT tools, admin, the daily challenge map picker, seasonal backgrounds, news)
+- A changelog made from the repositories' history on every deploy (`deploy/production/deploy.sh`)
 - Anti-cheat: hardware/client hash checks and alt detection, circleguard replay scans
 - Custom beatmaps (uploaded sets, graveyard, guest difficulties) next to the official ones
 - A Discord bot: profiles, `/recent`, `/best`, `/compare`, `/scan`, badges, staff tools
@@ -45,7 +47,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - Plugins: compiled `.dll` or loose `.cs`, with events, commands and HTTP routes
 - EF Core migrations, Docker Compose / k8s deployment, Caddy and a Cloudflare tunnel in front
 
-**Not done yet** (see the roadmap): the stable tournament client, lazer Quick Play pools; the DAN mode plugin, custom medals, multi-instance (Redis-backed)
+**Not done yet** (see the roadmap): the stable tournament client; the DAN mode plugin, custom medals, multi-instance (Redis-backed)
 online state, and multi-target storage.
 
 ## Documentation by topic
