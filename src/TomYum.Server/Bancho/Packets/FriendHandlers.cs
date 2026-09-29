@@ -74,6 +74,22 @@ public sealed class ToggleBlockNonFriendDmsHandler : IClientPacketHandler
     }
 }
 
+/// <summary>RECEIVE_UPDATES (id 79): whose status updates the client wants (payload: i32, 0 none / 1 all / 2 friends).</summary>
+public sealed class ReceiveUpdatesHandler : IClientPacketHandler
+{
+    /// <inheritdoc />
+    public ClientPacketId PacketId => ClientPacketId.ReceiveUpdates;
+
+    /// <inheritdoc />
+    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        var filter = (PresenceFilter)FriendPackets.ReadUserId(context.Payload.Span);
+        context.Player.PresenceFilter = Enum.IsDefined(filter) ? filter : PresenceFilter.All;
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>Payload readers (sync: <see cref="BanchoPacketReader"/> is a ref struct).</summary>
 internal static class FriendPackets
 {

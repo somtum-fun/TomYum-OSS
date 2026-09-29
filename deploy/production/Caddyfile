@@ -18,6 +18,19 @@
 	}
 }
 
+# Requests to the website/API and lazer's servers, for finding what clients ask for and don't get
+# (deploy/production/misses.sh). The bancho hosts aren't logged: every player polls them each second.
+(access-log) {
+	log {
+		output file /data/logs/access.log {
+			roll_size 20MiB
+			roll_keep 5
+			roll_uncompressed
+		}
+		format json
+	}
+}
+
 (osu-web) {
 	reverse_proxy osu-web:8080 {
 		header_up X-Forwarded-For {client_ip}
@@ -58,6 +71,7 @@ http://a.{$DOMAIN} {
 
 # osu.: the game client's /web/* and in-game registration go to TomYum, the website to osu-web.
 http://osu.{$DOMAIN} {
+	import access-log
 	request_body {
 		# Beatmap set uploads from the BN panel go up to 100 MB (Cloudflare's limit too).
 		max_size 110MB
@@ -129,5 +143,6 @@ http://osu.{$DOMAIN} {
 
 # Lazer's multiplayer, spectating and online presence (SignalR over WebSockets).
 http://spectator.{$DOMAIN} {
+	import access-log
 	reverse_proxy spectator:80
 }

@@ -67,6 +67,9 @@ public sealed class OnlinePlayer
     /// <summary>The players this one has added as friends (loaded at login, kept in step with the friend packets).</summary>
     public ImmutableHashSet<int> Friends { get; set; } = [];
 
+    /// <summary>Whose status updates the client wants (its user panel's filter): everyone by default.</summary>
+    public PresenceFilter PresenceFilter { get; set; } = PresenceFilter.All;
+
     /// <summary>The away message the client set (answered to anyone who PMs them); null when not away.</summary>
     public string? AwayMessage { get; set; }
 
@@ -230,4 +233,12 @@ public sealed class OnlinePlayer
 
     /// <summary>Clears all plugin state for this session (called when the session ends).</summary>
     public void ClearState() => _state.Clear();
+}
+
+/// <summary>osu!stable's RECEIVE_UPDATES filter: whose status updates a client gets.</summary>
+public enum PresenceFilter
+{
+    None = 0,
+    All = 1,
+    Friends = 2,
 }

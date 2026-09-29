@@ -157,8 +157,12 @@ accounts, chat and leaderboards with them._
 - [x] Stable friends (the website's `phpbb_zebra`, shared with lazer and the site): login list, add/remove,
       `osu-getfriends.php`; the selected mods / friends / country leaderboard tabs; `osu-getfavourites.php`;
       away messages and friends-only PMs (also IRC's `AWAY`). 2026-09-29
-- [ ] Stable tournament client (`TournamentMatchInfoRequest`, match channel join/leave); in-game map comments
-      (`osu-comment.php`); the presence filter (`ReceiveUpdates`).
+- [x] Stable in-game comments (`osu-comment.php`: song / difficulty / replay, supporter colours, staff as "bat")
+      and the user panel's update filter (`ReceiveUpdates`: all / friends / none). 2026-09-29
+- [x] Request log for the website/API and lazer hosts (Caddy, rotated in its data volume);
+      `deploy/production/misses.sh` lists what clients asked for and didn't get. 2026-09-29
+- [ ] Stable tournament client (`TournamentMatchInfoRequest`, match channel join/leave); lazer Quick Play
+      (matchmaking pools: none set up yet).
 
 ## osu-web website 🔒 Phase A: none · Phase B: decisions below
 _osu-web (ppy's Laravel site) runs unmodified as the website; long-term it owns the schema and TomYum

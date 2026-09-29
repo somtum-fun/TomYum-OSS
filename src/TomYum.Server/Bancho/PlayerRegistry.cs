@@ -91,21 +91,37 @@ public sealed class PlayerRegistry
     /// <summary>
     /// Queues packets about <paramref name="subject"/> (presence, stats) to the players who can see
     /// them: everyone except <paramref name="exceptUserId"/>, or only the subject itself when it's
-    /// restricted (restricted players are invisible to others).
+    /// restricted (restricted players are invisible to others). A status update (<paramref name="isUpdate"/>)
+    /// also skips players whose filter doesn't want it (<see cref="PresenceFilter"/>); a login announcement
+    /// goes to everyone, so their user list stays right.
     /// </summary>
-    public void EnqueueAbout(OnlinePlayer subject, ReadOnlySpan<byte> framedPackets, int exceptUserId = 0)
+    public void EnqueueAbout(OnlinePlayer subject, ReadOnlySpan<byte> framedPackets, int exceptUserId = 0, bool isUpdate = true)
     {
         ArgumentNullException.ThrowIfNull(subject);
 
-        if (!subject.IsRestricted)
+        if (subject.IsRestricted)
         {
-            EnqueueToAll(framedPackets, exceptUserId);
+            if (subject.UserId != exceptUserId)
+                subject.Enqueue(framedPackets);
+            return;
         }
-        else if (subject.UserId != exceptUserId)
+
+        foreach (var player in _byToken.Values)
         {
-            subject.Enqueue(framedPackets);
+            if (player.UserId == exceptUserId)
+                continue;
+            if (isUpdate && player.UserId != subject.UserId && !Wants(player, subject.UserId))
+                continue;
+            player.Enqueue(framedPackets);
         }
     }
+
+    private static bool Wants(OnlinePlayer viewer, int subjectUserId) => viewer.PresenceFilter switch
+    {
+        PresenceFilter.None => false,
+        PresenceFilter.Friends => viewer.Friends.Contains(subjectUserId),
+        _ => true,
+    };
 
     /// <summary>Whether the player <paramref name="viewerUserId"/> may see <paramref name="subject"/> (restricted players only see themselves).</summary>
     public static bool IsVisibleTo(OnlinePlayer subject, int viewerUserId)
