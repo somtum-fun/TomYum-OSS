@@ -327,6 +327,11 @@ namespace TomYum.Persistence.Migrations
                     b.Property<int>("CountMiss")
                         .HasColumnType("int");
 
+                    b.Property<bool>("FromLazer")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("Grade")
                         .IsRequired()
                         .HasMaxLength(2)

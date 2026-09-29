@@ -30,4 +30,10 @@ public sealed class Score
     public bool Passed { get; init; }
     public int Status { get; set; } = ScoreStatus.Failed;
     public DateTimeOffset SubmittedAt { get; init; }
+
+    /// <summary>
+    /// Played in lazer (a Relax play TomYum took from the website); false for osu!stable's own
+    /// submissions. The website shows stable plays with the Classic mod, like osu!.
+    /// </summary>
+    public bool FromLazer { get; init; }
 }
