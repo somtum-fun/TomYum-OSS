@@ -7,7 +7,8 @@ namespace TomYum.Persistence.OsuWeb;
 public sealed record MapCard(
     int BeatmapId, int BeatmapsetId, string Artist, string Title, string Version, string Creator, int Ruleset, int Status,
     double StarRating, int TotalLength, int HitLength, double Bpm, double CircleSize, double ApproachRate,
-    double OverallDifficulty, double DrainRate, int MaxCombo, long PlayCount, long PassCount)
+    double OverallDifficulty, double DrainRate, int MaxCombo, long PlayCount, long PassCount,
+    int ObjectCount = 0, DateTime? RankedAt = null, DateTime? UpdatedAt = null)
 {
     public string Name => $"{Artist} - {Title} [{Version}]";
 }
@@ -46,7 +47,8 @@ public sealed partial class OsuWebCommunity
               s.creator AS Creator, b.playmode AS Ruleset, b.approved AS Status, b.difficultyrating AS StarRating,
               CAST(b.total_length AS SIGNED) AS TotalLength, CAST(b.hit_length AS SIGNED) AS HitLength, b.bpm AS Bpm,
               b.diff_size AS CircleSize, b.diff_approach AS ApproachRate, b.diff_overall AS OverallDifficulty, b.diff_drain AS DrainRate,
-              CAST(b.max_combo AS SIGNED) AS MaxCombo, CAST(b.playcount AS SIGNED) AS PlayCount, CAST(b.passcount AS SIGNED) AS PassCount
+              CAST(b.max_combo AS SIGNED) AS MaxCombo, CAST(b.playcount AS SIGNED) AS PlayCount, CAST(b.passcount AS SIGNED) AS PassCount,
+              CAST(b.countTotal AS SIGNED) AS ObjectCount, s.approved_date AS RankedAt, s.last_update AS UpdatedAt
             FROM osu_beatmaps b JOIN osu_beatmapsets s ON s.beatmapset_id = b.beatmapset_id
             WHERE b.beatmap_id = {0} AND b.deleted_at IS NULL
             """, beatmapId).ToListAsync(cancellationToken).ConfigureAwait(false);
@@ -54,7 +56,9 @@ public sealed partial class OsuWebCommunity
             return null;
         return new MapCard((int)r.BeatmapId, (int)r.BeatmapsetId, r.Artist, r.Title, r.Version, r.Creator, r.Ruleset, r.Status,
             r.StarRating, (int)r.TotalLength, (int)r.HitLength, r.Bpm, r.CircleSize, r.ApproachRate, r.OverallDifficulty, r.DrainRate,
-            (int)r.MaxCombo, r.PlayCount, r.PassCount);
+            (int)r.MaxCombo, r.PlayCount, r.PassCount, (int)r.ObjectCount,
+            r.RankedAt is { } ranked ? DateTime.SpecifyKind(ranked, DateTimeKind.Utc) : null,
+            r.UpdatedAt is { } updated ? DateTime.SpecifyKind(updated, DateTimeKind.Utc) : null);
     }
 
     /// <summary>A set's hardest difficulty (for set links), or null.</summary>
@@ -297,6 +301,12 @@ public sealed partial class OsuWebCommunity
         public long MaxCombo { get; set; }
         public long PlayCount { get; set; }
         public long PassCount { get; set; }
+
+        public long ObjectCount { get; set; }
+
+        public DateTime? RankedAt { get; set; }
+
+        public DateTime? UpdatedAt { get; set; }
     }
 
     private sealed class MedalProgressRow
