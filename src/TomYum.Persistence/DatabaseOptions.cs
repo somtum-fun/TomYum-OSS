@@ -60,6 +60,9 @@ public sealed class DatabaseOptions
     /// </summary>
     public string OsuWebIndexPrefix { get; set; } = string.Empty;
 
+    /// <summary>osu-web's chat database (its <c>DB_DATABASE_CHAT</c>), where private messages are.</summary>
+    public string OsuWebChatName { get; set; } = "osu_chat";
+
     /// <summary>Whether accounts are stored in osu-web's database (database enabled and <see cref="OsuWebName"/> set).</summary>
     public bool UseOsuWebAccounts => Enabled && !string.IsNullOrWhiteSpace(OsuWebName);
 

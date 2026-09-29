@@ -927,3 +927,34 @@ CREATE TABLE user_contest_entries (
   deleted_at timestamp NULL,
   show_in_client tinyint(1) NOT NULL DEFAULT 0
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web chat database (osu_chat; in the tests, the same database): channels, members, messages.
+DROP TABLE IF EXISTS channels;
+CREATE TABLE channels (
+  channel_id int unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name varchar(50) NOT NULL,
+  description varchar(256) NOT NULL DEFAULT '',
+  creation_time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  type enum('PUBLIC','PRIVATE','MULTIPLAYER','SPECTATOR','TEMPORARY','PM','GROUP','ANNOUNCE','TEAM') NOT NULL,
+  allowed_groups varchar(256) NULL,
+  moderated tinyint(1) NOT NULL DEFAULT 0,
+  last_message_id bigint unsigned NULL
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS user_channels;
+CREATE TABLE user_channels (
+  user_id int unsigned NOT NULL,
+  channel_id int unsigned NOT NULL,
+  hidden tinyint(1) NOT NULL DEFAULT 0,
+  last_read_id int unsigned NULL,
+  PRIMARY KEY (user_id, channel_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+DROP TABLE IF EXISTS messages;
+CREATE TABLE messages (
+  message_id bigint unsigned NOT NULL AUTO_INCREMENT,
+  user_id int unsigned NOT NULL,
+  channel_id int unsigned NOT NULL,
+  content varchar(1024) NOT NULL,
+  is_action tinyint(1) NOT NULL DEFAULT 0,
+  timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (message_id, timestamp)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

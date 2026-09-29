@@ -56,7 +56,7 @@ public abstract class OsuWebDatabaseTest : IAsyncLifetime
     /// <summary>Connection string for the TomYum database (created lazily by <see cref="NewTomYumContextAsync"/>).</summary>
     protected string TomYumConnectionString { get; private set; } = string.Empty;
 
-    private string OsuWebDatabase => $"tomyum_test_osuweb_{_suffix}";
+    protected string OsuWebDatabase => $"tomyum_test_osuweb_{_suffix}";
 
     private string TomYumDatabase => $"tomyum_test_tomyum_{_suffix}";
 

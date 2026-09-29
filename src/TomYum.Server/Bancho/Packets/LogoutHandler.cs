@@ -14,9 +14,22 @@ public sealed class LogoutHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.Logout;
 
     /// <inheritdoc />
-    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
+    public async Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+
+        // Private messages that reached the player in-game count as read on the website too.
+        if (context.Services.GetService<TomYum.Persistence.OsuWeb.OsuWebPrivateMessages>() is { } messages)
+        {
+            try
+            {
+                await messages.MarkAllPrivateReadAsync(context.Player.UserId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                context.Services.GetService<ILogger<LogoutHandler>>()?.LogWarning(ex, "Couldn't mark {UserId}'s messages read.", context.Player.UserId);
+            }
+        }
 
         // Clean up match membership before removing from registry (RemovePlayer needs the registry).
         var match = context.Matches.GetByUserId(context.Player.UserId);
@@ -32,6 +45,5 @@ public sealed class LogoutHandler : IClientPacketHandler
         var writer = new BanchoPacketWriter(16);
         writer.WriteInt32Packet(ServerPacketId.UserLogout, context.Player.UserId);
         context.Registry.EnqueueToAll(writer.ToArray(), exceptUserId: context.Player.UserId);
-        return Task.CompletedTask;
     }
 }
