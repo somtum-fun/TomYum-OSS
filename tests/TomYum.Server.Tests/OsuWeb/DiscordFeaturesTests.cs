@@ -133,8 +133,10 @@ public sealed class DiscordFeaturesTests : OsuWebDatabaseTest
         Assert.Contains(medals.Fields, f => f.Name == "Still to get (some)" && f.Value.StartsWith("Constellation Prize", StringComparison.Ordinal));
 
         var compare = (await commands.RunAsync("compare", new Dictionary<string, string> { ["player"] = "Bravo" }, 1001)).Post.Embed!;
-        Assert.Equal("Alpha vs Bravo ▸ osu!", compare.Title);
+        Assert.Equal("Alpha vs Bravo ▸ osu!", compare.AuthorName);
         Assert.Contains("**Alpha** is ahead by 200pp", compare.Description, StringComparison.Ordinal);
+        Assert.Contains("pp            500.00 ◀", compare.Description, StringComparison.Ordinal); // the leader of the row is marked
+        Assert.StartsWith("Alpha leads", compare.Footer, StringComparison.Ordinal);
         await InsertScoreAsync(bravo, Map, 950_000, pp: 120);
         var onMap = (await commands.RunAsync("compare", new Dictionary<string, string> { ["player"] = "Bravo", ["beatmap"] = "100" }, 1001)).Post.Embed!;
         Assert.Contains("**Bravo** has it, **Alpha** doesn't.", onMap.Description, StringComparison.Ordinal);
