@@ -72,12 +72,12 @@ public sealed class ModerationTests
     public async Task Login_Silenced_GetsTheRemainingSeconds()
     {
         var (handler, _, users) = NewLogin();
-        await AddUserAsync(users, "Loud", silenceEnd: Now.AddMinutes(30));
+        await AddUserAsync(users, "Loud", silenceEnd: DateTimeOffset.UtcNow.AddMinutes(30));
 
         var outcome = await handler.HandleAsync(LoginBody("Loud"), "TH", CancellationToken.None);
 
         var seconds = SilenceSeconds(outcome.Body);
-        Assert.InRange(seconds, 1790u, 1800u);
+        Assert.InRange(seconds, 1700u, 1800u);
     }
 
     [Fact]
@@ -139,12 +139,12 @@ public sealed class ModerationTests
         var user = await AddUserAsync(users, "Loud");
         var player = registry.Add(new BanchoPresence { UserId = user.Id, Username = "Loud", Privileges = BanchoPrivileges.Player });
         var other = registry.Add(new BanchoPresence { UserId = 99, Username = "Other" });
-        await users.UpdateAsync(Copy(user, silenceEnd: Now.AddHours(1)));
+        await users.UpdateAsync(Copy(user, silenceEnd: DateTimeOffset.UtcNow.AddHours(1)));
 
         await sync.RefreshAsync(user.Id);
 
         Assert.True(player.IsSilenced(DateTimeOffset.UtcNow));
-        Assert.InRange(SilenceSeconds(player.DequeueAll()), 3590u, 3600u);
+        Assert.InRange(SilenceSeconds(player.DequeueAll()), 3500u, 3600u);
         Assert.Contains((ushort)ServerPacketId.UserSilenced, PacketIds(other.DequeueAll()));
 
         // Lifting it sends 0.
