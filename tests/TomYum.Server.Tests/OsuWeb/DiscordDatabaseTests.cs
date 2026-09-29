@@ -75,7 +75,7 @@ public sealed class DiscordDatabaseTests : OsuWebDatabaseTest
         var recent = await commands.RunAsync("recent", new Dictionary<string, string> { ["user"] = "Alpha" }, 1);
         Assert.Equal(DiscordFormat.Danger, recent.Post.Embed!.Color); // the fail
         Assert.StartsWith("Artist - Song [Hard] [", recent.Post.Embed.Title); // Bathbot-style: the mapper is in the footer
-        Assert.StartsWith("Mapset by Mapper", recent.Post.Embed.Footer, StringComparison.Ordinal);
+        Assert.Contains("• Mapset by Mapper", recent.Post.Embed.Footer, StringComparison.Ordinal);
         Assert.Equal("https://osu.test/b/100", recent.Post.Embed.Url);
 
         var best = await commands.RunAsync("best", new Dictionary<string, string> { ["user"] = "Alpha" }, 1);

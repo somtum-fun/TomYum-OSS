@@ -69,12 +69,12 @@ public sealed class DiscordFeaturesTests : OsuWebDatabaseTest
         var card = reply.Post.Embed!;
         Assert.StartsWith("Alpha: 500.00pp (", card.AuthorName, StringComparison.Ordinal);
         Assert.Matches(@"\(#\d+ NL\d+\)$", card.AuthorName);
-        Assert.Equal("https://flagcdn.com/w40/nl.png", card.AuthorIconUrl);
+        Assert.Equal($"https://a.test/{alpha}", card.AuthorIconUrl);
         Assert.Equal("Artist - Song [Hard] [4.50★]", card.Title);
         Assert.StartsWith("S +NM  850,000  97.00%  <t:", card.Description, StringComparison.Ordinal);
         Assert.Contains("**130.00**pp • **400x**", card.Description, StringComparison.Ordinal);
         Assert.Contains("`02:00` • `CS: 4 AR: 9 OD: 8 HP: 5` • 🎵 120", card.Description, StringComparison.Ordinal);
-        Assert.StartsWith("Mapset by Mapper", card.Footer, StringComparison.Ordinal);
+        Assert.StartsWith("Played on osu!stable • Mapset by Mapper", card.Footer, StringComparison.Ordinal);
         Assert.Equal([true, true, false, false, false], reply.Post.Buttons.Select(b => b.Disabled));
 
         // Back through the plays: the first try on the map, then the other map.

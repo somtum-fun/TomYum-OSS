@@ -7,8 +7,8 @@ using TomYum.Server.Bancho;
 namespace TomYum.Server.Discord;
 
 /// <summary>
-/// <c>/recent</c>, Bathbot-style: "Try #N" (plays in a row on that map), the player with pp and
-/// ranks, the map with stars (with mods), the grade and completion, pp out of the map's max and the
+/// <c>/recent</c>, Bathbot-style: "Try #N" (plays in a row on that map), the player (avatar) with pp and
+/// ranks, which client it was played on, the map with stars (with mods), the grade and completion, pp out of the map's max and the
 /// full-combo pp, combo and misses, the map's numbers with mods, and buttons to page through the
 /// player's recent plays.
 /// </summary>
@@ -55,13 +55,13 @@ public sealed partial class DiscordCommands
         {
             AuthorName = $"{player.Username}: {Pp2(player.Pp)}pp ({Ranks(player)})",
             AuthorUrl = _format.ProfileIn(player.UserId, player.Ruleset),
-            AuthorIconUrl = Flag(player.Country),
+            AuthorIconUrl = _format.Avatar(player.UserId),
             Title = $"{score.Artist} - {score.Title} [{score.Version}] [{score.StarRating.ToString("0.00", CultureInfo.InvariantCulture)}★]",
             Url = _format.Beatmap(score.BeatmapId),
             ThumbnailUrl = _format.ListCover(score.BeatmapsetId),
             Description = RecentLines(score, map, mods, pp),
             Color = score.Passed ? DiscordFormat.Accent : DiscordFormat.Danger,
-            Footer = map is null ? DiscordFormat.Ruleset(score.Ruleset) : MapFooter(map),
+            Footer = (score.IsStable ? "Played on osu!stable" : "Played on osu!lazer") + (map is null ? string.Empty : " • " + MapFooter(map)),
         };
         return new DiscordPost(string.Create(CultureInfo.InvariantCulture, $"Try #{tries}"), embed)
         {
@@ -91,9 +91,6 @@ public sealed partial class DiscordCommands
         var country = player.CountryRank is { } local ? player.Country.ToUpperInvariant() + DiscordFormat.Number(local) : player.Country.ToUpperInvariant();
         return $"{global} {country}";
     }
-
-    private static string Flag(string country) =>
-        $"https://flagcdn.com/w40/{(country.Length == 2 ? country.ToLowerInvariant() : "un")}.png";
 
     private static string Pp2(double pp) => pp.ToString("#,0.00", CultureInfo.InvariantCulture);
 
