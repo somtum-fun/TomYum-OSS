@@ -38,6 +38,18 @@ What circleguard looks at is in its README:
 The two thresholds are production's. To only report and never restrict automatically, set
 `TOMYUM_CIRCLEGUARD__RESTRICTABOVE=101`.
 
+## Scanning a score by hand
+
+Staff can check any score with `/scan <score link or id>` on Discord. It's compared with more replays
+than the automatic check: the map's top 30 here, and osu!'s top 30 on osu! maps (`official`: top 5 or
+none to go faster). osu!'s replays are downloaded at ten a minute and kept, so a map's first scan can
+take a few minutes and later ones are quick. The answer is only for the person who asked; nobody is
+restricted by a scan, but the Restrict / Silence buttons are on it.
+
+The embed (for scans and automatic flags alike) shows the verdict and a risk bar, the reasons, the
+play, the unstable rate, frametime and snaps, the closest top play (a copy is spelled out, with a
+link to the original) and how many replays it was compared with.
+
 ## Setting it up
 
 1. Next to TomYum on the server: `git clone https://github.com/sundeiii/lazer-circleguard`.

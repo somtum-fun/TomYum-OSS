@@ -24,7 +24,7 @@ public sealed class OfficialReplays
     private readonly string _directory;
     private readonly TimeProvider _time;
     private readonly ILogger<OfficialReplays> _logger;
-    private readonly ConcurrentDictionary<(int BeatmapId, int Ruleset), (DateTimeOffset At, IReadOnlyList<OfficialScore> Scores)> _lists = new();
+    private readonly ConcurrentDictionary<(int BeatmapId, int Ruleset), (DateTimeOffset At, IReadOnlyList<OfficialScore> Scores, int Limit)> _lists = new();
     // osu!'s limit is per key, so the pace is kept process-wide.
     private static readonly SemaphoreSlim ReplayGate = new(1, 1);
     private static DateTimeOffset _lastReplay = DateTimeOffset.MinValue;
@@ -43,13 +43,13 @@ public sealed class OfficialReplays
 
     private sealed record OfficialScore(long ScoreId, string Username, int Mods, bool ReplayAvailable);
 
-    /// <summary>osu!'s top plays on the map (up to five with replays), as references; empty when osu! can't be asked.</summary>
-    public async Task<IReadOnlyList<CircleguardReference>> TopAsync(int beatmapId, int ruleset, CancellationToken cancellationToken = default)
+    /// <summary>osu!'s top plays on the map (up to <paramref name="count"/>, those with replays), as references; empty when osu! can't be asked.</summary>
+    public async Task<IReadOnlyList<CircleguardReference>> TopAsync(int beatmapId, int ruleset, int count = Top, CancellationToken cancellationToken = default)
     {
-        if (!IsAvailable)
+        if (!IsAvailable || count <= 0)
             return [];
         var references = new List<CircleguardReference>();
-        foreach (var score in await ListAsync(beatmapId, ruleset, cancellationToken).ConfigureAwait(false))
+        foreach (var score in (await ListAsync(beatmapId, ruleset, Math.Clamp(count, 1, 100), cancellationToken).ConfigureAwait(false)).Take(count))
         {
             if (!score.ReplayAvailable)
                 continue;
@@ -59,13 +59,13 @@ public sealed class OfficialReplays
         return references;
     }
 
-    private async Task<IReadOnlyList<OfficialScore>> ListAsync(int beatmapId, int ruleset, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<OfficialScore>> ListAsync(int beatmapId, int ruleset, int count, CancellationToken cancellationToken)
     {
         var key = (beatmapId, ruleset);
-        if (_lists.TryGetValue(key, out var cached) && _time.GetUtcNow() - cached.At < ListFor)
+        if (_lists.TryGetValue(key, out var cached) && _time.GetUtcNow() - cached.At < ListFor && cached.Limit >= count)
             return cached.Scores;
 
-        var url = string.Create(CultureInfo.InvariantCulture, $"https://osu.ppy.sh/api/get_scores?k={Uri.EscapeDataString(_api.ApiKey!)}&b={beatmapId}&m={ruleset}&limit={Top}");
+        var url = string.Create(CultureInfo.InvariantCulture, $"https://osu.ppy.sh/api/get_scores?k={Uri.EscapeDataString(_api.ApiKey!)}&b={beatmapId}&m={ruleset}&limit={count}");
         try
         {
             using var document = JsonDocument.Parse(await _http.GetStringAsync(url, cancellationToken).ConfigureAwait(false));
@@ -74,7 +74,7 @@ public sealed class OfficialReplays
                 s.GetProperty("username").GetString() ?? string.Empty,
                 int.Parse(s.GetProperty("enabled_mods").GetString()!, CultureInfo.InvariantCulture),
                 s.GetProperty("replay_available").GetString() == "1")).ToList();
-            _lists[key] = (_time.GetUtcNow(), scores);
+            _lists[key] = (_time.GetUtcNow(), scores, count);
             return scores;
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or FormatException or KeyNotFoundException or InvalidOperationException)

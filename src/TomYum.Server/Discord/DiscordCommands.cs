@@ -52,6 +52,9 @@ public sealed partial class DiscordCommands
             ["alert"] = (o, _) => [o.GetValueOrDefault("message") ?? string.Empty],
         };
 
+    private static readonly IReadOnlyList<DiscordChoice> ScanOfficial =
+        [new("osu!'s top 30 (can take a few minutes the first time)", "30"), new("osu!'s top 5", "5"), new("none (only this server's)", "0")];
+
     private static readonly IReadOnlyList<DiscordChoice> StandingKinds =
         [new("everything", "all"), new("silences", "silences"), new("restrictions", "restrictions"), new("notes", "notes")];
 
@@ -93,6 +96,7 @@ public sealed partial class DiscordCommands
         new("removescore", "Staff: remove one stable score", [new("score", "Score id (GMT panel) or the score's link", Required: true), new("reason", "Why")], Staff: true),
         new("clearstanding", "Staff: clear a player's account standing (silences, restrictions, notes)", [PlayerOption, new("reason", "Why", Required: true), new("what", "Which records (everything if left out)", Choices: StandingKinds)], Staff: true),
         new("addbadge", "Admin: give a player a profile badge", [PlayerOption, new("image", "An osu! badge's file name (e.g. contributor.png) or a link to an image (86x40 fits best)", Required: true), new("description", "The badge's tooltip", Required: true), new("url", "Where clicking the badge goes (optional)")], Staff: true),
+        new("scan", "Staff: check a score with circleguard, against the map's top 30 here and on osu!", [new("score", "The score's link (or its id on the website)", Required: true), new("official", "osu!'s top plays to compare with (top 30 if left out)", Choices: ScanOfficial)], Staff: true),
         new("removebadge", "Admin: take a profile badge away", [PlayerOption, new("badge", "Its number, description or image; left out: list their badges")], Staff: true),
         new("rankmap", "BN: rank a set (or one difficulty)", StatusOptions, Private: true),
         new("lovemap", "BN: love a set (or one difficulty)", StatusOptions, Private: true),
@@ -158,6 +162,8 @@ public sealed partial class DiscordCommands
                 return await WipeAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
             case "removescore":
                 return await RemoveScoreAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "scan":
+                return await ScanAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
             case "clearstanding":
                 return await ClearStandingAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
             case "addbadge":

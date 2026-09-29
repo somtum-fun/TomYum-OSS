@@ -252,6 +252,10 @@ public sealed partial class OsuWebCommunity
     public async Task<ulong> GetLatestScoreIdAsync(CancellationToken cancellationToken = default) =>
         await _db.Scores.AsNoTracking().MaxAsync(s => (ulong?)s.Id, cancellationToken).ConfigureAwait(false) ?? 0;
 
+    /// <summary>One website score, whoever set it (restricted players' too: for staff tools), or null.</summary>
+    public async Task<ScoreCard?> GetScoreCardAsync(ulong scoreId, CancellationToken cancellationToken = default) =>
+        await QueryScoresAsync("s.id = {0}", "s.id", [scoreId], 1, cancellationToken).ConfigureAwait(false) is [var card, ..] ? card : null;
+
     /// <summary>Scores after <paramref name="afterId"/> by visible players, oldest first.</summary>
     public Task<IReadOnlyList<ScoreCard>> GetScoresAfterAsync(ulong afterId, int limit, CancellationToken cancellationToken = default) =>
         QueryScoresAsync($"s.id > {{0}} AND {Visible}", "s.id", [afterId], Math.Clamp(limit, 1, 500), cancellationToken);

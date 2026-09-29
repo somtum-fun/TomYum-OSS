@@ -298,6 +298,7 @@ if (circleguardOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
     builder.Services.AddSingleton(circleguardOptions);
     builder.Services.AddHttpClient<TomYum.Server.Anticheat.CircleguardClient>(http => http.Timeout = TimeSpan.FromMinutes(2));
     builder.Services.AddHttpClient<TomYum.Server.Anticheat.OfficialReplays>(http => http.Timeout = TimeSpan.FromSeconds(20));
+    builder.Services.AddSingleton<TomYum.Server.Anticheat.CircleguardScanner>();
     builder.Services.AddHostedService<TomYum.Server.Anticheat.CircleguardWatch>();
 }
 

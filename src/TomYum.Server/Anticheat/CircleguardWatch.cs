@@ -33,11 +33,12 @@ public sealed class CircleguardWatch : BackgroundService
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ReplayWait = TimeSpan.FromMinutes(3);
 
+    /// <summary>How many top plays (here, and on osu!) each new pass is compared with.</summary>
+    public const int References = 5;
+
     private readonly CircleguardOptions _options;
-    private readonly CircleguardClient _client;
-    private readonly OfficialReplays _official;
+    private readonly CircleguardScanner _scanner;
     private readonly IServiceScopeFactory _scopes;
-    private readonly IConfiguration _configuration;
     private readonly TimeProvider _time;
     private readonly ILogger<CircleguardWatch> _logger;
     private readonly DiscordWatch? _discord;
@@ -46,14 +47,12 @@ public sealed class CircleguardWatch : BackgroundService
     private bool _started;
 
     public CircleguardWatch(
-        CircleguardOptions options, CircleguardClient client, OfficialReplays official, IServiceScopeFactory scopes,
-        IConfiguration configuration, TimeProvider time, ILogger<CircleguardWatch> logger, DiscordWatch? discord = null)
+        CircleguardOptions options, CircleguardScanner scanner, IServiceScopeFactory scopes,
+        TimeProvider time, ILogger<CircleguardWatch> logger, DiscordWatch? discord = null)
     {
         _options = options;
-        _client = client;
-        _official = official;
+        _scanner = scanner;
         _scopes = scopes;
-        _configuration = configuration;
         _time = time;
         _logger = logger;
         _discord = discord;
@@ -92,7 +91,7 @@ public sealed class CircleguardWatch : BackgroundService
 
         foreach (var entry in _waiting.ToList())
         {
-            var path = await ReplayPathAsync(community, entry.Score, cancellationToken).ConfigureAwait(false);
+            var path = await _scanner.ReplayPathAsync(community, entry.Score, cancellationToken).ConfigureAwait(false);
             if (path is null || !File.Exists(path))
             {
                 if (_time.GetUtcNow() - entry.SeenAt > ReplayWait)
@@ -141,74 +140,15 @@ public sealed class CircleguardWatch : BackgroundService
         }
     }
 
-    /// <summary>Where a website score's replay is: TomYum's file for stable scores, the spectator's for lazer.</summary>
-    private async Task<string?> ReplayPathAsync(OsuWebCommunity community, ScoreCard score, CancellationToken cancellationToken)
-    {
-        if (!score.IsStable)
-            return _options.LazerReplaysPath.Length == 0 ? null : Path.Combine(_options.LazerReplaysPath, score.ScoreId.ToString(CultureInfo.InvariantCulture));
-        return await community.GetStableScoreAsync(score.ScoreId, cancellationToken).ConfigureAwait(false) is { } stable
-            ? ReplayFiles.PathFor(_configuration, stable.StableScoreId)
-            : null;
-    }
-
     private async Task CheckAsync(IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, CancellationToken cancellationToken)
     {
-        var replay = await PlayAsync(services, community, score, path, cancellationToken).ConfigureAwait(false);
-        byte[]? beatmap = null;
-        try
-        {
-            beatmap = await services.GetRequiredService<OsuFileCache>().GetAsync(score.BeatmapId, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException)
-        {
-            _logger.LogInformation("circleguard: no .osu for beatmap {BeatmapId}; judging the replay alone.", score.BeatmapId);
-        }
-
-        var references = new List<CircleguardReference>();
-        if (score.Ruleset == 0)
-        {
-            // The map's best here (other players), then osu!'s own top plays for official maps.
-            foreach (var top in await community.GetBeatmapLeaderboardAsync(score.BeatmapId, score.Ruleset, 8, cancellationToken).ConfigureAwait(false))
-            {
-                if (references.Count >= 5 || top.UserId == score.UserId || top.ScoreId == score.ScoreId)
-                    continue;
-                if (await ReplayPathAsync(community, top, cancellationToken).ConfigureAwait(false) is { } topPath && File.Exists(topPath))
-                {
-                    var play = await PlayAsync(services, community, top, topPath, cancellationToken).ConfigureAwait(false);
-                    references.Add(new CircleguardReference((long)top.ScoreId, top.Username, play.Mods, play.Data, play.FramesOnly));
-                }
-            }
-            if (_options.CompareOfficial && score.BeatmapId < Beatmap.CustomIdFloor)
-                references.AddRange(await _official.TopAsync(score.BeatmapId, score.Ruleset, cancellationToken).ConfigureAwait(false));
-        }
-
-        var verdict = await _client.AnalyzeAsync(replay, beatmap, references, cancellationToken).ConfigureAwait(false);
-        _logger.LogInformation("circleguard: {Player}'s score {ScoreId} ({Mods}): risk {Risk}/100 {Reasons}",
-            score.Username, score.ScoreId, verdict.Mods, verdict.RiskScore, string.Join("; ", verdict.Reasons));
-
+        var scan = await _scanner.ScanAsync(services, community, score, path, References, References, cancellationToken).ConfigureAwait(false);
+        var verdict = scan.Verdict;
         var restricted = false;
         if (verdict.RiskScore > _options.RestrictAbove)
             restricted = await RestrictAsync(services, score, verdict, cancellationToken).ConfigureAwait(false);
         if (verdict.RiskScore >= _options.ReportAt && _discord is not null)
-            await _discord.CircleguardAsync(score, verdict, restricted, cancellationToken).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    /// A score's replay as circleguard takes it: lazer's files are whole <c>.osr</c>s; stable's are the
-    /// frames the client uploaded, so their details come from TomYum's own score.
-    /// </summary>
-    private static async Task<CircleguardPlay> PlayAsync(IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, CancellationToken cancellationToken)
-    {
-        var data = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
-        if (!score.IsStable
-            || await community.GetStableScoreAsync(score.ScoreId, cancellationToken).ConfigureAwait(false) is not { } stable
-            || services.GetService<TomYum.Persistence.TomYumDbContext>() is not { } db
-            || await db.Scores.FindAsync([stable.StableScoreId], cancellationToken).ConfigureAwait(false) is not { } own)
-            return new CircleguardPlay(data, FramesOnly: false);
-
-        return new CircleguardPlay(
-            data, FramesOnly: true, Ruleset: own.Mode % 4, Mods: own.Mods, Username: score.Username, MaxCombo: own.MaxCombo,
-            Count300: own.Count300, Count100: own.Count100, Count50: own.Count50, CountGeki: own.CountGeki, CountKatu: own.CountKatu, CountMiss: own.CountMiss);
+            await _discord.CircleguardAsync(score, scan, restricted, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Restricts the player as BanchoBot, like the GMT panel would (not staff: they're only reported).</summary>
