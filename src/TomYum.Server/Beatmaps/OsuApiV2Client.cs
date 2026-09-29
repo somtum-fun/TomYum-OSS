@@ -1,3 +1,4 @@
+using TomYum.Persistence.OsuWeb;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -71,6 +72,41 @@ public sealed class OsuApiV2Client
             _logger.LogWarning(ex, "osu! API v2 lookup failed for beatmap set {SetId}.", setId);
             return null;
         }
+    }
+
+    /// <summary>osu!'s beatmap tags (<c>/api/v2/tags</c>); null when osu! can't be asked.</summary>
+    public async Task<IReadOnlyList<BeatmapTagDefinition>?> GetTagsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+            return null;
+        try
+        {
+            using var json = await GetJsonAsync("api/v2/tags", cancellationToken).ConfigureAwait(false);
+            return json is null ? null : ParseTags(json.RootElement);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        {
+            _logger.LogWarning(ex, "osu! API v2: couldn't get the beatmap tags.");
+            return null;
+        }
+    }
+
+    /// <summary>The tags in a <c>{"tags":[{id, name, ruleset_id, description}]}</c> answer.</summary>
+    internal static IReadOnlyList<BeatmapTagDefinition> ParseTags(JsonElement root)
+    {
+        var tags = new List<BeatmapTagDefinition>();
+        if (!root.TryGetProperty("tags", out var list) || list.ValueKind != JsonValueKind.Array)
+            return tags;
+        foreach (var tag in list.EnumerateArray())
+        {
+            if (!tag.TryGetProperty("id", out var id) || !id.TryGetInt64(out var tagId)
+                || !tag.TryGetProperty("name", out var name) || name.GetString() is not { Length: > 0 } tagName)
+                continue;
+            int? ruleset = tag.TryGetProperty("ruleset_id", out var r) && r.ValueKind == JsonValueKind.Number && r.TryGetInt32(out var rulesetId) ? rulesetId : null;
+            var description = tag.TryGetProperty("description", out var d) && d.ValueKind == JsonValueKind.String ? d.GetString() ?? string.Empty : string.Empty;
+            tags.Add(new(tagId, tagName, ruleset, description));
+        }
+        return tags;
     }
 
     /// <summary>Current nominators (named from <c>related_users</c>) and the description thread's id.</summary>

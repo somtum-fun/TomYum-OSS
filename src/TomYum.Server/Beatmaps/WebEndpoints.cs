@@ -17,15 +17,15 @@ public static class WebEndpoints
         app.MapGet("/web/osu-osz2-getscores.php", HandleGetScoresAsync)
             .RequireHost(hosts);
 
-        // osu!stable rates beatmaps after score submission; just ack it.
-        app.MapGet("/web/osu-rate.php", () => Results.Text("ok", "text/plain"))
+        // The 1-10 rating after playing a map (kept with the website's ratings).
+        app.MapGet("/web/osu-rate.php", HandleRateAsync)
             .RequireHost(hosts);
 
         app.MapGet("/web/osu-getreplay.php", HandleGetReplayAsync)
             .RequireHost(hosts);
 
-        // Last.fm scrobbling and friends list — not implemented, ack to suppress 404s.
-        app.MapGet("/web/lastfm.php", () => Results.Text("-3", "text/plain"))
+        // Last.fm scrobbles (not kept) and the client's hidden anti-cheat flags (Anticheat.ClientFlags).
+        app.MapGet("/web/lastfm.php", HandleLastFmAsync)
             .RequireHost(hosts);
         app.MapScoreSubmission(hosts);
 
@@ -108,7 +108,11 @@ public static class WebEndpoints
             $"{(int)beatmap.Status}|false|{beatmap.Id}|{beatmap.SetId}|{board.Count}|0|"));
         sb.AppendLine("0");
         sb.AppendLine(beatmap.FullName);
-        sb.AppendLine("10.0");
+        // The players' average rating (the website's); 10.0 without the website.
+        var rating = context.RequestServices?.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is { } website
+            ? await website.AverageRatingAsync(beatmap.SetId, cancellationToken).ConfigureAwait(false)
+            : 10.0;
+        sb.AppendLine(rating.ToString("0.0#", CultureInfo.InvariantCulture));
 
         var replayDir = configuration["Replays:Path"] ?? "data/replays";
         var replayDirFull = Path.GetFullPath(replayDir);
@@ -138,6 +142,54 @@ public static class WebEndpoints
         }
 
         return Results.Text(sb.ToString(), "text/plain");
+    }
+
+    /// <summary>
+    /// <c>?u=&amp;p=&amp;c={md5}[&amp;v=1..10]</c>: without <c>v</c>, whether the player may still rate the map
+    /// (<c>ok</c>); with it, their rating. Either way a player who rated gets <c>alreadyvoted</c> and the average.
+    /// </summary>
+    internal static async Task<IResult> HandleRateAsync(HttpContext context, BeatmapService beatmaps, IUserRepository users, IPasswordHasher passwords, CancellationToken cancellationToken)
+    {
+        var query = context.Request.Query;
+        var user = await users.GetBySafeNameAsync(User.MakeSafeName(query["u"].ToString()), cancellationToken).ConfigureAwait(false);
+        if (user is null || query["p"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt))
+            return Results.Text("auth fail", "text/plain", statusCode: StatusCodes.Status401Unauthorized);
+        if (context.RequestServices.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is not { } website)
+            return Results.Text("ok", "text/plain");
+        if (await beatmaps.GetByMd5Async(query["c"].ToString(), cancellationToken).ConfigureAwait(false) is not { } beatmap)
+            return Results.Text("no exist", "text/plain");
+        if (!beatmap.Status.HasLeaderboard())
+            return Results.Text("not ranked", "text/plain");
+
+        double average;
+        if (int.TryParse(query["v"], NumberStyles.None, CultureInfo.InvariantCulture, out var vote) && vote is >= 1 and <= 10)
+        {
+            average = await website.RateAsync(user.Id, beatmap.SetId, vote, cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            var (voted, current) = await website.RatingAsync(user.Id, beatmap.SetId, cancellationToken).ConfigureAwait(false);
+            if (!voted)
+                return Results.Text("ok", "text/plain");
+            average = current;
+        }
+        return Results.Text("alreadyvoted\n" + average.ToString("0.0#", CultureInfo.InvariantCulture), "text/plain");
+    }
+
+    /// <summary>
+    /// <c>?action=&amp;b=&amp;us=&amp;ha=</c>: a scrobble (answered <c>-3</c>, "stop sending"), or, when <c>b</c> is
+    /// <c>a&lt;flags&gt;</c>, the client's anti-cheat flags (<see cref="Anticheat.ClientFlags"/>).
+    /// </summary>
+    internal static async Task<IResult> HandleLastFmAsync(HttpContext context, IUserRepository users, IPasswordHasher passwords, CancellationToken cancellationToken)
+    {
+        var query = context.Request.Query;
+        var user = await users.GetBySafeNameAsync(User.MakeSafeName(query["us"].ToString()), cancellationToken).ConfigureAwait(false);
+        if (user is null || query["ha"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt))
+            return Results.Unauthorized();
+        if (Anticheat.ClientFlags.Parse(query["b"].ToString()) is not { } flags)
+            return Results.Text("-3", "text/plain");
+        await Anticheat.ClientFlags.HandleAsync(context.RequestServices, user, flags, cancellationToken).ConfigureAwait(false);
+        return Results.Text(string.Empty, "text/plain");
     }
 
     private const int SelectedModsBoard = 2;
