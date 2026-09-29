@@ -146,10 +146,7 @@ public sealed class ScoreRecalculation
             return;
 
         var presence = player.Presence;
-        presence.RankedScore = stats.RankedScore;
-        presence.Accuracy = stats.Accuracy;
-        presence.Performance = (short)Math.Clamp((int)stats.Pp, short.MinValue, short.MaxValue);
-        presence.GlobalRank = await _userStats.GetGlobalRankAsync(userId, mode, cancellationToken).ConfigureAwait(false);
+        await new PresenceStats(_userStats, _mirror).FillAsync(presence, userId, mode, stats, cancellationToken).ConfigureAwait(false);
 
         var writer = new BanchoPacketWriter(128);
         LoginResponseBuilder.WriteStats(writer, presence);

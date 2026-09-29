@@ -1,8 +1,7 @@
 # Session plugin (`tomyum.session`) — website auth
 
-> Audience: **people** deploying or extending the Session plugin. Agent-facing internals live in
-> `memories/features/session.md`. This is the human reference for the loose-source plugin at
-> `plugins/tomyum-session/`.
+> Audience: **people** deploying or extending the Session plugin. This is the reference for the
+> loose-source plugin at `plugins/tomyum-session/`.
 
 The Session plugin is TomYum's **website (frontend) authentication layer**: a browser or frontend
 app posts credentials, gets back an opaque session token (also set as a cookie), and uses it to stay

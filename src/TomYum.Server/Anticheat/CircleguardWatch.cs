@@ -102,8 +102,20 @@ public sealed class CircleguardWatch : BackgroundService
                 }
                 continue;
             }
-            _waiting.Remove(entry);
-            await CheckAsync(scope.ServiceProvider, community, entry.Score, path, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await CheckAsync(scope.ServiceProvider, community, entry.Score, path, cancellationToken).ConfigureAwait(false);
+                _waiting.Remove(entry);
+            }
+            catch (IOException ex)
+            {
+                // The spectator server is still writing the replay: next pass, within the wait.
+                if (_time.GetUtcNow() - entry.SeenAt > ReplayWait)
+                {
+                    _waiting.Remove(entry);
+                    _logger.LogWarning(ex, "circleguard: score {ScoreId}'s replay couldn't be read; not checked.", entry.Score.ScoreId);
+                }
+            }
         }
     }
 

@@ -28,6 +28,9 @@ public sealed record PlayerCard(
     bool IsRestricted,
     DateTime JoinedAt);
 
+/// <summary>Where a new best landed on its map: its position, and who was #1 before (null: nobody).</summary>
+public sealed record ScorePlacement(int Position, int? PreviousLeaderId);
+
 /// <summary>A website score (stable or lazer) with its map, for listings and announcements.</summary>
 public sealed record ScoreCard(
     ulong ScoreId,
@@ -275,6 +278,34 @@ public sealed partial class OsuWebCommunity
             return false;
         // Sorted by score, then age: the first row is the #1 the new score replaces.
         return others.Count == 0 || others[0].UserId != (uint)score.UserId;
+    }
+
+    /// <summary>
+    /// Where <paramref name="score"/> placed on its map's leaderboard when it was set: null when it
+    /// isn't a leaderboard play or not the player's new best there; else its position among the
+    /// players' bests (earlier equal scores go first) and who held #1 before it.
+    /// </summary>
+    public async Task<ScorePlacement?> GetPlacementAsync(ScoreCard score, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        if (!score.Passed || !LeaderboardStatuses.Contains(score.BeatmapStatus))
+            return null;
+
+        var sql = $$"""
+            SELECT s.user_id AS UserId, CAST(MAX(s.total_score) AS SIGNED) AS TotalScore, MIN(s.id) AS Id
+            FROM scores s JOIN phpbb_users u ON u.user_id = s.user_id
+            WHERE s.beatmap_id = {0} AND s.ruleset_id = {1} AND s.passed = 1 AND s.preserve = 1 AND {{Visible}} AND s.id < {2}
+            GROUP BY s.user_id
+            """;
+        var bests = await _db.Database.SqlQueryRaw<LeaderRow>(sql, score.BeatmapId, score.Ruleset, score.ScoreId)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (bests.FirstOrDefault(b => b.UserId == (uint)score.UserId) is { } own && own.TotalScore >= score.TotalScore)
+            return null;
+
+        var others = bests.Where(b => b.UserId != (uint)score.UserId).ToList();
+        var position = 1 + others.Count(b => b.TotalScore >= score.TotalScore);
+        var leader = bests.OrderByDescending(b => b.TotalScore).ThenBy(b => b.Id).FirstOrDefault();
+        return new ScorePlacement(position, leader is null ? null : (int)leader.UserId);
     }
 
     /// <summary>Whether ppy's score processor has handled the score (its pp and stats are final).</summary>

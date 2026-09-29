@@ -233,6 +233,9 @@ public sealed class OsuWebMirrorOptions
 }
 
 /// <summary>A player's total pp and accuracy (0-1) on the website.</summary>
+/// <summary>A player's website stats row, as the in-game panel shows it (accuracy 0-1).</summary>
+public sealed record OsuWebStatsCounters(long RankedScore, long TotalScore, int PlayCount, double Pp, float Accuracy);
+
 public sealed record OsuWebPerformance(double Pp, float Accuracy);
 
 /// <summary>

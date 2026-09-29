@@ -151,6 +151,8 @@ if (databaseOptions.UseOsuWebAccounts)
     // Website chat ↔ in-game chat.
     builder.Services.AddSingleton<OsuWebChatBridge>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<OsuWebChatBridge>());
+    // Recent activity "achieved rank #N" entries and #1s in #announce, for stable and lazer plays.
+    builder.Services.AddHostedService<ScoreRankEvents>();
     builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     // Beatmap submission from the game clients (stable's .osz2, lazer's submission service).
@@ -162,6 +164,7 @@ else
 {
     builder.Services.AddSingleton<IOsuWebSync, NoOsuWebSync>();
 }
+builder.Services.AddScoped<PresenceStats>();
 builder.Services.AddScoped<BanchoLoginHandler>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddTomYumCaching(builder.Configuration);

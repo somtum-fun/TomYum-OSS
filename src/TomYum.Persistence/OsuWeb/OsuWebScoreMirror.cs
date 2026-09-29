@@ -401,6 +401,34 @@ public sealed class OsuWebScoreMirror
         return updated == 0 ? null : new OsuWebPerformance(pp, (float)(accuracy / 100.0));
     }
 
+    /// <summary>
+    /// The player's numbers on the website (stable and lazer together): what the in-game panel shows,
+    /// so both clients and the profile agree. Null without a stats row.
+    /// </summary>
+    public async Task<OsuWebStatsCounters?> ReadCountersAsync(int userId, int mode, CancellationToken cancellationToken = default)
+    {
+        var table = OsuWebScores.StatsTable(mode);
+        var sql = "SELECT CAST(ranked_score AS SIGNED) AS RankedScore, CAST(total_score AS SIGNED) AS TotalScore, "
+                  + "CAST(playcount AS SIGNED) AS PlayCount, rank_score AS Pp, accuracy_new AS Accuracy FROM `" + table + "` WHERE user_id = {0}";
+        var rows = await _osuWeb.Database.SqlQueryRaw<CountersRow>(sql, (uint)userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Count == 0
+            ? null
+            : new OsuWebStatsCounters(rows[0].RankedScore, rows[0].TotalScore, (int)rows[0].PlayCount, rows[0].Pp, rows[0].Accuracy / 100f);
+    }
+
+    private sealed class CountersRow
+    {
+        public long RankedScore { get; set; }
+
+        public long TotalScore { get; set; }
+
+        public long PlayCount { get; set; }
+
+        public float Pp { get; set; }
+
+        public float Accuracy { get; set; }
+    }
+
     /// <summary>The player's total pp and accuracy (0-1) on the website, or null without a stats row.</summary>
     public async Task<OsuWebPerformance?> ReadPerformanceAsync(int userId, int mode, CancellationToken cancellationToken = default)
     {

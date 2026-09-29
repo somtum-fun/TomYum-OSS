@@ -70,7 +70,7 @@ public sealed class OsuWebPerformanceSync
         return performance;
     }
 
-    /// <summary>Re-sends the player's stats (from TomYum's stats) to everyone in-game, if they're online in <paramref name="mode"/>.</summary>
+    /// <summary>Re-sends the player's stats (the website's, see <see cref="PresenceStats"/>) to everyone in-game, if they're online in <paramref name="mode"/>.</summary>
     public async Task RefreshPresenceAsync(int userId, int mode, CancellationToken cancellationToken = default)
     {
         if (_registry.GetByUserId(userId) is not { } player || player.Presence.GameMode != mode)
@@ -78,12 +78,7 @@ public sealed class OsuWebPerformanceSync
 
         var stats = await _userStats.GetOrCreateAsync(userId, mode, cancellationToken).ConfigureAwait(false);
         var presence = player.Presence;
-        presence.RankedScore = stats.RankedScore;
-        presence.TotalScore = stats.TotalScore;
-        presence.PlayCount = stats.PlayCount;
-        presence.Accuracy = stats.Accuracy;
-        presence.Performance = (short)Math.Clamp((int)stats.Pp, short.MinValue, short.MaxValue);
-        presence.GlobalRank = await _userStats.GetGlobalRankAsync(userId, mode, cancellationToken).ConfigureAwait(false);
+        await new PresenceStats(_userStats, _mirror).FillAsync(presence, userId, mode, stats, cancellationToken).ConfigureAwait(false);
 
         var writer = new BanchoPacketWriter(128);
         LoginResponseBuilder.WriteStats(writer, presence);
