@@ -309,6 +309,16 @@ if (circleguardOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
 // Where players log in to the game from (staff see it on Discord's /user).
 builder.Services.AddSingleton(sp => new LoginIps(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
 
+// IRC (osu!-style, port 6667): chat and bots from IRC clients; passwords from BanchoBot's !irc.
+builder.Services.AddSingleton(sp => new TomYum.Server.Irc.IrcTokens(sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
+var ircOptions = new TomYum.Server.Irc.IrcOptions();
+builder.Configuration.GetSection(TomYum.Server.Irc.IrcOptions.SectionName).Bind(ircOptions);
+if (string.IsNullOrWhiteSpace(ircOptions.ServerName))
+    ircOptions.ServerName = "irc." + (BanchoHosts.ResolveDomain(builder.Configuration) is { Length: > 0 } ircDomain ? ircDomain : "localhost");
+builder.Services.AddSingleton(ircOptions);
+if (ircOptions.Enabled)
+    builder.Services.AddHostedService<TomYum.Server.Irc.IrcServer>();
+
 // The Discord bot (docs/discord.md): runs when Discord:Token and Discord:GuildId are set.
 var discordOptions = TomYum.Server.Discord.DiscordOptions.Read(builder.Configuration.GetSection(TomYum.Server.Discord.DiscordOptions.SectionName));
 if (discordOptions.IsConfigured)

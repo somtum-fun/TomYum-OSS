@@ -152,7 +152,7 @@ accounts, chat and leaderboards with them._
       from lazer's editor (Phase 5). 2026-09-28
 - [x] Shared leaderboards (stable scores standardised for lazer; lazer scores for stable's website view),
       lazer score submission, lazer beatmap submission.
-- [ ] Relax on lazer — lazer ranks relax scores differently; stable relax stays TomYum-only.
+- [x] Relax on lazer — lazer RX plays go on TomYum's relax leaderboards with relax pp and stats. 2026-09-29
 - [x] Deployment — players use the stock lazer client with the injection ruleset (docs/lazer.md).
 
 ## osu-web website 🔒 Phase A: none · Phase B: decisions below
@@ -209,7 +209,8 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
 - [ ] Storage providers multi-target write / single read — needed for Phase 5 upload; ADR-0006.
 - [x] **Anticheat** — circleguard (sundeiii/lazer-circleguard, C#) checks every ranked pass, stable and
       lazer, incl. against osu!'s top replays (docs/anticheat.md). 2026-09-29
-- [ ] **IRC server** (`src/TomYum.Irc` is a placeholder).
+- [x] **IRC server** (docs/irc.md): port 6667, passwords from BanchoBot's `!irc`, the game's chat
+      handlers behind it. 2026-09-29
 
 ---
 

@@ -91,6 +91,9 @@ services:
         PROJECT: src/TomYum.Server/TomYum.Server.csproj
     restart: unless-stopped
     env_file: tomyum.env
+    # IRC (docs/irc.md): raw TCP, so not through the Cloudflare tunnel; this opens it on the VM.
+    ports:
+      - "${IRC_PORT:-6667}:6667"
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
