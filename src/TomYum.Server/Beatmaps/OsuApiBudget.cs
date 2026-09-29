@@ -31,6 +31,21 @@ public sealed class OsuApiBudget : IDisposable
 
     public int PerMinute { get; }
 
+    private DateTimeOffset _pausedUntil = DateTimeOffset.MinValue;
+
+    /// <summary>Whether the service asked us to stop for now (see <see cref="Pause"/>).</summary>
+    public bool IsPaused => _time.GetUtcNow() < _pausedUntil;
+
+    /// <summary>When a pause ends.</summary>
+    public DateTimeOffset PausedUntil => _pausedUntil;
+
+    /// <summary>No requests until <paramref name="until"/> (a 429's Retry-After, a block).</summary>
+    public void Pause(DateTimeOffset until)
+    {
+        if (until > _pausedUntil)
+            _pausedUntil = until;
+    }
+
     /// <summary>Requests made in the last minute.</summary>
     public int UsedLastMinute
     {

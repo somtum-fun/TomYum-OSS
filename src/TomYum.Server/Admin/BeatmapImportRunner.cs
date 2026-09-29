@@ -140,6 +140,9 @@ public sealed class BeatmapImportRunner : BackgroundService
 
         job.Total = setIds.Count;
         job.Status = "running";
+        // Many sets at once: the beatmap mirror counts that as crawling, so this asks osu! (paced by the
+        // shared budget, so a big job takes a while).
+        using var _ = Beatmaps.BeatmapMirror.Bypass();
         foreach (var setId in setIds)
         {
             cancellationToken.ThrowIfCancellationRequested();

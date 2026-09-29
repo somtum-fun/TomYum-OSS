@@ -99,6 +99,40 @@ public sealed class OsuApiBudgetAndMirrorTests
         Assert.Contains("/api/v2/b/77", mirrorCalls);
     }
 
+    [Fact]
+    public async Task A429_PausesTheMirrorUntilItsRetryAfter_AndBulkJobsNeverAskIt()
+    {
+        var calls = 0;
+        var retryAt = DateTimeOffset.UtcNow.AddMinutes(5);
+        var pace = new OsuApiBudget(TimeProvider.System, 1000);
+        var mirror = new BeatmapMirror(
+            new HttpClient(new Stub(_ =>
+            {
+                calls++;
+                return (HttpStatusCode.TooManyRequests, "{}");
+            }, retryAt)) { BaseAddress = new Uri("https://catboy.best/") },
+            new MirrorOptions(), pace, NullLogger<BeatmapMirror>.Instance);
+
+        Assert.Null(await mirror.GetByIdAsync(1));
+        Assert.True(pace.IsPaused);
+        Assert.Equal(retryAt.ToUnixTimeSeconds(), pace.PausedUntil.ToUnixTimeSeconds());
+        Assert.Null(await mirror.GetByIdAsync(2));   // not asked while paused
+        Assert.Equal(1, calls);
+
+        var fresh = new BeatmapMirror(
+            new HttpClient(new Stub(_ =>
+            {
+                calls++;
+                return (HttpStatusCode.OK, SetJson);
+            })) { BaseAddress = new Uri("https://catboy.best/") },
+            new MirrorOptions(), new OsuApiBudget(TimeProvider.System, 1000), NullLogger<BeatmapMirror>.Instance);
+        using (BeatmapMirror.Bypass())
+            Assert.Empty(await fresh.GetSetAsync(2476607));
+        Assert.Equal(1, calls);
+        Assert.Single(await fresh.GetSetAsync(2476607));   // asked again once the job is over
+        Assert.Equal(2, calls);
+    }
+
     private static string BeatmapWithSet()
     {
         using var set = JsonDocument.Parse(SetJson);
@@ -106,12 +140,15 @@ public sealed class OsuApiBudgetAndMirrorTests
         return map.TrimEnd('}') + ", \"set\": " + SetJson + "}";
     }
 
-    private sealed class Stub(Func<string, (HttpStatusCode Status, string Body)> answer) : HttpMessageHandler
+    private sealed class Stub(Func<string, (HttpStatusCode Status, string Body)> answer, DateTimeOffset? retryAt = null) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var (status, body) = answer(request.RequestUri!.AbsolutePath);
-            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
+            var response = new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") };
+            if (retryAt is { } at)
+                response.Headers.TryAddWithoutValidation("Retry-After", at.UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ", System.Globalization.CultureInfo.InvariantCulture));
+            return Task.FromResult(response);
         }
     }
 }

@@ -44,6 +44,8 @@ public sealed class BeatmapsetExtrasBackfill : BackgroundService
             .OrderBy(s => s.BeatmapsetId).Select(s => (int)s.BeatmapsetId)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         var updated = 0;
+        // Every set: the mirror would count that as crawling, so osu! (paced by the shared budget).
+        using var _ = TomYum.Server.Beatmaps.BeatmapMirror.Bypass();
         foreach (var setId in sets)
         {
             if (await api.GetBeatmapsetExtrasAsync(setId, cancellationToken).ConfigureAwait(false) is not { } extras)

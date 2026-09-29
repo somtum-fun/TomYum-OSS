@@ -168,6 +168,9 @@ accounts, chat and leaderboards with them._
       pools (the spectator server fills them with featured-artist maps; extra maps added there), news posts
       (osu-wiki markdown, not synced from GitHub). The changelog from git history (`deploy/production/changelog.sh`,
       run by `deploy.sh`); popular beatmaps from this week's plays. 2026-09-29
+- [x] One osu! API budget for the whole server (50 requests a minute; osu! asks for at most 60) and map
+      lookups from catboy.best first (osu!'s v2 format; paused on a 429 until Retry-After, an hour on a
+      403; bulk imports and backfills skip it, since Mino counts sweeping many sets as crawling). 2026-09-29
 - [ ] Stable tournament client (`TournamentMatchInfoRequest`, match channel join/leave); lazer Quick Play
       (matchmaking pools: none set up yet).
 
