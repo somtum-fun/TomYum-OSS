@@ -184,11 +184,27 @@ builder.Services.AddTomYumCaching(builder.Configuration);
 var osuOptions = new OsuApiOptions();
 builder.Configuration.GetSection(OsuApiOptions.SectionName).Bind(osuOptions);
 builder.Services.AddSingleton(osuOptions);
-builder.Services.AddHttpClient<IOsuApiClient, OsuApiClient>(http =>
+// Everything asking osu!'s API shares one budget (osu! asks for at most 60 requests a minute);
+// map lookups ask the beatmap mirror (catboy.best) first, so most never reach osu!.
+builder.Services.AddSingleton(new OsuApiBudget(TimeProvider.System,
+    builder.Configuration.GetValue("Osu:RequestsPerMinute", OsuApiBudget.DefaultPerMinute)));
+builder.Services.AddTransient<OsuApiBudgetHandler>();
+var beatmapMirrorOptions = new MirrorOptions();
+builder.Configuration.GetSection(MirrorOptions.SectionName).Bind(beatmapMirrorOptions);
+builder.Services.AddSingleton(beatmapMirrorOptions);
+builder.Services.AddKeyedSingleton(BeatmapMirror.PaceKey, new OsuApiBudget(TimeProvider.System, beatmapMirrorOptions.RequestsPerMinute));
+builder.Services.AddHttpClient<BeatmapMirror>(http =>
+{
+    http.BaseAddress = new Uri(beatmapMirrorOptions.Url.TrimEnd('/') + "/");
+    http.Timeout = TimeSpan.FromSeconds(10);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd(BeatmapMirror.UserAgent);
+});
+builder.Services.AddHttpClient<OsuApiClient>(http =>
 {
     http.BaseAddress = new Uri(osuOptions.BaseUrl);
-    http.Timeout = TimeSpan.FromSeconds(10);
-});
+    http.Timeout = TimeSpan.FromSeconds(30);
+}).AddHttpMessageHandler<OsuApiBudgetHandler>();
+builder.Services.AddTransient<IOsuApiClient, MirrorFirstOsuApiClient>();
 builder.Services.AddSingleton<BeatmapService>();
 // Custom (uploaded) beatmap sets: stored and served by this server (docs/custom-beatmaps.md).
 builder.Services.AddSingleton<CustomBeatmapStore>();
@@ -198,8 +214,8 @@ builder.Services.AddScoped<CustomBeatmapImporter>();
 builder.Services.AddHttpClient<OsuApiV2Client>(http =>
 {
     http.BaseAddress = new Uri("https://osu.ppy.sh/");
-    http.Timeout = TimeSpan.FromSeconds(15);
-});
+    http.Timeout = TimeSpan.FromSeconds(30);
+}).AddHttpMessageHandler<OsuApiBudgetHandler>();
 
 // --- Pluggable pp engine (ADR-0010) ---
 // RoutingPerformanceCalculator dispatches per gamemode to the configured backend (in-process
@@ -310,7 +326,8 @@ if (circleguardOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
 {
     builder.Services.AddSingleton(circleguardOptions);
     builder.Services.AddHttpClient<TomYum.Server.Anticheat.CircleguardClient>(http => http.Timeout = TimeSpan.FromMinutes(2));
-    builder.Services.AddHttpClient<TomYum.Server.Anticheat.OfficialReplays>(http => http.Timeout = TimeSpan.FromSeconds(20));
+    builder.Services.AddHttpClient<TomYum.Server.Anticheat.OfficialReplays>(http => http.Timeout = TimeSpan.FromSeconds(60))
+        .AddHttpMessageHandler<OsuApiBudgetHandler>();
     builder.Services.AddSingleton<TomYum.Server.Anticheat.CircleguardScanner>();
     builder.Services.AddHostedService<TomYum.Server.Anticheat.CircleguardWatch>();
 }

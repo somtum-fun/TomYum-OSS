@@ -26,6 +26,7 @@ public sealed class OsuApiV2Client
     private const string DescriptionSeparator = "---------------";
 
     private readonly HttpClient _http;
+    private readonly BeatmapMirror? _mirror;
     private readonly OsuApiOptions _options;
     private readonly ILogger<OsuApiV2Client> _logger;
     // Typed clients are created per use: the token is shared by the process.
@@ -33,8 +34,9 @@ public sealed class OsuApiV2Client
     private static string? _token;
     private static DateTimeOffset _tokenExpires;
 
-    public OsuApiV2Client(HttpClient http, OsuApiOptions options, ILogger<OsuApiV2Client> logger)
+    public OsuApiV2Client(HttpClient http, OsuApiOptions options, ILogger<OsuApiV2Client> logger, BeatmapMirror? mirror = null)
     {
+        _mirror = mirror;
         _http = http;
         _options = options;
         _logger = logger;
@@ -51,7 +53,9 @@ public sealed class OsuApiV2Client
 
         try
         {
-            using var set = await GetJsonAsync($"api/v2/beatmapsets/{setId}", cancellationToken).ConfigureAwait(false);
+            // The mirror has osu!'s answer for the set; osu! is asked only when it doesn't.
+            using var set = (_mirror is { IsEnabled: true } ? await _mirror.GetSetJsonAsync(setId, cancellationToken).ConfigureAwait(false) : null)
+                ?? await GetJsonAsync($"api/v2/beatmapsets/{setId}", cancellationToken).ConfigureAwait(false);
             if (set is null)
                 return null;
 
