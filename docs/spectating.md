@@ -1,7 +1,6 @@
 # Spectating (osu!stable)
 
-> Audience: **people** operating or contributing to TomYum. Agent-facing internals live in
-> `memories/features/spectating.md`.
+> Audience: **people** operating or contributing to TomYum.
 
 TomYum supports osu!stable **spectating** — one player watches another play in real time, with the
 watched player's gameplay frames relayed to every spectator. Multiple people can watch the same host
@@ -68,4 +67,4 @@ teardown path today; when a reaper lands it will share the same teardown.)
 - Closing the `#spectator` tab by hand (without stopping spectating) isn't specially handled — the
   channel is managed by the spectate flow, not by manual channel join/part, exactly like `#multiplayer`.
 
-See also: `memories/features/spectating.md` (internals), `memories/protocols/` (packet ground truth).
+See also: `src/TomYum.Server/Bancho/SpectatorManager.cs` (internals).

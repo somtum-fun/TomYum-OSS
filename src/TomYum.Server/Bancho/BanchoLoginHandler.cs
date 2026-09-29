@@ -30,6 +30,7 @@ public sealed class BanchoLoginHandler
     private readonly TomYum.Plugins.Abstractions.IEventBus? _events;
     private readonly IClientHashRepository? _clientHashes;
     private readonly IStaffLogRepository? _staffLog;
+    private readonly PresenceStats? _presenceStats;
 
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
@@ -51,8 +52,10 @@ public sealed class BanchoLoginHandler
         ILogger<BanchoLoginHandler> logger,
         TomYum.Plugins.Abstractions.IEventBus? events = null,
         IClientHashRepository? clientHashes = null,
-        IStaffLogRepository? staffLog = null)
+        IStaffLogRepository? staffLog = null,
+        PresenceStats? presenceStats = null)
     {
+        _presenceStats = presenceStats;
         _users = users;
         _passwordHasher = passwordHasher;
         _userStats = userStats;
@@ -121,17 +124,7 @@ public sealed class BanchoLoginHandler
             CountryCode = CountryCodes.ToNumeric(resolvedCountry),
         };
 
-        var stats = await _userStats.GetAsync(user.Id, presence.Mode, cancellationToken).ConfigureAwait(false);
-        if (stats is not null)
-        {
-            var rank = await _userStats.GetGlobalRankAsync(user.Id, presence.Mode, cancellationToken).ConfigureAwait(false);
-            presence.RankedScore = stats.RankedScore;
-            presence.TotalScore  = stats.TotalScore;
-            presence.PlayCount   = stats.PlayCount;
-            presence.Accuracy    = stats.Accuracy;
-            presence.Performance = (short)Math.Clamp((int)stats.Pp, short.MinValue, short.MaxValue);
-            presence.GlobalRank  = rank;
-        }
+        await (_presenceStats ?? new PresenceStats(_userStats)).FillAsync(presence, user.Id, presence.Mode, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var player = _registry.Add(presence);
         player.IsRestricted = user.IsRestricted;

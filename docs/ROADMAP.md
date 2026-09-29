@@ -1,16 +1,15 @@
 # TomYum Roadmap & TODO (human-facing)
 
-> **Docs convention.** `docs/` is for **humans** (contributors, operators). `memories/` is for
-> **AI agents** (dense protocol facts, ADRs, library notes). Same feature → two notes: a
-> human page in `docs/`, an agent note in `memories/`. Don't mix them.
+> **Docs convention.** `docs/` holds the documentation (contributors, operators): one page per
+> feature, plus this checklist.
 
-_Last updated: 2026-07-07. Baseline: `0.0.1-dev`, 122 tests green, .NET 10, 20 projects._
+_Last updated: 2026-09-29. .NET 10; production at sundei.eu (stable, lazer and the website)._
 
 This is the living checklist for the big feature wave requested on 2026-07-07: `.osu` cache →
 plugin host → moderation/HWID → spectating → DAN/Session ports → custom beatmaps → **osu!lazer
 support**. Work top-to-bottom; each box is committed + tested on its own so any mistake reverts
-cleanly. Deferred by explicit decision: **IRC** (do lazer+stable first) and **circleguard**
-(no ML anti-cheat yet).
+cleanly. Deferred by explicit decision: **IRC** (do lazer+stable first). circleguard was deferred
+too and is now done (Anticheat, below).
 
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 blocked-by · ⚖️ decision needed.
 
@@ -23,8 +22,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 blocked-by · ⚖�
 - [x] **PP sidecar smoke test + go-live** — `smoke-test.sh`, `pp-sidecar` compose service (persistent
       volume + healthcheck), startup readiness log. Verified 11.70pp / 2.42pp, cache write. `bd1d2e1`
 - [x] ⚖️ **Version bump** → **`0.1.0-dev`** (minor; opens the feature wave; no MAJOR until `1.0.0`). `bd1d2e1`
-- [ ] **EF Core migrations bootstrap** — repo currently has **no migrations** (schema hand-managed).
-      Every table below (client_hashes, restrictions, sessions, mapsets…) needs this first.
+- [x] **EF Core migrations** — `src/TomYum.Persistence/Migrations` (InitialCreate 2026-09-27, then one
+      per change: client hashes, Discord links, official medal ids, custom beatmap sets).
 
 ## Phase 1 — Plugin host 🔒 Phase 0 migrations for `IPluginDataAccess`
 _ABI already exists (`TomYum.Plugins.Abstractions`); ADR-0007 already picks `.dll` (AssemblyLoadContext)
@@ -48,7 +47,7 @@ _ABI already exists (`TomYum.Plugins.Abstractions`); ADR-0007 already picks `.dl
       [somtum-fun/tomyum-plugin-template](https://github.com/somtum-fun/tomyum-plugin-template) (compiled +
       loose shapes + `docs/writing-plugins.md`). It is example code, **not required** by the server, so it
       is **not tracked** in TomYum (a local copy under `templates/` is gitignored). Human docs
-      `docs/plugins.md` + agent docs `memories/features/plugins.md` remain here.
+      `docs/plugins.md` remain here.
 
 ## Phase 2 — Moderation + HWID anti-cheat 🔒 Phase 0 migrations
 _All packet IDs exist (`AccountRestricted=104`, `UserSilenced=94`, `SilenceEnd=92`, `TargetIsSilenced=101`).
@@ -93,7 +92,7 @@ _Core watch-and-relay done 2026-07-08 (`docs/spectating.md`). 143 tests. Chat ch
 - [ ] Publish `SpectateFrameEvent` on the plugin bus (lands with the DAN plugin, Phase 4).
 
 ## Phase 4 — DAN mode + Session plugins (ports) 🔒 Phase 1 + Phase 3
-_Clean-room reimplementation from `memories/features/dan-mode.md` + `session.md` (fork is GPL — behavior only)._
+_Clean-room reimplementations of the old server's DAN mode and session.py (that fork is GPL — behaviour only)._
 
 - [ ] **DAN mode** plugin — mania clear validator: bot spectates on `CHANGE_ACTION`, taints on pause
       frame, vetoes score submit; `is_dan` per-diff flag + set-granularity tag endpoint; transient per-login state.
@@ -131,8 +130,9 @@ served everywhere (docs/custom-beatmaps.md)._
       the background. 2026-09-28
 
 ## Phase 6 — Command framework refactor (polish, optional)
-- [ ] Sunrise-style `[ChatCommand(name, prefix, priv, isGlobal, isHidden)]` + reflection discovery;
-      unify core + plugin commands into one registry; `(bool toPlayer, string response)` reply shape.
+- [x] Sunrise-style `[ChatCommand(name, Usage, Help, Access, Hidden)]` on BanchoBot's command methods,
+      found by reflection (`ChatCommandTable`); `!help` is generated from them (plugin commands listed
+      too), and plugins can't take a built-in name. 2026-09-29
 
 ## Phase 7 — osu!lazer support ✅ (done differently: ppy's own services + osu-web)
 _The plan below was to build lazer's server inside TomYum. Instead lazer runs on ppy's open-source
@@ -178,7 +178,12 @@ uses its tables. Human doc: `docs/osu-web.md`._
       pushed to the website search via InterOp. Local end-to-end guide: `docs/local-testing.md`.
 - [ ] **Phase B, rest:** TomYum reads scores (and medals) from osu-web → beatmaps become osu-web-only
       (RecalcPp follows). Replaces the EF-migrations item in Phase 0 for these tables.
-- [ ] Phase 7 rescope: osu-web already serves `/api/v2` + `/oauth/token`; TomYum keeps the realtime hubs.
+- [x] Phase 7 rescope: osu-web serves `/api/v2` + `/oauth/token`, ppy's spectator server the realtime hubs.
+- [x] **Daily challenge** — osu-web opens the room each day; TomYum keeps its queue filled and the
+      Discord bot announces and settles it (docs/lazer.md). 2026-09-29
+- [x] **Stable matches the website** — the stable panel shows the website's combined numbers (so level,
+      ranked score and pp match lazer and the profile); stable and lazer plays both get "achieved rank
+      #N" activity entries (top 1000) and #1s in `#announce`. 2026-09-29
 
 ## Achievements (medals) 🔒 (none) — done 2026-07-09
 _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are a later Session slice._
@@ -191,8 +196,9 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
 - [x] Medal icon proxy (`AssetsEndpoints`, `assets.<domain>`): devserver rewrites `assets.ppy.sh` →
       `assets.<domain>`, so icons are cache-and-served from ppy's CDN → `data/assets/medals/client`.
       Traversal-guarded; 13 tests; verified live (cold/cache-hit/@2x=200, unknown/traversal=404).
-- [ ] Deferred: restricted gate (Phase 2), mod-adjusted star rating, custom medals (Session plugin),
-      `!medals`/profile listing.
+- [x] Restricted gate (Phase 2), mod-adjusted star rating (medals, score cards, `/np`), medal listing
+      (website profiles, Discord `/medals`).
+- [ ] Custom medals.
 
 ## Cross-cutting infra (interleave as needed)
 - [x] **Discord bot** (docs/discord.md): slash commands, two-way `#osu` relay, announcements
@@ -200,11 +206,13 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
       group roles, staff user/server log channels. 2026-09-28.
 - [ ] Redis cross-node online state (multi-instance) — needed before scaling lazer realtime; ADR-0003.
 - [ ] Storage providers multi-target write / single read — needed for Phase 5 upload; ADR-0006.
-- [ ] Fix stale `AGENTS.md` (.NET 8 → .NET 10) and stale `memories/libraries/TomYum.Performance.md`.
+- [x] **Anticheat** — circleguard (sundeiii/lazer-circleguard, C#) checks every ranked pass, stable and
+      lazer, incl. against osu!'s top replays (docs/anticheat.md). 2026-09-29
+- [ ] **IRC server** (`src/TomYum.Irc` is a placeholder).
 
 ---
 
 ### Working rules (agreed 2026-07-07)
 - Commit every slice (revertable). Test every slice. Warnings are errors.
-- Every feature ships **two docs** (human in `docs/`, agent in `memories/`) and updates this checklist.
+- Every feature ships a page in `docs/` (or updates one) and updates this checklist.
 - Think/question/plan **then** build. Keep it contributor-friendly — a human must be able to pick it up.

@@ -73,8 +73,19 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
     public async Task<ulong?> SendAsync(ulong channelId, DiscordPost post, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(post);
-        if (channelId == 0 || !IsConnected)
+        if (channelId == 0)
             return null;
+        if (!IsConnected)
+        {
+            // Mid-reconnect (Discord asks for one every so often): wait a moment rather than drop it.
+            for (var waited = 0; waited < 20 && !IsConnected; waited++)
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+            if (!IsConnected)
+            {
+                _logger.LogWarning("Discord: not connected; a post to channel {ChannelId} was dropped.", channelId);
+                return null;
+            }
+        }
         try
         {
             if (Channel(channelId) is not { } channel)
@@ -93,6 +104,7 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
                 allowedMentions: AllowedMentions.None,
                 components: Components(post.Buttons),
                 options: options).ConfigureAwait(false);
+            _logger.LogInformation("Discord: posted to channel {ChannelId}: {Summary}", channelId, Summary(post));
             return message.Id;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -201,6 +213,14 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
         {
             _logger.LogDebug(ex, "Discord: couldn't set the bot's status.");
         }
+    }
+
+    /// <summary>A short line saying what a post was, for the log.</summary>
+    private static string Summary(DiscordPost post)
+    {
+        var text = post.Content ?? post.Embed?.Title ?? post.Embed?.AuthorName ?? post.Embed?.Description ?? string.Empty;
+        text = text.ReplaceLineEndings(" ");
+        return text.Length > 80 ? text[..80] + "…" : text;
     }
 
     private SocketTextChannel? Channel(ulong channelId)

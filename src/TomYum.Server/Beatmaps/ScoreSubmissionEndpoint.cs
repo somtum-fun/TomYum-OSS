@@ -354,12 +354,8 @@ public static class ScoreSubmissionEndpoint
             var presence = player.Presence;
             if (gameMode == presence.GameMode)
             {
-                presence.RankedScore = stats.RankedScore;
-                presence.TotalScore = stats.TotalScore;
-                presence.PlayCount = stats.PlayCount;
-                presence.Accuracy = stats.Accuracy;
-                presence.Performance = (short)Math.Clamp((int)stats.Pp, short.MinValue, short.MaxValue);
-                presence.GlobalRank = globalRank;
+                var filler = context.RequestServices.GetService<PresenceStats>() ?? new PresenceStats(userStats);
+                await filler.FillAsync(presence, user.Id, gameMode, stats, cancellationToken).ConfigureAwait(false);
 
                 var writer = new BanchoPacketWriter(128);
                 LoginResponseBuilder.WriteStats(writer, presence);

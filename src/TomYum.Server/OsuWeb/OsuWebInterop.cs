@@ -45,6 +45,28 @@ public sealed class OsuWebInterop
         return true;
     }
 
+    /// <summary>
+    /// The "achieved rank #N on …" activity entry, as osu! writes it
+    /// (<c>POST /_lio/users/{user}/{beatmap}/{ruleset}/rank-achieved</c>); <paramref name="grade"/> is the
+    /// score's grade (<c>X</c>, <c>SH</c>, <c>A</c>, …), <paramref name="stable"/> whether it's a stable score.
+    /// </summary>
+    public async Task RankAchievedAsync(int userId, int beatmapId, int ruleset, int position, string grade, bool stable, CancellationToken cancellationToken = default)
+    {
+        var path = string.Create(CultureInfo.InvariantCulture,
+            $"/_lio/users/{userId}/{beatmapId}/{ruleset}/rank-achieved?position_after={position}&rank={Uri.EscapeDataString(grade)}&legacy_score_event={(stable ? 1 : 0)}");
+        using var response = await PostAsync(path, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>The "has lost first place on …" activity entry (<c>POST /_lio/users/{user}/{beatmap}/{ruleset}/first-place-lost</c>).</summary>
+    public async Task FirstPlaceLostAsync(int userId, int beatmapId, int ruleset, bool stable, CancellationToken cancellationToken = default)
+    {
+        var path = string.Create(CultureInfo.InvariantCulture,
+            $"/_lio/users/{userId}/{beatmapId}/{ruleset}/first-place-lost?legacy_score_event={(stable ? 1 : 0)}");
+        using var response = await PostAsync(path, cancellationToken).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>Puts a user into osu-web's search index (<c>POST /_lio/user-index/{user}</c>).</summary>
     public async Task IndexUserAsync(int userId, CancellationToken cancellationToken = default)
     {
@@ -146,7 +168,8 @@ public sealed class OsuWebInterop
             throw new InvalidOperationException("osu-web InterOp isn't configured (OsuWeb:InteropUrl / OsuWeb:InteropSecret).");
 
         var timestamp = _time.GetUtcNow().ToUnixTimeSeconds();
-        var url = string.Create(CultureInfo.InvariantCulture, $"{_options.InteropUrl!.TrimEnd('/')}{path}?timestamp={timestamp}");
+        var separator = path.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        var url = string.Create(CultureInfo.InvariantCulture, $"{_options.InteropUrl!.TrimEnd('/')}{path}{separator}timestamp={timestamp}");
         // HMAC-SHA1 is what osu-web verifies (LegacyInterOpAuth: hash_hmac('sha1', ...)); not our choice.
 #pragma warning disable CA5350
         var hash = HMACSHA1.HashData(Encoding.UTF8.GetBytes(_options.InteropSecret!), Encoding.UTF8.GetBytes(url));

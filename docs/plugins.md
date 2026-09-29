@@ -1,7 +1,7 @@
 # Writing TomYum plugins (human guide)
 
-> Audience: **people** writing or deploying plugins. The agent-facing internals (host wiring,
-> seams, type identity rules) live in `memories/features/plugins.md`.
+> Audience: **people** writing or deploying plugins. The host's internals are in
+> `src/TomYum.Server/Plugins/` and `src/TomYum.Plugins.Loader/`.
 
 TomYum loads plugins at startup from a `plugins/` directory. A plugin is a small piece of code that
 hooks into the server through one interface — `IPluginContext` — and can add commands, react to
@@ -118,4 +118,4 @@ plugins:
   plugins. But test yours.
 - Trusted DB access is powerful and unguarded — only ask the operator for it if you truly own tables.
 
-See also: ADR-0007 (`memories/architecture/decisions/0007-plugin-model.md`).
+See also: the plugin template, [somtum-fun/tomyum-plugin-template](https://github.com/somtum-fun/tomyum-plugin-template).

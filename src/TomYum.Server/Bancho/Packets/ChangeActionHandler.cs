@@ -46,14 +46,8 @@ public sealed class ChangeActionHandler : IClientPacketHandler
             presence.GameMode = newGameMode;
             var userStats = context.Services.GetRequiredService<IUserStatsRepository>();
             var stats = await userStats.GetOrCreateAsync(context.Player.UserId, newGameMode, cancellationToken).ConfigureAwait(false);
-            var rank  = await userStats.GetGlobalRankAsync(context.Player.UserId, newGameMode, cancellationToken).ConfigureAwait(false);
-
-            presence.RankedScore = stats.RankedScore;
-            presence.TotalScore  = stats.TotalScore;
-            presence.Accuracy    = stats.Accuracy;
-            presence.PlayCount   = stats.PlayCount;
-            presence.Performance = (short)Math.Clamp((int)stats.Pp, short.MinValue, short.MaxValue);
-            presence.GlobalRank  = rank;
+            var filler = context.Services.GetService<PresenceStats>() ?? new PresenceStats(userStats);
+            await filler.FillAsync(presence, context.Player.UserId, newGameMode, stats, cancellationToken).ConfigureAwait(false);
         }
 
         // Encode the refreshed stats once, then fan out: everyone else gets it queued, and the
