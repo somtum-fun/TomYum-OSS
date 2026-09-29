@@ -161,6 +161,9 @@ accounts, chat and leaderboards with them._
       and the user panel's update filter (`ReceiveUpdates`: all / friends / none). 2026-09-29
 - [x] Request log for the website/API and lazer hosts (Caddy, rotated in its data volume);
       `deploy/production/misses.sh` lists what clients asked for and didn't get. 2026-09-29
+- [x] Stable map ratings (`osu-rate.php`, kept with the website's ratings; the leaderboard shows the average),
+      the client's anti-cheat flags (`lastfm.php`: hq!osu restricts, relife traces warn and alert staff),
+      osu!'s beatmap tags synced daily for lazer's tag voting. 2026-09-29
 - [ ] Stable tournament client (`TournamentMatchInfoRequest`, match channel join/leave); lazer Quick Play
       (matchmaking pools: none set up yet).
 
