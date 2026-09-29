@@ -129,8 +129,15 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
         Assert.Equal("That command is staff-only.", (await commands.RunAsync("scan", new Dictionary<string, string> { ["score"] = played.ToString(CultureInfo.InvariantCulture) }, 1001)).Post.Content);
         Assert.Contains("no such score", (await commands.RunAsync("scan", new Dictionary<string, string> { ["score"] = "999999" }, 1002)).Post.Content, StringComparison.Ordinal);
 
-        var reply = await commands.RunAsync("scan", new Dictionary<string, string> { ["score"] = $"https://osu.test/scores/{played}" }, 1002);
-        Assert.True(reply.Private);
+        var updates = new List<DiscordPost>();
+        var reply = await commands.RunAsync("scan", new Dictionary<string, string> { ["score"] = $"https://osu.test/scores/{played}" }, 1002, updates.Add);
+        Assert.False(reply.Private); // in the channel, updated live
+        Assert.StartsWith("🔍 **Scanning…**", updates[0].Embed!.Description, StringComparison.Ordinal);
+        Assert.Contains("⏳ Top plays here", updates[1].Embed!.Description, StringComparison.Ordinal);
+        var last = updates[^1].Embed!.Description!;
+        Assert.Contains("✅ Top plays here ▸ 3/3", last, StringComparison.Ordinal);
+        Assert.Contains("➖ osu!'s top plays (not compared)", last, StringComparison.Ordinal);
+        Assert.Contains("⏳ circleguard's analysis", last, StringComparison.Ordinal);
         var embed = reply.Post.Embed!;
         Assert.StartsWith("**🟠 Suspicious** ▸ risk **45**/100", embed.Description, StringComparison.Ordinal);
         Assert.Equal("3 here ▸ 0 on osu!", embed.Fields.Single(f => f.Name == "Compared with").Value);

@@ -43,8 +43,10 @@ The two thresholds are production's. To only report and never restrict automatic
 Staff can check any score with `/scan <score link or id>` on Discord. It's compared with more replays
 than the automatic check: the map's top 30 here, and osu!'s top 30 on osu! maps (`official`: top 5 or
 none to go faster). osu!'s replays are downloaded at ten a minute and kept, so a map's first scan can
-take a few minutes and later ones are quick. The answer is only for the person who asked; nobody is
-restricted by a scan, but the Restrict / Silence buttons are on it.
+take a few minutes and later ones are quick. The answer goes in the channel and updates live while it
+works (replay found, top plays here n/30, osu!'s top plays n/30, analysis), then becomes the result;
+a refusal (not staff, no such score) goes only to the person who asked. Nobody is restricted by a
+scan, but the Restrict / Silence buttons are on it.
 
 The embed (for scans and automatic flags alike) shows the verdict and a risk bar, the reasons, the
 play, the unstable rate, frametime and snaps, the closest top play (a copy is spelled out, with a
