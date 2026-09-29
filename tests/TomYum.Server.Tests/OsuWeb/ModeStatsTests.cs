@@ -51,6 +51,32 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
         Assert.Equal(StatusCodes.Status400BadRequest, Assert.IsAssignableFrom<IStatusCodeHttpResult>(vanilla).StatusCode);
     }
 
+    [MySqlFact]
+    public async Task RelaxScores_ForTheProfile_Best_Recent_AndFirsts()
+    {
+        var db = await NewTomYumContextAsync();
+        var now = DateTimeOffset.UtcNow;
+        db.Scores.AddRange(
+            new Score { UserId = 1, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 100, Count300 = 10, SubmittedAt = now.AddDays(-3) },
+            new Score { UserId = 1, BeatmapId = 11, BeatmapMd5 = "b", Mode = 4, Grade = "A", Status = ScoreStatus.Best, Passed = true, Pp = 200, Count300 = 9, Count100 = 1, SubmittedAt = now.AddHours(-2) },
+            new Score { UserId = 1, BeatmapId = 11, BeatmapMd5 = "b", Mode = 4, Grade = "F", Status = ScoreStatus.Failed, Passed = false, SubmittedAt = now.AddHours(-1) },
+            new Score { UserId = 2, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 150, SubmittedAt = now.AddDays(-2) },
+            new Score { UserId = 1, BeatmapId = 12, BeatmapMd5 = "c", Mode = 0, Grade = "X", Status = ScoreStatus.Best, Passed = true, Pp = 999, SubmittedAt = now });
+        await db.SaveChangesAsync();
+
+        async Task<string> List(string type, int offset = 0, int limit = 5, bool fails = false)
+        {
+            var json = await Body(await AdminModeScoresEndpoints.GetAsync(1, 4, type, offset, limit, fails, NewTomYumContext(), new RestrictedUsers(), TimeProvider.System, CancellationToken.None));
+            return json.GetProperty("total").GetInt32() + ": " + string.Join(",", json.GetProperty("scores").EnumerateArray().Select(s => s.GetProperty("beatmapId").GetInt64()));
+        }
+
+        Assert.Equal("2: 11,10", await List("best"));          // by pp; the vanilla play isn't here
+        Assert.Equal("2: 10", await List("best", offset: 1, limit: 1));
+        Assert.Equal("1: 11", await List("recent"));            // the last day, passes only
+        Assert.Equal("2: 11,11", await List("recent", fails: true));
+        Assert.Equal("1: 11", await List("firsts"));            // player 2 is ahead on map 10
+    }
+
     private static async Task<JsonElement> Body(IResult result)
     {
         var context = new DefaultHttpContext { RequestServices = new ServiceCollection().AddLogging().BuildServiceProvider() };
