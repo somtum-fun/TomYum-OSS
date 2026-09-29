@@ -27,9 +27,6 @@ public static class WebEndpoints
         // Last.fm scrobbling and friends list — not implemented, ack to suppress 404s.
         app.MapGet("/web/lastfm.php", () => Results.Text("-3", "text/plain"))
             .RequireHost(hosts);
-        app.MapGet("/web/osu-getfriends.php", () => Results.Text(string.Empty, "text/plain"))
-            .RequireHost(hosts);
-
         app.MapScoreSubmission(hosts);
 
         // Seasonal backgrounds: return an empty array to suppress the feature.
@@ -95,10 +92,15 @@ public static class WebEndpoints
             requesterId = null;
         }
 
-        var board = await scores.GetLeaderboardAsync(md5, gameMode, 50, requesterId, cancellationToken).ConfigureAwait(false);
+        // The tab in song select (`v`): 1 global, 2 selected mods, 3 friends, 4 country.
+        _ = int.TryParse(context.Request.Query["v"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var boardType);
+        var board = await BoardAsync(context, scores, users, md5, gameMode, boardType, modsArg, requesterId, cancellationToken).ConfigureAwait(false);
         if (requesterId is { } viewer)
         {
             personalBest = await scores.GetPersonalBestAsync(viewer, md5, gameMode, cancellationToken).ConfigureAwait(false);
+            // On the selected mods tab, a best with other mods isn't this board's.
+            if (boardType == SelectedModsBoard && personalBest is not null && personalBest.Mods != modsArg)
+                personalBest = null;
         }
 
         var sb = new System.Text.StringBuilder();
@@ -136,6 +138,41 @@ public static class WebEndpoints
         }
 
         return Results.Text(sb.ToString(), "text/plain");
+    }
+
+    private const int SelectedModsBoard = 2;
+    private const int FriendsBoard = 3;
+    private const int CountryBoard = 4;
+
+    /// <summary>The top 50 on the tab the player picked; the global board for a tab that needs a player when there's none.</summary>
+    internal static async Task<IReadOnlyList<Score>> BoardAsync(
+        HttpContext context, IScoreRepository scores, IUserRepository users, string md5, int gameMode, int boardType, int mods, int? viewerId, CancellationToken cancellationToken)
+    {
+        switch (boardType)
+        {
+            case SelectedModsBoard:
+                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, new LeaderboardFilter(Mods: mods), cancellationToken).ConfigureAwait(false);
+            case FriendsBoard when viewerId is { } friendsOf:
+                var friends = await context.RequestServices.GetRequiredService<IFriendRepository>().GetFriendIdsAsync(friendsOf, cancellationToken).ConfigureAwait(false);
+                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, new LeaderboardFilter(UserIds: [.. friends, friendsOf]), cancellationToken).ConfigureAwait(false);
+            case CountryBoard when viewerId is { } countryOf
+                && await users.GetByIdAsync(countryOf, cancellationToken).ConfigureAwait(false) is { Country: { Length: > 0 } country } && country != "xx":
+                // Scores don't carry a country: take a deep board and keep the viewer's countrymen.
+                var countrymen = new List<Score>();
+                foreach (var score in await scores.GetLeaderboardAsync(md5, gameMode, 1000, viewerId, cancellationToken).ConfigureAwait(false))
+                {
+                    if (await users.GetByIdAsync(score.UserId, cancellationToken).ConfigureAwait(false) is { } player
+                        && string.Equals(player.Country, country, StringComparison.OrdinalIgnoreCase))
+                    {
+                        countrymen.Add(score);
+                        if (countrymen.Count == 50)
+                            break;
+                    }
+                }
+                return countrymen;
+            default:
+                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     /// <summary>

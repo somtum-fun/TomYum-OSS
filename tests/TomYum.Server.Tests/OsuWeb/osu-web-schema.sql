@@ -878,3 +878,14 @@ CREATE TABLE osu_user_ircauth (
   token varchar(50) NULL UNIQUE,
   `timestamp` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web migrations (phpbb_zebra): friends (friend = 1) and blocks (foe = 1).
+DROP TABLE IF EXISTS phpbb_zebra;
+CREATE TABLE phpbb_zebra (
+  user_id int unsigned NOT NULL DEFAULT 0,
+  zebra_id int unsigned NOT NULL DEFAULT 0,
+  friend tinyint unsigned NOT NULL DEFAULT 0,
+  foe tinyint unsigned NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, zebra_id),
+  KEY zebra_friend (zebra_id, friend)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

@@ -9,8 +9,9 @@ namespace TomYum.Server.Bancho.Packets;
 /// answers any <c>!</c>command (or a default greeting) straight back to the sender.
 /// </summary>
 /// <remarks>
-/// DM blocking (USER_DM_BLOCKED, id 100), silence (TARGET_IS_SILENCED, id 101), and away messages
-/// are later slices; for now any online target receives the message.
+/// An online recipient who is silenced (TARGET_IS_SILENCED, id 101) or only takes PMs from friends
+/// (USER_DM_BLOCKED, id 100) doesn't get it, and the sender is told. A recipient who set an away
+/// message answers with it (osu!'s "is away" line).
 /// </remarks>
 public sealed class SendPrivateMessageHandler : IClientPacketHandler
 {
@@ -79,13 +80,24 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
             return;
         }
 
+        var recipient = FindByName(context, target);
+        if (recipient is not null && recipient.IsSilenced(now))
+        {
+            WriteRefusal(context.Response, ServerPacketId.TargetIsSilenced, recipient.Presence.Username);
+            return;
+        }
+        if (recipient is not null && recipient.BlocksNonFriendDms && !recipient.Friends.Contains(context.Player.UserId))
+        {
+            WriteRefusal(context.Response, ServerPacketId.UserDmBlocked, recipient.Presence.Username);
+            return;
+        }
+
         // Relay to a real online recipient, if present.
         // The website gets every PM too: the recipient may only be on the site (or read it there later).
         _website?.ForwardPrivateMessage(context.Player.UserId, target, text);
         if (context.Services.GetService<TomYum.Plugins.Abstractions.IEventBus>() is { } events)
             await events.PublishAsync(new TomYum.Plugins.Abstractions.ChatMessageEvent(context.Player.UserId, sender, null, text), cancellationToken).ConfigureAwait(false);
 
-        var recipient = FindByName(context, target);
         if (recipient is null)
         {
             return;
@@ -95,7 +107,17 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         var writer = new BanchoPacketWriter(128);
         ChatEncoder.WriteMessage(writer, new BanchoMessage(sender, text, target, context.Player.UserId));
         recipient.Enqueue(writer.ToArray());
+
+        if (recipient.AwayMessage is { } away)
+        {
+            ChatEncoder.WriteMessage(context.Response,
+                new BanchoMessage(recipient.Presence.Username, $"\u0001ACTION is away: {away}\u0001", sender, recipient.UserId));
+        }
     }
+
+    /// <summary>Tells the sender their PM to <paramref name="target"/> wasn't delivered (a message-shaped packet naming the recipient).</summary>
+    private static void WriteRefusal(BanchoPacketWriter response, ServerPacketId packet, string target) =>
+        response.WritePacket(packet, w => w.WriteString(string.Empty).WriteString(string.Empty).WriteString(target).WriteInt32(0));
 
     /// <summary>
     /// Reads the message composite (sender + text + recipient + sender_id) from <paramref name="payload"/>,

@@ -38,6 +38,8 @@ public static partial class StableClientEndpoints
         app.MapPost("/web/osu-getbeatmapinfo.php", HandleBeatmapInfoAsync).RequireHost(hosts);
         app.MapGet("/web/maps/{filename}", HandleMapFileAsync).RequireHost(hosts);
         app.MapGet("/web/osu-addfavourite.php", HandleAddFavouriteAsync).RequireHost(hosts);
+        app.MapGet("/web/osu-getfavourites.php", HandleFavouritesAsync).RequireHost(hosts);
+        app.MapGet("/web/osu-getfriends.php", HandleFriendsAsync).RequireHost(hosts);
         app.MapPost("/web/osu-screenshot.php", HandleScreenshotAsync).RequireHost(hosts).DisableAntiforgery();
         app.MapGet("/ss/{file}", HandleScreenshotFile).RequireHost(hosts);
         app.MapPost("/difficulty-rating", HandleDifficultyRatingAsync).RequireHost(hosts);
@@ -120,6 +122,28 @@ public static partial class StableClientEndpoints
         return await website.AddFavouriteAsync(user.Id, setId, cancellationToken).ConfigureAwait(false)
             ? Results.Text(string.Empty, "text/plain")
             : Results.Text("You've favourited this beatmap already!", "text/plain");
+    }
+
+    /// <summary>The player's favourite sets, one id per line (<c>?u=&amp;h=</c>).</summary>
+    internal static async Task<IResult> HandleFavouritesAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        var user = await UserAsync(context, context.Request.Query["u"], context.Request.Query["h"], cancellationToken).ConfigureAwait(false);
+        if (user is null)
+            return Results.Unauthorized();
+        var sets = context.RequestServices.GetService<OsuWebStableClient>() is { } website
+            ? await website.FavouriteSetIdsAsync(user.Id, cancellationToken).ConfigureAwait(false)
+            : [];
+        return Results.Text(string.Join('\n', sets), "text/plain");
+    }
+
+    /// <summary>The player's friends, one user id per line (<c>?u=&amp;h=</c>).</summary>
+    internal static async Task<IResult> HandleFriendsAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        var user = await UserAsync(context, context.Request.Query["u"], context.Request.Query["h"], cancellationToken).ConfigureAwait(false);
+        if (user is null)
+            return Results.Unauthorized();
+        var friends = await context.RequestServices.GetRequiredService<IFriendRepository>().GetFriendIdsAsync(user.Id, cancellationToken).ConfigureAwait(false);
+        return Results.Text(string.Join('\n', friends), "text/plain");
     }
 
     /// <summary>An uploaded screenshot (form: <c>u</c>, <c>p</c>, file <c>ss</c>); answers its file name.</summary>

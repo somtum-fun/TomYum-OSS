@@ -95,6 +95,8 @@ else
     builder.Services.AddSingleton<IClientHashRepository, InMemoryClientHashRepository>();
     builder.Services.AddSingleton<IDiscordLinkRepository, InMemoryDiscordLinkRepository>();
 }
+// Friends live on the website with its accounts (phpbb_zebra); otherwise in memory.
+Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<IFriendRepository, InMemoryFriendRepository>(builder.Services);
 // Website sync (docs/osu-web.md): mirrors scores/stats to osu-web when accounts live there.
 if (databaseOptions.UseOsuWebAccounts)
 {
@@ -260,6 +262,10 @@ builder.Services.AddSingleton<IClientPacketHandler, SendPublicMessageHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, SendPrivateMessageHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, ChannelJoinHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, ChannelPartHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, FriendAddHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, FriendRemoveHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, SetAwayMessageHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, ToggleBlockNonFriendDmsHandler>();
 
 // Multiplayer match handlers.
 builder.Services.AddSingleton<IClientPacketHandler, JoinLobbyHandler>();

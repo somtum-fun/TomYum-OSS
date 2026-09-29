@@ -20,10 +20,11 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 ## Features
 
 **osu!stable (bancho)**
-- Login, in-game registration, presence, stats, chat channels and PMs, spectating
+- Login, in-game registration, presence, stats, chat channels and PMs, friends (shared with lazer
+  and the website), away messages, friends-only PMs, spectating
 - Score submission with pp for all four modes, plus Relax and Autopilot leaderboards and stats
-- Global leaderboards, replays, map updates, song select statuses and grades, adding favourites,
-  screenshots, star ratings with mods, osu!direct
+- Leaderboards (global, selected mods, friends, country), replays, map updates, song select statuses
+  and grades, favourites, screenshots, star ratings with mods, osu!direct
 - Multiplayer: lobby, rooms, the full match lifecycle, BanchoBot's `!mp` commands
 - BanchoBot `!`-commands, staff tiers and supporter mapped to client badges
 - Medals, rank history, country from the client's IP
@@ -44,8 +45,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - Plugins: compiled `.dll` or loose `.cs`, with events, commands and HTTP routes
 - EF Core migrations, Docker Compose / k8s deployment, Caddy and a Cloudflare tunnel in front
 
-**Not done yet** (see the roadmap): on stable, friends, the country / friends / selected-mods
-leaderboards, the favourites list, away messages and the tournament client; the DAN mode plugin, custom medals, multi-instance (Redis-backed)
+**Not done yet** (see the roadmap): the stable tournament client and in-game map comments; the DAN mode plugin, custom medals, multi-instance (Redis-backed)
 online state, and multi-target storage.
 
 ## Documentation by topic

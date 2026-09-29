@@ -230,7 +230,6 @@ public sealed class IrcSession : IDisposable
                 await SendAsync(Host, "PONG", Host, line[0]).ConfigureAwait(false);
                 break;
             case "PONG":
-            case "AWAY":
             case "USERHOST":
             case "CAP":
                 break;
@@ -272,6 +271,13 @@ public sealed class IrcSession : IDisposable
                 break;
             case "WHOIS":
                 await WhoisAsync(line[0]).ConfigureAwait(false);
+                break;
+            case "AWAY":
+                // Like the game's /away: PMs get answered with it.
+                _player!.AwayMessage = line.Parameters is [{ Length: > 0 } away, ..] ? away : null;
+                await (_player.AwayMessage is null
+                    ? SendAsync(Host, "305", _nick, "You are no longer marked as being away")
+                    : SendAsync(Host, "306", _nick, "You have been marked as being away")).ConfigureAwait(false);
                 break;
             case "ISON":
                 var online = line.Parameters.SelectMany(p => p.Split(' ', StringSplitOptions.RemoveEmptyEntries))
@@ -408,6 +414,11 @@ public sealed class IrcSession : IDisposable
                 case ServerPacketId.ChannelKick:
                     messages.Add((ServerPacketId.ChannelKick, [payload.ReadString()]));
                     break;
+                case ServerPacketId.UserDmBlocked or ServerPacketId.TargetIsSilenced:
+                    _ = payload.ReadString();
+                    _ = payload.ReadString();
+                    messages.Add(((ServerPacketId)(ushort)header.Id, [payload.ReadString()]));
+                    break;
             }
         }
 
@@ -430,6 +441,12 @@ public sealed class IrcSession : IDisposable
                 case ServerPacketId.ChannelJoinSuccess:
                     if (_channels.Get(text[0]) is { } channel && _joined.Add(channel.Name))
                         await AnnounceJoinAsync(channel).ConfigureAwait(false);
+                    break;
+                case ServerPacketId.UserDmBlocked:
+                    await SendAsync(Host, "404", _nick, IrcLine.Nick(text[0]), "They only take messages from friends").ConfigureAwait(false);
+                    break;
+                case ServerPacketId.TargetIsSilenced:
+                    await SendAsync(Host, "404", _nick, IrcLine.Nick(text[0]), "They're silenced and can't answer").ConfigureAwait(false);
                     break;
                 case ServerPacketId.ChannelKick:
                     if (_joined.Remove(text[0]))

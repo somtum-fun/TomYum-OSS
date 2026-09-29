@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Collections.Immutable;
 
 using TomYum.Bancho;
 
@@ -62,6 +63,15 @@ public sealed class OnlinePlayer
     /// <summary>Whole seconds of silence left at <paramref name="now"/> (0 when not silenced).</summary>
     public uint SilenceSecondsLeft(DateTimeOffset now) =>
         SilenceEndUtc is { } end && end > now ? (uint)Math.Ceiling((end - now).TotalSeconds) : 0;
+
+    /// <summary>The players this one has added as friends (loaded at login, kept in step with the friend packets).</summary>
+    public ImmutableHashSet<int> Friends { get; set; } = [];
+
+    /// <summary>The away message the client set (answered to anyone who PMs them); null when not away.</summary>
+    public string? AwayMessage { get; set; }
+
+    /// <summary>Whether only friends can PM this player (the client's "block private messages from non-friends").</summary>
+    public bool BlocksNonFriendDms { get; set; }
 
     /// <summary>
     /// The user id of the host this player is currently spectating, or <c>null</c> when not

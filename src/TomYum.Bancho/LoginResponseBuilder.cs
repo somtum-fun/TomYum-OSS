@@ -55,7 +55,8 @@ public static class LoginResponseBuilder
     /// before the terminator. <c>null</c> advertises no channels (just the terminator).
     /// </param>
     /// <param name="silenceSeconds">Seconds of chat silence left (0 = not silenced).</param>
-    public static byte[] BuildSuccess(BanchoPresence self, string welcome, Action<BanchoPacketWriter>? writeChannels = null, uint silenceSeconds = 0)
+    /// <param name="friends">The player's friends (user ids).</param>
+    public static byte[] BuildSuccess(BanchoPresence self, string welcome, Action<BanchoPacketWriter>? writeChannels = null, uint silenceSeconds = 0, IReadOnlyList<int>? friends = null)
     {
         ArgumentNullException.ThrowIfNull(self);
 
@@ -81,8 +82,8 @@ public static class LoginResponseBuilder
         // 6. Main menu icon: "imageUrl|clickUrl"; empty string => default osu! icon.
         writer.WriteStringPacket(ServerPacketId.MainMenuIcon, string.Empty);
 
-        // 7. Friends list (empty until persistence lands).
-        writer.WritePacket(ServerPacketId.FriendsList, w => w.WriteInt32List([]));
+        // 7. Friends list (the user ids the player added).
+        writer.WritePacket(ServerPacketId.FriendsList, w => w.WriteInt32List(friends ?? []));
 
         // 8. Remaining silence in seconds (0 = not silenced).
         writer.WritePacket(ServerPacketId.SilenceEnd, w => w.WriteUInt32(silenceSeconds));
