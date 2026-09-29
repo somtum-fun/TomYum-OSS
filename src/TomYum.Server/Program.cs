@@ -162,6 +162,7 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService<LazerRelaxImport>();
     builder.Services.AddHostedService<TagSync>();
     builder.Services.AddHostedService<WebsiteLastVisit>();
+    builder.Services.AddHostedService<TomYum.Server.Admin.ModeRankHistoryJob>();
     builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     // Beatmap submission from the game clients (stable's .osz2, lazer's submission service).
@@ -287,6 +288,9 @@ builder.Services.AddSingleton<IClientPacketHandler, FriendRemoveHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, SetAwayMessageHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, ToggleBlockNonFriendDmsHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, ReceiveUpdatesHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, TournamentMatchInfoHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, TournamentJoinMatchChannelHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, TournamentLeaveMatchChannelHandler>();
 
 // Multiplayer match handlers.
 builder.Services.AddSingleton<IClientPacketHandler, JoinLobbyHandler>();

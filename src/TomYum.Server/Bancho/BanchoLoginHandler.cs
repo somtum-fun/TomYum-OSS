@@ -135,26 +135,33 @@ public sealed class BanchoLoginHandler
 
         await (_presenceStats ?? new PresenceStats(_userStats)).FillAsync(presence, user.Id, presence.Mode, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        var player = _registry.Add(presence);
+        // osu!'s tournament client (version "…tourney") logs in once per player it shows, with the
+        // same account: those windows are extra sessions, not the player moving to another client.
+        var tournament = request.OsuVersion.EndsWith("tourney", StringComparison.OrdinalIgnoreCase);
+        var player = tournament ? _registry.AddTournamentClient(presence) : _registry.Add(presence);
         player.IsRestricted = user.IsRestricted;
         player.SilenceEndUtc = user.SilenceEndUtc;
         IReadOnlyList<int> friendIds = _friends is null ? [] : await _friends.GetFriendIdsAsync(user.Id, cancellationToken).ConfigureAwait(false);
         player.Friends = [.. friendIds];
 
         // Plugins (welcome messages, per-login state). A plugin fault is logged, never breaks login.
-        if (_events is not null)
+        if (_events is not null && !tournament)
             await _events.PublishAsync(new TomYum.Plugins.Abstractions.PlayerLoginEvent(user.Id, user.Username, resolvedCountry ?? string.Empty), cancellationToken).ConfigureAwait(false);
         var welcome = string.Create(CultureInfo.InvariantCulture, $"Welcome to TomYum, {user.Username}!");
 
         // Auto-join the player to the auto-join channels (e.g. #osu) so they can chat immediately,
         // and advertise every channel in the login burst. CHANNEL_AUTO_JOIN tells the client to
         // open the tab; CHANNEL_INFO just lists it. Member counts reflect post-join state.
-        foreach (var channel in _channels.All)
+        // (Tournament windows join only their match's chat: channels know members by account.)
+        if (!tournament)
         {
-            if (channel.AutoJoin)
+            foreach (var channel in _channels.All)
             {
-                channel.Join(player);
-                player.JoinChannel(channel.Name);
+                if (channel.AutoJoin)
+                {
+                    channel.Join(player);
+                    player.JoinChannel(channel.Name);
+                }
             }
         }
 
@@ -194,16 +201,19 @@ public sealed class BanchoLoginHandler
             LoginResponseBuilder.WriteStats(writer, other.Presence);
         }
 
-        if (_privateMessages is not null)
+        if (_privateMessages is not null && !tournament)
             await WriteUnreadAsync(writer, _privateMessages, user, cancellationToken).ConfigureAwait(false);
 
         var responseBody = writer.ToArray();
 
         // Announce the newcomer to everyone already online so they appear in others' user lists.
-        var announce = new BanchoPacketWriter(128);
-        LoginResponseBuilder.WritePresence(announce, presence);
-        LoginResponseBuilder.WriteStats(announce, presence);
-        _registry.EnqueueAbout(player, announce.ToArray(), exceptUserId: player.UserId, isUpdate: false);
+        if (!tournament)
+        {
+            var announce = new BanchoPacketWriter(128);
+            LoginResponseBuilder.WritePresence(announce, presence);
+            LoginResponseBuilder.WriteStats(announce, presence);
+            _registry.EnqueueAbout(player, announce.ToArray(), exceptUserId: player.UserId, isUpdate: false);
+        }
 
         _logger.LogInformation(
             "Login ok: {Username} (id {UserId}) on {Version}; {Online} online.",

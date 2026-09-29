@@ -64,6 +64,22 @@ public static class AdminModeStatsEndpoints
         var playTime = await plays.Join(db.Beatmaps, s => s.BeatmapMd5, b => b.Md5, (s, b) => (long)b.TotalLength)
             .SumAsync(cancellationToken).ConfigureAwait(false);
 
+        // The last 90 days, oldest first, 0 on days without a rank (the website's rank_history format);
+        // today is the live rank.
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var history = await db.ModeRankHistory.AsNoTracking()
+            .Where(s => s.UserId == userId && s.Mode == mode && s.Day > today.AddDays(-ModeRankHistoryJob.Days))
+            .ToDictionaryAsync(s => s.Day, s => s.Rank, cancellationToken).ConfigureAwait(false);
+        var data = Enumerable.Range(0, ModeRankHistoryJob.Days)
+            .Select(i => today.AddDays(i - ModeRankHistoryJob.Days + 1))
+            .Select(day => day == today && globalRank is { } now ? now : history.GetValueOrDefault(day))
+            .ToArray();
+        var best = await db.ModeRankHistory.AsNoTracking().Where(s => s.UserId == userId && s.Mode == mode)
+            .OrderBy(s => s.Rank).ThenBy(s => s.Day).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        (int Rank, DateOnly Day)? highest = best is null ? null : (best.Rank, best.Day);
+        if (globalRank is { } current && (highest is null || current < highest.Value.Rank))
+            highest = (current, today);
+
         var level = OsuWebScores.Level(stats.TotalScore);
         return Results.Ok(new
         {
@@ -97,6 +113,8 @@ public static class AdminModeStatsEndpoints
             },
             country_rank = countryRank,
             rank = new { country = countryRank },
+            rank_history = data.Any(r => r > 0) ? data : null,
+            rank_highest = highest is { } h ? new { rank = h.Rank, updated_at = h.Day.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc) } : null,
         });
     }
 }

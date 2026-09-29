@@ -13,6 +13,8 @@ internal static class MatchBroadcast
             foreach (var slot in match.Slots)
                 if (slot.HasPlayer)
                     registry.GetByUserId(slot.UserId)?.Enqueue(bytes);
+            foreach (var watcher in match.TournamentWatchers)
+                watcher.Enqueue(bytes);
         }
     }
 

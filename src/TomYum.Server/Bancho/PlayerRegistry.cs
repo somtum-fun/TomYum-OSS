@@ -16,10 +16,30 @@ public sealed class PlayerRegistry
     private readonly ConcurrentDictionary<int, OnlinePlayer> _byUserId = new();
 
     /// <summary>Number of players currently online on this node.</summary>
-    public int Count => _byToken.Count;
+    public int Count => _byToken.Values.Count(p => !p.IsTournamentClient);
 
-    /// <summary>A snapshot of all online players (safe to enumerate while others mutate).</summary>
-    public IReadOnlyCollection<OnlinePlayer> All => _byToken.Values.ToArray();
+    /// <summary>
+    /// A snapshot of all online players (safe to enumerate while others mutate). Tournament client
+    /// windows aren't players of their own and aren't in it.
+    /// </summary>
+    public IReadOnlyCollection<OnlinePlayer> All => _byToken.Values.Where(p => !p.IsTournamentClient).ToArray();
+
+    /// <summary>
+    /// Adds a tournament client window for <paramref name="presence"/>'s account: its own token, next
+    /// to (not instead of) the player's own session, which stays the one found by user id.
+    /// </summary>
+    public OnlinePlayer AddTournamentClient(BanchoPresence presence)
+    {
+        ArgumentNullException.ThrowIfNull(presence);
+        var token = NewToken();
+        var player = new OnlinePlayer(token, presence) { IsTournamentClient = true };
+        _byToken[token] = player;
+        return player;
+    }
+
+    /// <summary>The sessions of <paramref name="userId"/> (the game, tournament windows) spectating <paramref name="hostUserId"/>.</summary>
+    public IEnumerable<OnlinePlayer> SpectatingSessions(int userId, int hostUserId) =>
+        _byToken.Values.Where(p => p.UserId == userId && p.SpectatingUserId == hostUserId).ToArray();
 
     /// <summary>
     /// Registers <paramref name="presence"/> as a new online session, minting a fresh
@@ -54,7 +74,7 @@ public sealed class PlayerRegistry
     public OnlinePlayer? GetByUsername(string username)
     {
         foreach (var p in _byToken.Values)
-            if (string.Equals(p.Presence.Username, username, StringComparison.OrdinalIgnoreCase))
+            if (!p.IsTournamentClient && string.Equals(p.Presence.Username, username, StringComparison.OrdinalIgnoreCase))
                 return p;
         return null;
     }
@@ -64,7 +84,8 @@ public sealed class PlayerRegistry
     {
         if (_byToken.TryRemove(token, out var player))
         {
-            _byUserId.TryRemove(player.UserId, out _);
+            // Only the session found by user id: a tournament window leaving isn't the player leaving.
+            _byUserId.TryRemove(new KeyValuePair<int, OnlinePlayer>(player.UserId, player));
         }
     }
 

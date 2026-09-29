@@ -32,7 +32,8 @@ public sealed class CantSpectateHandler : IClientPacketHandler
         var packet = SpectatorManager.SpectatorCantSpectate(spectator.UserId);
         host.Enqueue(packet);
         foreach (var otherId in host.Spectators) // includes the sender, by design
-            context.Registry.GetByUserId(otherId)?.Enqueue(packet);
+            foreach (var session in context.Registry.SpectatingSessions(otherId, host.UserId))
+                session.Enqueue(packet);
 
         return Task.CompletedTask;
     }

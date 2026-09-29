@@ -48,6 +48,15 @@ public sealed class OnlinePlayer
     /// <summary>An IRC session (<see cref="Irc.IrcSession"/>) rather than a game client.</summary>
     public bool IsIrc { get; set; }
 
+    /// <summary>
+    /// A window of osu!'s tournament client (it logs in once per shown player, with the same account):
+    /// an extra session that doesn't replace the player's own and isn't shown to anyone.
+    /// </summary>
+    public bool IsTournamentClient { get; init; }
+
+    /// <summary>The match a tournament client watches (its chat, its state), if any.</summary>
+    public ushort? WatchingMatchId { get; set; }
+
     /// <summary>Whether this player currently has the multiplayer lobby open.</summary>
     public bool InLobby { get; set; }
 
