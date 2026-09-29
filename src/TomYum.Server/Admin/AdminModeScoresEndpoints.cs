@@ -3,6 +3,7 @@ using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Services;
 using TomYum.Persistence;
+using TomYum.Server.Beatmaps;
 
 namespace TomYum.Server.Admin;
 
@@ -24,6 +25,8 @@ public static class AdminModeScoresEndpoints
     {
         ArgumentNullException.ThrowIfNull(admin);
         admin.MapGet("/users/{userId:int}/mode-scores/{mode:int}", GetAsync);
+        admin.MapGet("/mode-scores/{scoreId:long}", GetOneAsync);
+        admin.MapGet("/replays/mode-score/{scoreId:long}", ReplayAsync);
     }
 
     internal static async Task<IResult> GetAsync(
@@ -72,6 +75,41 @@ public static class AdminModeScoresEndpoints
             default:
                 return Results.BadRequest(new { error = "type: best, recent or firsts." });
         }
+    }
+
+    /// <summary>One Relax/Autopilot play for its page: who, which mode, its place on the map's leaderboard, whether there's a replay.</summary>
+    internal static async Task<IResult> GetOneAsync(long scoreId, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken)
+    {
+        var score = await db.Scores.AsNoTracking().FirstOrDefaultAsync(s => s.Id == scoreId && s.Mode >= GameMode.RelaxOffset, cancellationToken).ConfigureAwait(false);
+        if (score is null)
+            return Results.NotFound();
+
+        int? position = null;
+        if (score.Status == ScoreStatus.Best && score.Passed)
+        {
+            var hidden = restricted.Ids.Where(id => id != score.UserId).ToList();
+            position = 1 + await db.Scores.AsNoTracking().CountAsync(s => s.BeatmapMd5 == score.BeatmapMd5 && s.Mode == score.Mode
+                && s.Status == ScoreStatus.Best && s.Pp > score.Pp && !hidden.Contains(s.UserId), cancellationToken).ConfigureAwait(false);
+        }
+        return Results.Ok(new
+        {
+            score = Describe(score, score.Mode),
+            userId = score.UserId,
+            mode = score.Mode,
+            position,
+            hasReplay = ReplayFiles.Exists(configuration, score.Id),
+        });
+    }
+
+    /// <summary>The play's replay as a complete .osr (the stored file is the replay data only; the header comes from the score).</summary>
+    internal static async Task<IResult> ReplayAsync(long scoreId, TomYumDbContext db, TomYum.Domain.Repositories.IUserRepository users, IConfiguration configuration, CancellationToken cancellationToken)
+    {
+        var score = await db.Scores.AsNoTracking().FirstOrDefaultAsync(s => s.Id == scoreId && s.Mode >= GameMode.RelaxOffset, cancellationToken).ConfigureAwait(false);
+        if (score is null || !ReplayFiles.Exists(configuration, score.Id))
+            return Results.NotFound();
+        var frames = await File.ReadAllBytesAsync(ReplayFiles.PathFor(configuration, score.Id), cancellationToken).ConfigureAwait(false);
+        var player = (await users.GetByIdAsync(score.UserId, cancellationToken).ConfigureAwait(false))?.Username ?? string.Empty;
+        return Results.File(OsrFile.Build(score, player, frames), "application/octet-stream", $"{player} - {score.BeatmapMd5} ({score.Id}).osr");
     }
 
     private static ModeScore Describe(Score s, int mode) => new(
