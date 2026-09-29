@@ -169,6 +169,7 @@ public sealed class LazerRelaxImport : BackgroundService
             Pp = ppValue,
             Status = status,
             SubmittedAt = new DateTimeOffset(DateTime.SpecifyKind(play.EndedAt, DateTimeKind.Utc)),
+            FromLazer = true,
         }, cancellationToken).ConfigureAwait(false);
 
         var userStats = services.GetRequiredService<IUserStatsRepository>();

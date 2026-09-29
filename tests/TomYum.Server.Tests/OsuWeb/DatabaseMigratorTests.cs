@@ -39,6 +39,8 @@ public sealed class DatabaseMigratorTests : OsuWebDatabaseTest
             legacy.UserStats.Add(new UserStats { UserId = 2, Mode = 0, Pp = 338.5 });
             legacy.Scores.Add(new Score { UserId = 2, BeatmapMd5 = "abc", Grade = "A", Passed = true, SubmittedAt = DateTimeOffset.UtcNow });
             await legacy.SaveChangesAsync();
+            // A column added by a later migration (after saving: the model still has it).
+            await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE scores DROP COLUMN FromLazer");
         }
 
         await using var db = NewTomYumContext();

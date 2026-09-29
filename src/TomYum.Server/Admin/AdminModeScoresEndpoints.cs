@@ -10,7 +10,8 @@ namespace TomYum.Server.Admin;
 /// <summary>A Relax/Autopilot score as a profile lists it.</summary>
 public sealed record ModeScore(
     long Id, int BeatmapId, int Mods, double Pp, double Accuracy, string Grade, int MaxCombo, bool Perfect,
-    long Score, bool Passed, DateTimeOffset PlayedAt, int Count300, int Count100, int Count50, int CountMiss, int CountGeki, int CountKatu);
+    long Score, bool Passed, DateTimeOffset PlayedAt, int Count300, int Count100, int Count50, int CountMiss, int CountGeki, int CountKatu,
+    bool Stable);
 
 /// <summary>A page of a profile list, and how many there are in all.</summary>
 public sealed record ModeScorePage(int Total, IReadOnlyList<ModeScore> Scores);
@@ -116,5 +117,5 @@ public static class AdminModeScoresEndpoints
         s.Id, s.BeatmapId, s.Mods, s.Pp,
         AccuracyCalculator.Compute(GameMode.AsVanilla(mode), s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss),
         s.Grade, s.MaxCombo, s.Perfect, s.ScoreValue, s.Passed, s.SubmittedAt,
-        s.Count300, s.Count100, s.Count50, s.CountMiss, s.CountGeki, s.CountKatu);
+        s.Count300, s.Count100, s.Count50, s.CountMiss, s.CountGeki, s.CountKatu, !s.FromLazer);
 }

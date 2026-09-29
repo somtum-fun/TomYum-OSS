@@ -16,6 +16,7 @@ public sealed class ScoreConfiguration : IEntityTypeConfiguration<Score>
         builder.Property(s => s.BeatmapMd5).HasMaxLength(32).IsRequired();
         builder.Property(s => s.Grade).HasMaxLength(2).IsRequired();
         builder.Property(s => s.Status).HasDefaultValue(ScoreStatus.Failed);
+        builder.Property(s => s.FromLazer).HasDefaultValue(false);
         builder.HasIndex(s => new { s.UserId, s.BeatmapMd5, s.Mode, s.Status });
         builder.HasIndex(s => new { s.BeatmapMd5, s.Mode, s.Status, s.ScoreValue });
     }

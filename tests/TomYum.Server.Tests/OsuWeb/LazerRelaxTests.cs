@@ -64,6 +64,7 @@ public sealed class LazerRelaxTests : OsuWebDatabaseTest
         var best = await scores.GetPersonalBestAsync(player, "md5-100", GameMode.RelaxOffset);
         Assert.NotNull(best);
         Assert.Equal((123.0, 290, 10, (int)Mods.Relax), (best!.Pp, best.Count300, best.Count100, best.Mods));
+        Assert.True(best.FromLazer);   // shown as a lazer play (no Classic mod)
         Assert.Equal((int)(Mods.Relax), calculator.LastMods);
 
         var stats = await new UserStatsRepository(NewTomYumContext()).GetAsync(player, GameMode.RelaxOffset);
