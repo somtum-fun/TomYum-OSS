@@ -33,6 +33,13 @@ public sealed class MirrorOptions
 /// map details mostly never reach osu!. Anything it doesn't know or can't answer right now comes back
 /// null (or empty), and callers ask osu! instead (<see cref="MirrorFirstOsuApiClient"/>).
 /// </summary>
+/// <remarks>
+/// catboy.best (Mino) allows 1200 units a minute (a lookup is 1) and bans for going over it again and
+/// again (20 429s), for crawling metadata and for being used as a mirror. So: lookups only when a
+/// player or staff need a map, at most <see cref="MirrorOptions.RequestsPerMinute"/> a minute; after a
+/// 429 nothing until its Retry-After, after a 403 nothing for an hour; and jobs that go through many
+/// sets (bulk imports, backfills) use osu! instead (<see cref="Bypass"/>).
+/// </remarks>
 public sealed class BeatmapMirror
 {
     private readonly HttpClient _http;
@@ -59,6 +66,24 @@ public sealed class BeatmapMirror
     }
 
     public bool IsEnabled => _options.Enabled;
+
+    private static readonly AsyncLocal<bool> Bypassed = new();
+
+    /// <summary>
+    /// Until disposed, lookups on this flow skip the mirror (and go to osu!): for jobs that go through
+    /// many sets, which the mirror counts as crawling.
+    /// </summary>
+    public static IDisposable Bypass()
+    {
+        var previous = Bypassed.Value;
+        Bypassed.Value = true;
+        return new Restore(previous);
+    }
+
+    private sealed class Restore(bool previous) : IDisposable
+    {
+        public void Dispose() => Bypassed.Value = previous;
+    }
 
     public async Task<Beatmap?> GetByIdAsync(int beatmapId, CancellationToken cancellationToken = default)
     {
@@ -151,7 +176,7 @@ public sealed class BeatmapMirror
 
     private async Task<JsonDocument?> GetAsync(string path, CancellationToken cancellationToken)
     {
-        if (!_options.Enabled)
+        if (!_options.Enabled || Bypassed.Value || _pace.IsPaused)
             return null;
         try
         {
@@ -159,6 +184,20 @@ public sealed class BeatmapMirror
             using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
             if (response.StatusCode == HttpStatusCode.NotFound)
                 return null;
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                // Each 429 is a warning (20 get the server banned): stop until it says.
+                var until = RetryAt(response) ?? DateTimeOffset.UtcNow.AddMinutes(1);
+                _pace.Pause(until);
+                _logger.LogWarning("Beatmap mirror: too many requests; not asking it again until {Until:u}.", until);
+                return null;
+            }
+            if (response.StatusCode == HttpStatusCode.Forbidden)
+            {
+                _pace.Pause(DateTimeOffset.UtcNow.AddHours(1));
+                _logger.LogWarning("Beatmap mirror: refused (403) for {Path}; not asking it for an hour.", path);
+                return null;
+            }
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogInformation("Beatmap mirror: {Status} for {Path}; asking osu! instead.", (int)response.StatusCode, path);
@@ -172,6 +211,23 @@ public sealed class BeatmapMirror
             _logger.LogInformation(ex, "Beatmap mirror: {Path} failed; asking osu! instead.", path);
             return null;
         }
+    }
+
+    /// <summary>A 429's Retry-After: a date (Mino sends one in UTC) or seconds.</summary>
+    internal static DateTimeOffset? RetryAt(HttpResponseMessage response)
+    {
+        ArgumentNullException.ThrowIfNull(response);
+        if (response.Headers.RetryAfter is { } retry)
+        {
+            if (retry.Date is { } date)
+                return date;
+            if (retry.Delta is { } delta)
+                return DateTimeOffset.UtcNow + delta;
+        }
+        return response.Headers.TryGetValues("Retry-After", out var values)
+               && DateTimeOffset.TryParse(values.FirstOrDefault(), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at)
+            ? at
+            : null;
     }
 
     private static JsonElement? Property(JsonElement element, string name) =>
