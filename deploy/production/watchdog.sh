@@ -5,6 +5,7 @@
 # while deploy.sh runs (it pauses this). Uses the Discord bot's token from tomyum.env; it runs apart
 # from the game server, so it still works when that's down (not when the whole VM is: that needs an
 # outside monitor). Cron (crontab -e): * * * * * ~/TomYum/deploy/production/watchdog.sh
+# ./watchdog.sh --test sends a DM to check the bot can reach the admin.
 set -uo pipefail
 cd "$(dirname "$0")" || exit 1
 
@@ -38,6 +39,11 @@ dm() {
 		-H "Authorization: Bot $token" -H "Content-Type: application/json" \
 		-d "{\"content\":\"$1\"}"
 }
+
+if [ "${1:-}" = "--test" ]; then
+	dm "✅ Downtime alerts are on: you'll get a DM here when the website, bancho or lazer's servers stop answering, and when they're back." 		&& echo "Sent." || { echo "Couldn't send (check the bot's token, and that the admin shares a server with it and allows DMs)." >&2; exit 1; }
+	exit 0
+fi
 
 now=$(date +%s)
 for check in "${checks[@]}"; do
