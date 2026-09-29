@@ -153,6 +153,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService(sp => sp.GetRequiredService<OsuWebChatBridge>());
     // Recent activity "achieved rank #N" entries and #1s in #announce, for stable and lazer plays.
     builder.Services.AddHostedService<ScoreRankEvents>();
+    // Custom sets nobody updated for four weeks go to the graveyard, as on osu!.
+    builder.Services.AddHostedService<CustomGraveyardJob>();
     builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     // Beatmap submission from the game clients (stable's .osz2, lazer's submission service).
@@ -440,6 +442,10 @@ if (databaseOptions.Enabled)
         var staleEvents = await medals.RemoveStaleMedalEventsAsync();
         if (staleEvents > 0)
             app.Logger.LogInformation("osu-web activity: {Count} entry(ies) for medals players don't have removed.", staleEvents);
+        // Difficulties' file names (stable finds outdated maps and its song select statuses by them).
+        var named = await scope.ServiceProvider.GetRequiredService<OsuWebStableClient>().FillMissingFilenamesAsync();
+        if (named > 0)
+            app.Logger.LogInformation("osu-web beatmaps: {Count} file name(s) filled in.", named);
         if (!scope.ServiceProvider.GetRequiredService<OsuWebInteropOptions>().IsConfigured)
             app.Logger.LogInformation("osu-web InterOp not configured (OsuWeb:InteropUrl/InteropSecret): medals are written directly, without activity entries.");
     }
@@ -503,6 +509,7 @@ app.MapWeb(BanchoHosts.Web(domain));
 
 // osu!Direct in-game beatmap browser: search, set-info, and download redirect.
 app.MapDirect(BanchoHosts.Web(domain));
+app.MapStableClient(BanchoHosts.Web(domain));
 
 // Beatmap assets (b. subdomain): cover thumbnails for osu!Direct.
 app.MapBeatmapAssets(BanchoHosts.Beatmap(domain));

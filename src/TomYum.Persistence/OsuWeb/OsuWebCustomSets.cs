@@ -69,19 +69,38 @@ public sealed class OsuWebCustomSets
     }
 
     /// <summary>
-    /// Sets an unranked set's status to a work in progress (-1) or pending (0), as its mapper chose;
-    /// ranked, qualified and loved sets are left alone.
+    /// Sets an unranked set's status to a work in progress (-1) or pending (0), as its mapper chose (an
+    /// update brings a graveyarded set back too); ranked, qualified and loved sets are left alone.
     /// </summary>
     public async Task SetUnrankedStatusAsync(int setId, int approved, CancellationToken cancellationToken = default)
     {
         if (approved is not (-1 or 0))
             throw new ArgumentOutOfRangeException(nameof(approved), "Only work in progress (-1) or pending (0).");
         await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE osu_beatmapsets SET approved = {approved}, last_update = UTC_TIMESTAMP() WHERE beatmapset_id = {setId} AND approved IN (-1, 0)",
+            $"UPDATE osu_beatmapsets SET approved = {approved}, last_update = UTC_TIMESTAMP() WHERE beatmapset_id = {setId} AND approved IN (-2, -1, 0)",
             cancellationToken).ConfigureAwait(false);
         await _db.Database.ExecuteSqlInterpolatedAsync(
-            $"UPDATE osu_beatmaps SET approved = {approved} WHERE beatmapset_id = {setId} AND deleted_at IS NULL AND approved IN (-1, 0)",
+            $"UPDATE osu_beatmaps SET approved = {approved} WHERE beatmapset_id = {setId} AND deleted_at IS NULL AND approved IN (-2, -1, 0)",
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Moves custom sets that are still a work in progress or pending and haven't been updated since
+    /// <paramref name="before"/> to the graveyard (-2), as osu! does after four weeks. Returns the sets moved.
+    /// </summary>
+    public async Task<IReadOnlyList<uint>> GraveyardAsync(DateTime before, CancellationToken cancellationToken = default)
+    {
+        var sets = await _db.Database.SqlQuery<uint>(
+                $"SELECT beatmapset_id AS Value FROM osu_beatmapsets WHERE beatmapset_id >= {TomYum.Domain.Entities.Beatmap.CustomIdFloor} AND approved IN (-1, 0) AND deleted_at IS NULL AND last_update < {before}")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var set in sets)
+        {
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE osu_beatmapsets SET approved = -2 WHERE beatmapset_id = {set} AND approved IN (-1, 0)", cancellationToken).ConfigureAwait(false);
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE osu_beatmaps SET approved = -2 WHERE beatmapset_id = {set} AND deleted_at IS NULL AND approved IN (-1, 0)", cancellationToken).ConfigureAwait(false);
+        }
+        return sets;
     }
 
     /// <summary>The set's forum thread (its description), 0 when it has none.</summary>

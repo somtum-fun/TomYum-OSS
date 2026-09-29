@@ -312,6 +312,18 @@ public sealed partial class OsuWebCommunity
         return new ScorePlacement(position, leader is null ? null : (int)leader.UserId);
     }
 
+    /// <summary>When the oldest "achieved rank" activity entry was written (null: there's none).</summary>
+    public async Task<DateTime?> FirstRankEventAtAsync(CancellationToken cancellationToken = default) =>
+        (await _db.Database.SqlQueryRaw<DateTime?>("SELECT MIN(`date`) AS Value FROM osu_events WHERE text LIKE '%achieved%rank #%'")
+            .ToListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+
+    /// <summary>Whether a one-off job named <paramref name="name"/> ran (marked in <c>osu_counts</c>).</summary>
+    public async Task<bool> WasDoneAsync(string name, CancellationToken cancellationToken = default) =>
+        await _db.Database.SqlQuery<long>($"SELECT COUNT(*) AS Value FROM osu_counts WHERE name = {name}").SingleAsync(cancellationToken).ConfigureAwait(false) > 0;
+
+    public Task MarkDoneAsync(string name, CancellationToken cancellationToken = default) =>
+        _db.Database.ExecuteSqlAsync($"INSERT INTO osu_counts (name, count) VALUES ({name}, 1) ON DUPLICATE KEY UPDATE count = 1", cancellationToken);
+
     /// <summary>Whether ppy's score processor has handled the score (its pp and stats are final).</summary>
     public async Task<bool> IsProcessedAsync(ulong scoreId, CancellationToken cancellationToken = default) =>
         await _db.Database.SqlQuery<long>($"SELECT COUNT(*) AS Value FROM score_process_history WHERE score_id = {scoreId}")

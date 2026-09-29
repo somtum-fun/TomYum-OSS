@@ -853,3 +853,12 @@ CREATE TABLE osu_badges (
   url varchar(255) NOT NULL DEFAULT '',
   PRIMARY KEY (user_id, image)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web database (SHOW CREATE TABLE osu_favouritemaps).
+DROP TABLE IF EXISTS osu_favouritemaps;
+CREATE TABLE osu_favouritemaps (
+  user_id int unsigned NOT NULL DEFAULT 0,
+  beatmapset_id mediumint unsigned NOT NULL,
+  dateadded timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, beatmapset_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

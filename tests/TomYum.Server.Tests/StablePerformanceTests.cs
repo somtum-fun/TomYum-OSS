@@ -54,6 +54,25 @@ public sealed class StablePerformanceTests : IDisposable
         Assert.Equal(stableSs, fromAccuracy, 6);
     }
 
+    [Fact]
+    public async Task AFail_IsWorthThePartItGotThrough()
+    {
+        var calculator = new OfficialPerformanceCalculator(
+            new OsuFileCache(_cache, new HttpClient(), NullLogger<OsuFileCache>.Instance),
+            new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<OfficialPerformanceCalculator>.Instance);
+        var (objects, maxCombo, _) = LazerSs();
+        var whole = await calculator.CalculateAsync(new PerformanceRequest(BeatmapId, 0, 0, maxCombo, objects, 0, 0, 0, 0, 0, Passed: true));
+
+        var half = objects / 2;
+        var halfway = await calculator.PartialAsync(new PerformanceRequest(BeatmapId, 0, 0, maxCombo / 2, half, 0, 0, 0, 0, 0, Passed: false));
+        var allTheWay = await calculator.PartialAsync(new PerformanceRequest(BeatmapId, 0, 0, maxCombo, objects, 0, 0, 0, 0, 0, Passed: false));
+
+        Assert.InRange(halfway!.Value, 1, whole * 0.9);          // worth something, but less than the whole map
+        Assert.Equal(whole, allTheWay!.Value, 3);                 // reaching the end is the whole map
+        Assert.Equal(0, await calculator.PartialAsync(new PerformanceRequest(BeatmapId, 0, 0, 0, 0, 0, 0, 0, 0, 0, Passed: false)));
+    }
+
     public void Dispose() => Directory.Delete(_cache, recursive: true);
 
     /// <summary>The same map as lazer scores it: every judgement (slider ends and ticks included) hit.</summary>

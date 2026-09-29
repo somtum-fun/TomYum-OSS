@@ -26,7 +26,7 @@ namespace TomYum.Performance;
 /// attributes 30 min by beatmapId+rulesetId+mods, then runs the performance calculator.
 /// One of the pluggable backends behind RoutingPerformanceCalculator (ADR-0005 / ADR-0010).
 /// </summary>
-public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAccuracyPerformance, IBeatmapDifficulty
+public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAccuracyPerformance, IBeatmapDifficulty, IPartialPerformance
 {
     private readonly OsuFileCache _files;
     private readonly IMemoryCache _cache;
@@ -94,6 +94,39 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
             results.Add(calculator.Calculate(BuildScoreInfo(request, ruleset, modList, difficulty.Beatmap), attributes).Total);
         }
         return results;
+    }
+
+    /// <summary>
+    /// A failed play's pp: the difficulty after the objects it reached (hits of every kind, counted),
+    /// and the play's own hits and combo on that part.
+    /// </summary>
+    public async Task<double?> PartialAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.RulesetId is < 0 or > 3)
+            return null;
+        var reached = request.Count300 + request.Count100 + request.Count50 + request.CountMiss
+                      + (request.RulesetId is 2 or 3 ? request.CountKatu : 0) + (request.RulesetId == 3 ? request.CountGeki : 0);
+        if (reached <= 0)
+            return 0;
+
+        var ruleset = GetRuleset(request.RulesetId);
+        var mods = StableMods(ruleset, request.Mods);
+        var timed = await _cache.GetOrCreateAsync(
+            $"diff:timed:{request.BeatmapId}:{request.RulesetId}:{request.Mods}:{_files.Stamp(request.BeatmapId)}", async entry =>
+            {
+                entry.SlidingExpiration = TimeSpan.FromMinutes(10);
+                var bytes = await _files.GetAsync(request.BeatmapId, cancellationToken).ConfigureAwait(false);
+                using var stream = new MemoryStream(bytes, writable: false);
+                var working = new StreamedWorkingBeatmap(stream, ruleset);
+                return (Attributes: ruleset.CreateDifficultyCalculator(working).CalculateTimed(mods), working.BeatmapInfo);
+            }).ConfigureAwait(false);
+        if (timed.Attributes.Count == 0)
+            return null;
+
+        var attributes = timed.Attributes[Math.Min(reached, timed.Attributes.Count) - 1].Attributes;
+        var scoreInfo = BuildScoreInfo(request with { Passed = true }, ruleset, mods, timed.BeatmapInfo);
+        return ruleset.CreatePerformanceCalculator()?.Calculate(scoreInfo, attributes).Total;
     }
 
     public async Task<double?> StarRatingAsync(int beatmapId, int rulesetId, int mods, CancellationToken cancellationToken = default)

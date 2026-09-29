@@ -102,6 +102,43 @@ public sealed class StableParityTests : OsuWebDatabaseTest
         Assert.Contains("Bravo] achieved rank #1", said, StringComparison.Ordinal);
     }
 
+    [MySqlFact]
+    public async Task EarlierPlays_GetTheirEntries_Once()
+    {
+        await NewTomYumContextAsync();
+        var alpha = await AddUserAsync("Alpha");
+        var bravo = await AddUserAsync("Bravo");
+        await new OsuWebBeatmapMirror(NewOsuWebContext()).WriteAsync(new Beatmap
+        {
+            Id = 100, SetId = 10, Md5 = "a", Status = RankedStatus.Ranked, OsuApiStatus = 1, Version = "Hard", Artist = "Artist", Title = "Song", Creator = "M",
+        });
+        await InsertAsync(alpha, 800_000, "A", stable: true);
+        await InsertAsync(bravo, 900_000, "S", stable: false);
+
+        var interop = new RecordingInterop();
+        var channels = new ChannelRegistry();
+        var listener = new PlayerRegistry().Add(new BanchoPresence { UserId = 50, Username = "Listener" });
+        channels.Get("#announce")!.Join(listener);
+        var services = new ServiceCollection()
+            .AddScoped(_ => new OsuWebCommunity(NewOsuWebContext()))
+            .AddScoped(_ => new OsuWebInterop(new HttpClient(interop), new OsuWebInteropOptions { InteropUrl = "http://osu-web", InteropSecret = "s" }))
+            .BuildServiceProvider();
+        ScoreRankEvents Events() => new(services.GetRequiredService<IServiceScopeFactory>(), channels, new ConfigurationBuilder().Build(), NullLogger<ScoreRankEvents>.Instance);
+
+        await Events().TickAsync();
+        Assert.Equal(
+        [
+            $"/_lio/users/{alpha}/100/0/rank-achieved?position_after=1&rank=A&legacy_score_event=1",
+            $"/_lio/users/{bravo}/100/0/rank-achieved?position_after=1&rank=S&legacy_score_event=0",
+            $"/_lio/users/{alpha}/100/0/first-place-lost?legacy_score_event=0",
+        ], interop.Paths);
+        Assert.Empty(listener.DequeueAll()); // old plays aren't announced in-game
+
+        // Marked done: another start writes nothing again.
+        await Events().TickAsync();
+        Assert.Equal(3, interop.Paths.Count);
+    }
+
     private async Task<int> AddUserAsync(string name) =>
         (await new OsuWebUserRepository(NewOsuWebContext()).AddAsync(new User
         {

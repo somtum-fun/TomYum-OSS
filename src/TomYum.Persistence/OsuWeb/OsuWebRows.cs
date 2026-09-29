@@ -196,6 +196,9 @@ public sealed class OsuWebBeatmap
     /// <summary>MD5 of the .osu file.</summary>
     public string? Checksum { get; set; }
 
+    /// <summary>The difficulty's file name (see <c>OsuFileName</c>).</summary>
+    public string? Filename { get; set; }
+
     public string Version { get; set; } = string.Empty;
 
     public uint TotalLength { get; set; }

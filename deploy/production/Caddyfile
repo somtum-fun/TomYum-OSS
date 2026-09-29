@@ -68,8 +68,15 @@ http://osu.{$DOMAIN} {
 		respond 404
 	}
 
+	# Unknown country (XX) has no emoji flag: show the UN flag instead of a broken image.
+	handle /assets/images/flags/1f1fd-1f1fd.svg {
+		rewrite * /assets/images/flags/1f1fa-1f1f3.svg
+		import osu-web
+	}
+
 	# /beatmap-submission: lazer's beatmap submission (its default, under the API URL).
-	@tomyum path /web/* /d/* /beatmap-submission/*
+	# /ss: stable's uploaded screenshots; /difficulty-rating: stable's star ratings with mods.
+	@tomyum path /web/* /d/* /beatmap-submission/* /ss/* /difficulty-rating
 	handle @tomyum {
 		import tomyum
 	}
