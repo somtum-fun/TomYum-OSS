@@ -19,7 +19,12 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
     private static readonly TimeSpan AnswerWithin = TimeSpan.FromSeconds(2);
 
     private static readonly HashSet<string> PrivateCommands = new(
-        DiscordCommands.Specs.Where(s => s.Staff || s.Private).Select(s => s.Name).Append("link").Append("unlink"), StringComparer.Ordinal);
+        DiscordCommands.Specs.Where(s => (s.Staff || s.Private) && !s.Live).Select(s => s.Name).Append("link").Append("unlink"), StringComparer.Ordinal);
+
+    private static readonly HashSet<string> LiveCommands = new(DiscordCommands.Specs.Where(s => s.Live).Select(s => s.Name), StringComparer.Ordinal);
+
+    /// <summary>The least time between two edits of a live message (Discord limits how often a message is edited).</summary>
+    private static readonly TimeSpan LiveEditGap = TimeSpan.FromMilliseconds(1500);
 
     private readonly DiscordOptions _options;
     private readonly IServiceProvider _services;
@@ -339,6 +344,120 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
         return builder.Build();
     }
 
+    /// <summary>
+    /// A live command: answered in the channel at once, the message edited as it works (newest
+    /// state wins, at most one edit per <see cref="LiveEditGap"/>), then replaced by the result. A
+    /// refusal goes only to the caller, and the channel message is removed.
+    /// </summary>
+    private async Task AnswerLiveAsync(SocketSlashCommand command, DiscordCommands commands, Dictionary<string, string> options)
+    {
+        try
+        {
+            await command.DeferAsync(ephemeral: false).ConfigureAwait(false);
+            var live = new LiveMessage(this, command);
+            var reply = await commands.RunAsync(command.Data.Name, options, command.User.Id, live.Show).ConfigureAwait(false);
+            await live.FinishAsync().ConfigureAwait(false);
+
+            var post = reply.Post;
+            if (reply.Private)
+            {
+                await command.DeleteOriginalResponseAsync().ConfigureAwait(false);
+                await command.FollowupAsync(Cut(post.Content, 2000), embed: Build(post.Embed), ephemeral: true,
+                    allowedMentions: AllowedMentions.None, components: Components(post.Buttons)).ConfigureAwait(false);
+                return;
+            }
+            await EditAsync(command, post).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // any failure becomes a reply, never an unanswered command
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LogWarning(ex, "Discord: /{Command} failed.", command.Data.Name);
+            try
+            {
+                await command.ModifyOriginalResponseAsync(m =>
+                {
+                    m.Content = "Something went wrong; try again in a bit.";
+                    m.Embed = null;
+                    m.Components = new ComponentBuilder().Build();
+                }).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // the interaction may have expired: nothing more to do
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+        }
+    }
+
+    private static Task<global::Discord.Rest.RestInteractionMessage> EditAsync(SocketSlashCommand command, DiscordPost post) =>
+        command.ModifyOriginalResponseAsync(m =>
+        {
+            m.Content = Cut(post.Content, 2000) ?? string.Empty;
+            m.Embed = Build(post.Embed);
+            m.Components = Components(post.Buttons) ?? new ComponentBuilder().Build();
+            m.AllowedMentions = AllowedMentions.None;
+        });
+
+    /// <summary>Edits a live command's message with its newest state, spacing the edits out.</summary>
+    private sealed class LiveMessage(DiscordBotService bot, SocketSlashCommand command)
+    {
+        private readonly Lock _gate = new();
+        private DiscordPost? _latest;
+        private Task? _sending;
+
+        public void Show(DiscordPost post)
+        {
+            lock (_gate)
+            {
+                _latest = post;
+                _sending ??= Task.Run(SendAsync);
+            }
+        }
+
+        /// <summary>Stops the updates (the result comes next) once the edit in flight is done.</summary>
+        public async Task FinishAsync()
+        {
+            Task? sending;
+            lock (_gate)
+            {
+                _latest = null;
+                sending = _sending;
+            }
+            if (sending is not null)
+                await sending.ConfigureAwait(false);
+        }
+
+        private async Task SendAsync()
+        {
+            while (true)
+            {
+                DiscordPost? post;
+                lock (_gate)
+                {
+                    post = _latest;
+                    _latest = null;
+                    if (post is null)
+                    {
+                        _sending = null;
+                        return;
+                    }
+                }
+                try
+                {
+                    await EditAsync(command, post).ConfigureAwait(false);
+                }
+#pragma warning disable CA1031 // a missed progress edit doesn't matter; the result follows
+                catch (Exception ex)
+#pragma warning restore CA1031
+                {
+                    bot._logger.LogInformation(ex, "Discord: a live update of /{Command} failed.", command.Data.Name);
+                }
+                await Task.Delay(LiveEditGap).ConfigureAwait(false);
+            }
+        }
+    }
+
     private async Task AnswerAsync(SocketSlashCommand command)
     {
         var options = command.Data.Options.ToDictionary(
@@ -346,6 +465,11 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
             o => Convert.ToString(o.Value, CultureInfo.InvariantCulture) ?? string.Empty,
             StringComparer.Ordinal);
         var commands = _services.GetRequiredService<DiscordCommands>();
+        if (LiveCommands.Contains(command.Data.Name))
+        {
+            await AnswerLiveAsync(command, commands, options).ConfigureAwait(false);
+            return;
+        }
         var run = commands.RunAsync(command.Data.Name, options, command.User.Id);
 
         try

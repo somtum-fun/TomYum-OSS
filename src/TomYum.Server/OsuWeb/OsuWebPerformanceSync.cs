@@ -70,6 +70,10 @@ public sealed class OsuWebPerformanceSync
         return performance;
     }
 
+    /// <summary>Fills <paramref name="presence"/> with what the panel should show now (see <see cref="PresenceStats"/>).</summary>
+    public Task<bool> FillAsync(BanchoPresence presence, int userId, int mode, CancellationToken cancellationToken = default) =>
+        new PresenceStats(_userStats, _mirror).FillAsync(presence, userId, mode, cancellationToken: cancellationToken);
+
     /// <summary>Re-sends the player's stats (the website's, see <see cref="PresenceStats"/>) to everyone in-game, if they're online in <paramref name="mode"/>.</summary>
     public async Task RefreshPresenceAsync(int userId, int mode, CancellationToken cancellationToken = default)
     {
@@ -134,13 +138,12 @@ public sealed class OsuWebPerformanceWatcher : BackgroundService
                     if (player.UserId <= 1 || !OsuWebScores.IsMirrored(mode))
                         continue;
 
-                    var before = player.Presence.Performance;
-                    var beforeAccuracy = player.Presence.Accuracy;
-                    if (await sync.ApplyAsync(player.UserId, mode, recompute: false, stoppingToken).ConfigureAwait(false) is { } now
-                        && ((short)Math.Clamp((int)now.Pp, short.MinValue, short.MaxValue) != before || Math.Abs(now.Accuracy - beforeAccuracy) > 0.00001f))
-                    {
+                    // Anything on the panel may have moved (their lazer plays, or someone passing them in rank).
+                    await sync.ApplyAsync(player.UserId, mode, recompute: false, stoppingToken).ConfigureAwait(false);
+                    var shown = PresenceStats.Snapshot(player.Presence);
+                    var fresh = new BanchoPresence { UserId = player.UserId, Username = player.Presence.Username };
+                    if (await sync.FillAsync(fresh, player.UserId, mode, stoppingToken).ConfigureAwait(false) && PresenceStats.Snapshot(fresh) != shown)
                         await sync.RefreshPresenceAsync(player.UserId, mode, stoppingToken).ConfigureAwait(false);
-                    }
                 }
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

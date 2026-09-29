@@ -142,7 +142,7 @@ public sealed class CircleguardWatch : BackgroundService
 
     private async Task CheckAsync(IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, CancellationToken cancellationToken)
     {
-        var scan = await _scanner.ScanAsync(services, community, score, path, References, References, cancellationToken).ConfigureAwait(false);
+        var scan = await _scanner.ScanAsync(services, community, score, path, References, References, cancellationToken: cancellationToken).ConfigureAwait(false);
         var verdict = scan.Verdict;
         var restricted = false;
         if (verdict.RiskScore > _options.RestrictAbove)

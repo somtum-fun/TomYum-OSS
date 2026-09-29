@@ -43,18 +43,24 @@ public sealed class OfficialReplays
 
     private sealed record OfficialScore(long ScoreId, string Username, int Mods, bool ReplayAvailable);
 
-    /// <summary>osu!'s top plays on the map (up to <paramref name="count"/>, those with replays), as references; empty when osu! can't be asked.</summary>
-    public async Task<IReadOnlyList<CircleguardReference>> TopAsync(int beatmapId, int ruleset, int count = Top, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// osu!'s top plays on the map (up to <paramref name="count"/>, those with replays), as references; empty when
+    /// osu! can't be asked. <paramref name="progress"/> is told (done, of) as each replay is looked at.
+    /// </summary>
+    public async Task<IReadOnlyList<CircleguardReference>> TopAsync(
+        int beatmapId, int ruleset, int count = Top, Action<int, int>? progress = null, CancellationToken cancellationToken = default)
     {
         if (!IsAvailable || count <= 0)
             return [];
         var references = new List<CircleguardReference>();
-        foreach (var score in (await ListAsync(beatmapId, ruleset, Math.Clamp(count, 1, 100), cancellationToken).ConfigureAwait(false)).Take(count))
+        var withReplays = (await ListAsync(beatmapId, ruleset, Math.Clamp(count, 1, 100), cancellationToken).ConfigureAwait(false))
+            .Take(count).Where(s => s.ReplayAvailable).ToList();
+        progress?.Invoke(0, withReplays.Count);
+        foreach (var (score, index) in withReplays.Select((s, i) => (s, i)))
         {
-            if (!score.ReplayAvailable)
-                continue;
             if (await ReplayAsync(score.ScoreId, ruleset, cancellationToken).ConfigureAwait(false) is { } frames)
                 references.Add(new CircleguardReference(score.ScoreId, score.Username + " (osu!)", score.Mods, frames, FramesOnly: true));
+            progress?.Invoke(index + 1, withReplays.Count);
         }
         return references;
     }

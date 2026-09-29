@@ -7,9 +7,9 @@ namespace TomYum.Server.Bancho;
 
 /// <summary>
 /// Fills a stable player's panel numbers (ranked and total score, play count, accuracy, pp, rank).
-/// With the website, the four vanilla modes show its numbers, which count stable and lazer plays
-/// together, so the stable client (whose level comes from total score), lazer and the profile all
-/// agree; relax and autopilot are TomYum's own. pp is rounded as the website rounds it.
+/// With the website, the four vanilla modes show its numbers, rank included, which count stable and
+/// lazer plays together, so the stable client (whose level comes from total score), lazer and the
+/// profile all agree; relax and autopilot are TomYum's own. pp is rounded as the website rounds it.
 /// </summary>
 public sealed class PresenceStats
 {
@@ -41,8 +41,17 @@ public sealed class PresenceStats
         presence.PlayCount = website?.PlayCount ?? stats!.PlayCount;
         presence.Accuracy = website?.Accuracy ?? stats!.Accuracy;
         presence.Performance = Pp(website?.Pp ?? stats!.Pp);
-        presence.GlobalRank = await _stats.GetGlobalRankAsync(userId, gameMode, cancellationToken).ConfigureAwait(false);
+        presence.GlobalRank = website is { GlobalRank: > 0 }
+            ? website.GlobalRank
+            : await _stats.GetGlobalRankAsync(userId, gameMode, cancellationToken).ConfigureAwait(false);
         return true;
+    }
+
+    /// <summary>What the panel shows, to tell whether it changed.</summary>
+    public static (long, long, int, float, short, int) Snapshot(BanchoPresence presence)
+    {
+        ArgumentNullException.ThrowIfNull(presence);
+        return (presence.RankedScore, presence.TotalScore, presence.PlayCount, presence.Accuracy, presence.Performance, presence.GlobalRank);
     }
 
     /// <summary>pp as the panel carries it: rounded like the website shows it, within a short.</summary>

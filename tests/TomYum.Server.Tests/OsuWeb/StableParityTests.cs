@@ -44,6 +44,11 @@ public sealed class StableParityTests : OsuWebDatabaseTest
         Assert.Equal((25722552L, 42731411L, 12, (short)738), (presence.RankedScore, presence.TotalScore, presence.PlayCount, presence.Performance));
         Assert.Equal(0.9407f, presence.Accuracy, 4);
 
+        // The website's rank too (TomYum's own ranking only knows the pp it last copied).
+        await ExecuteAsync($"UPDATE osu_user_stats SET rank_score_index = 2 WHERE user_id = {player}");
+        Assert.True(await filler.FillAsync(presence, player, 0));
+        Assert.Equal(2, presence.GlobalRank);
+
         // Relax is TomYum's own.
         Assert.True(await filler.FillAsync(presence, player, 4));
         Assert.Equal((1234L, (short)321), (presence.TotalScore, presence.Performance));

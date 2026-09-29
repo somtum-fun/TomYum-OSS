@@ -6,6 +6,17 @@ using TomYum.Server.OsuWeb;
 
 namespace TomYum.Server.Anticheat;
 
+/// <summary>The steps of a scan, in order.</summary>
+public enum CircleguardScanStep
+{
+    TopPlays,
+    OfficialPlays,
+    Analysing,
+}
+
+/// <summary>Where a scan is: the step, and how far into it (0 of 0 when it has no count).</summary>
+public sealed record CircleguardScanProgress(CircleguardScanStep Step, int Done, int Total);
+
 /// <summary>What a scan found, and what the play was compared with.</summary>
 /// <param name="Verdict">circleguard's answer.</param>
 /// <param name="LocalReferences">Top plays from this server it was compared with.</param>
@@ -53,9 +64,11 @@ public sealed class CircleguardScanner
     /// Scans <paramref name="score"/> (its replay at <paramref name="path"/>), compared with up to
     /// <paramref name="localReferences"/> top plays here and <paramref name="officialReferences"/> from
     /// osu! (osu! maps only; osu!'s replays are fetched at ten a minute and kept).
+    /// <c>progress</c> is told where the scan is (for <c>/scan</c>'s live message).
     /// </summary>
     public async Task<CircleguardScan> ScanAsync(
-        IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, int localReferences, int officialReferences, CancellationToken cancellationToken = default)
+        IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, int localReferences, int officialReferences,
+        Action<CircleguardScanProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(community);
@@ -76,23 +89,28 @@ public sealed class CircleguardScanner
         if (score.Ruleset == 0)
         {
             // The map's best here (other players), then osu!'s own top plays for official maps.
-            foreach (var top in await community.GetBeatmapLeaderboardAsync(score.BeatmapId, score.Ruleset, localReferences + 3, cancellationToken).ConfigureAwait(false))
+            var candidates = (await community.GetBeatmapLeaderboardAsync(score.BeatmapId, score.Ruleset, localReferences + 3, cancellationToken).ConfigureAwait(false))
+                .Where(top => top.UserId != score.UserId && top.ScoreId != score.ScoreId).Take(localReferences).ToList();
+            progress?.Invoke(new CircleguardScanProgress(CircleguardScanStep.TopPlays, 0, candidates.Count));
+            foreach (var (top, index) in candidates.Select((t, i) => (t, i)))
             {
-                if (references.Count >= localReferences || top.UserId == score.UserId || top.ScoreId == score.ScoreId)
-                    continue;
                 if (await ReplayPathAsync(community, top, cancellationToken).ConfigureAwait(false) is { } topPath && File.Exists(topPath))
                 {
                     var play = await PlayAsync(services, community, top, topPath, cancellationToken).ConfigureAwait(false);
                     references.Add(new CircleguardReference((long)top.ScoreId, top.Username, play.Mods, play.Data, play.FramesOnly));
                 }
+                progress?.Invoke(new CircleguardScanProgress(CircleguardScanStep.TopPlays, index + 1, candidates.Count));
             }
             if (officialReferences > 0 && CanCompareOfficial && score.BeatmapId < TomYum.Domain.Entities.Beatmap.CustomIdFloor)
             {
-                var fromOsu = await _official.TopAsync(score.BeatmapId, score.Ruleset, officialReferences, cancellationToken).ConfigureAwait(false);
+                var fromOsu = await _official.TopAsync(score.BeatmapId, score.Ruleset, officialReferences,
+                    (done, of) => progress?.Invoke(new CircleguardScanProgress(CircleguardScanStep.OfficialPlays, done, of)), cancellationToken).ConfigureAwait(false);
                 official = fromOsu.Count;
                 references.AddRange(fromOsu);
             }
         }
+
+        progress?.Invoke(new CircleguardScanProgress(CircleguardScanStep.Analysing, 0, 0));
 
         var verdict = await _client.AnalyzeAsync(replay, beatmap, references, cancellationToken).ConfigureAwait(false);
         _logger.LogInformation("circleguard: {Player}'s score {ScoreId} ({Mods}): risk {Risk}/100 {Reasons}",

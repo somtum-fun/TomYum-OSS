@@ -409,11 +409,12 @@ public sealed class OsuWebScoreMirror
     {
         var table = OsuWebScores.StatsTable(mode);
         var sql = "SELECT CAST(ranked_score AS SIGNED) AS RankedScore, CAST(total_score AS SIGNED) AS TotalScore, "
-                  + "CAST(playcount AS SIGNED) AS PlayCount, rank_score AS Pp, accuracy_new AS Accuracy FROM `" + table + "` WHERE user_id = {0}";
+                  + "CAST(playcount AS SIGNED) AS PlayCount, rank_score AS Pp, accuracy_new AS Accuracy, "
+                  + "CAST(rank_score_index AS SIGNED) AS GlobalRank FROM `" + table + "` WHERE user_id = {0}";
         var rows = await _osuWeb.Database.SqlQueryRaw<CountersRow>(sql, (uint)userId).ToListAsync(cancellationToken).ConfigureAwait(false);
         return rows.Count == 0
             ? null
-            : new OsuWebStatsCounters(rows[0].RankedScore, rows[0].TotalScore, (int)rows[0].PlayCount, rows[0].Pp, rows[0].Accuracy / 100f);
+            : new OsuWebStatsCounters(rows[0].RankedScore, rows[0].TotalScore, (int)rows[0].PlayCount, rows[0].Pp, rows[0].Accuracy / 100f, (int)rows[0].GlobalRank);
     }
 
     private sealed class CountersRow
@@ -427,6 +428,8 @@ public sealed class OsuWebScoreMirror
         public float Pp { get; set; }
 
         public float Accuracy { get; set; }
+
+        public long GlobalRank { get; set; }
     }
 
     /// <summary>The player's total pp and accuracy (0-1) on the website, or null without a stats row.</summary>
