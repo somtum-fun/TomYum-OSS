@@ -61,6 +61,8 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
                 _ = Task.Run(() => RelayAsync(message));
             if (message.Channel is SocketGuildChannel && !message.Author.IsBot && message.Content.Contains("://", StringComparison.Ordinal))
                 _ = Task.Run(() => PreviewAsync(message));
+            if (ShouldReactKfc(message))
+                _ = Task.Run(() => ReactKfcAsync(message));
             return Task.CompletedTask;
         };
         _client.ButtonExecuted += component =>
@@ -575,6 +577,37 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
     }
 
     /// <summary>Links to the website's maps and players get a card in reply.</summary>
+    /// <summary>
+    /// "kfc" in someone's message, or in the game chat the bot relays (its own posts in the chat channel);
+    /// not the bot's announcements or other bots.
+    /// </summary>
+    private bool ShouldReactKfc(SocketMessage message) =>
+        !string.IsNullOrEmpty(_options.KfcReaction)
+        && message.Channel is SocketGuildChannel
+        && (!message.Author.IsBot || (message.Author.Id == _client.CurrentUser?.Id && message.Channel.Id == _options.ChatChannelId))
+        && SaysKfc(message.Content);
+
+    /// <summary>Whether <paramref name="text"/> has "kfc" as a word (any case).</summary>
+    public static bool SaysKfc(string? text) => !string.IsNullOrEmpty(text) && KfcWord().IsMatch(text);
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"(?<![a-z0-9])kfc(?![a-z0-9])", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex KfcWord();
+
+    private async Task ReactKfcAsync(SocketMessage message)
+    {
+        try
+        {
+            IEmote emote = Emote.TryParse(_options.KfcReaction, out var custom) ? custom : new Emoji(_options.KfcReaction);
+            await message.AddReactionAsync(emote).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // a reaction that doesn't go through (missing emoji, no permission) doesn't matter
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LogInformation(ex, "Discord: couldn't react to a kfc message.");
+        }
+    }
+
     private async Task PreviewAsync(SocketMessage message)
     {
         if (message is not SocketUserMessage user || message.Source != MessageSource.User)
