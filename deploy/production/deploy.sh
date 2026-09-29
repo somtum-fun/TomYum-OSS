@@ -8,6 +8,10 @@ cd "$(dirname "$0")"
 web=$(grep -E '^OSU_WEB_PATH=' .env 2>/dev/null | cut -d= -f2-)
 web=${web:-../../../osu-web}
 
+# No downtime alerts while containers restart (watchdog.sh): 10 minutes, ended early below.
+mkdir -p "$HOME/.tomyum-watchdog"
+echo $(( $(date +%s) + 600 )) > "$HOME/.tomyum-watchdog/paused-until"
+
 git -C ../.. pull -q
 git -C "$web" pull -q
 [ -d ../../../lazer-circleguard ] && git -C ../../../lazer-circleguard pull -q
@@ -19,3 +23,6 @@ docker compose up -d
 docker builder prune -f --filter until=24h >/dev/null
 
 ./changelog.sh
+
+# Back to watching (a minute's grace for everything to come up).
+echo $(( $(date +%s) + 60 )) > "$HOME/.tomyum-watchdog/paused-until"
