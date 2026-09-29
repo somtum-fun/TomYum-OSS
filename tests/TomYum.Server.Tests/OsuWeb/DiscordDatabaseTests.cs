@@ -80,7 +80,10 @@ public sealed class DiscordDatabaseTests : OsuWebDatabaseTest
 
         var best = await commands.RunAsync("best", new Dictionary<string, string> { ["user"] = "Alpha" }, 1);
         var description = best.Post.Embed!.Description!;
-        Assert.True(description.IndexOf("310.4pp", StringComparison.Ordinal) < description.IndexOf("250pp", StringComparison.Ordinal));
+        Assert.True(description.IndexOf("310.40pp", StringComparison.Ordinal) < description.IndexOf("250.00pp", StringComparison.Ordinal));
+        Assert.StartsWith("**1.** [", description, StringComparison.Ordinal);
+        Assert.StartsWith("Page 1/1", best.Post.Embed.Footer, StringComparison.Ordinal);
+        Assert.StartsWith("top:", best.Post.Buttons[2].CustomId, StringComparison.Ordinal);
         Assert.Contains("+HD", description);
 
         var top = await commands.RunAsync("top", new Dictionary<string, string>(), 1);

@@ -275,7 +275,7 @@ public sealed partial class DiscordCommands
             var scoreB = await community.GetBestOnMapAsync(b.UserId, beatmapId, mapRuleset, cancellationToken).ConfigureAwait(false);
             string Line(PlayerCard p, ScoreCard? s) => s is null
                 ? $"**{DiscordFormat.Escape(p.Username)}** hasn't passed it."
-                : $"**{DiscordFormat.Escape(p.Username)}** {DiscordFormat.Mods(s.Mods)}\n{DiscordFormat.ScoreDetails(s)}\n▸ {DiscordFormat.Relative(s.EndedAt)}";
+                : $"**{DiscordFormat.Escape(p.Username)}** {(s.Mods.Count > 0 ? "+" + string.Concat(s.Mods) : "+NM")} • {DiscordFormat.Relative(s.EndedAt)} • {(s.IsStable ? "stable" : "lazer")}" + "\n" + DiscordFormat.ScoreDetails(s);
             var ahead = (scoreA, scoreB) switch
             {
                 (null, null) => "Neither has passed it yet.",
@@ -285,35 +285,18 @@ public sealed partial class DiscordCommands
             };
             return new DiscordReply(new DiscordPost(Embed: new DiscordEmbed
             {
-                Title = $"{map.Name} {DiscordFormat.Stars(map.StarRating)}",
+                Title = $"{map.Artist} - {map.Title} [{map.Version}] [{map.StarRating.ToString("0.00", CultureInfo.InvariantCulture)}★]",
                 Url = _format.Beatmap(beatmapId),
                 Description = $"{Line(a, scoreA)}\n\n{Line(b, scoreB)}\n\n{ahead}",
                 ThumbnailUrl = _format.ListCover(map.BeatmapsetId),
                 Color = DiscordFormat.Accent,
-                Footer = DiscordFormat.Ruleset(mapRuleset),
+                Footer = $"{DiscordFormat.Ruleset(mapRuleset)} • Mapset by {map.Creator}",
             }), a.IsRestricted || b.IsRestricted);
         }
 
         var topA = await community.GetBestAsync(a.UserId, ruleset, 1, cancellationToken).ConfigureAwait(false);
         var topB = await community.GetBestAsync(b.UserId, ruleset, 1, cancellationToken).ConfigureAwait(false);
-        string Column(PlayerCard p, IReadOnlyList<ScoreCard> top) => string.Join('\n',
-            $"Rank: **{(p.GlobalRank is { } r ? "#" + DiscordFormat.Number(r) : "-")}** {DiscordFormat.Flag(p.Country)} {(p.CountryRank is { } c ? "#" + DiscordFormat.Number(c) : string.Empty)}",
-            $"pp: **{DiscordFormat.Pp(p.Pp)}**",
-            $"Accuracy: {p.Accuracy.ToString("0.00", CultureInfo.InvariantCulture)}%",
-            $"Plays: {DiscordFormat.Number(p.PlayCount)} ({DiscordFormat.Duration(p.PlaySeconds)})",
-            $"Ranked score: {DiscordFormat.Number(p.RankedScore)}",
-            $"Top play: {(top is [var t, ..] && t.Pp is { } pp ? DiscordFormat.Pp(pp) : "-")}");
-        return new DiscordReply(new DiscordPost(Embed: new DiscordEmbed
-        {
-            Title = $"{a.Username} vs {b.Username} ▸ {DiscordFormat.Ruleset(ruleset)}",
-            Fields =
-            [
-                new DiscordField(a.Username, Column(a, topA)),
-                new DiscordField(b.Username, Column(b, topB)),
-            ],
-            Description = Ahead(a.Username, b.Username, a.Pp, b.Pp, "pp"),
-            Color = DiscordFormat.Accent,
-        }), a.IsRestricted || b.IsRestricted);
+        return new DiscordReply(new DiscordPost(Embed: CompareTable(a, b, topA.Count > 0 ? topA[0] : null, topB.Count > 0 ? topB[0] : null)), a.IsRestricted || b.IsRestricted);
 
         static long Total(ScoreCard s) => s.IsStable && s.LegacyTotalScore > 0 ? s.LegacyTotalScore : s.TotalScore;
     }

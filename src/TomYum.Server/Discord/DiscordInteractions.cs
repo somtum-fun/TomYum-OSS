@@ -13,7 +13,7 @@ namespace TomYum.Server.Discord;
 /// <list type="bullet">
 /// <item><c>status:{status}:{set}:{beatmap|0}</c>: confirms <c>/rankmap</c>, <c>/lovemap</c>, <c>/qualify</c> (BN, NAT, admins);</item>
 /// <item><c>mod:{restrict|silence|unrestrict|dismiss}:{user}:{what}</c>: acts on a report, a suspicious play or a circleguard restriction (staff);</item>
-/// <item><c>rs:{user}:{ruleset}:{index}:{slot}</c>: pages <c>/recent</c> (anyone);</item>
+/// <item><c>rs:{user}:{ruleset}:{index}:{slot}</c> and <c>top:{user}:{ruleset}:{page}:{slot}</c>: page <c>/recent</c> and <c>/best</c> (anyone);</item>
 /// <item><c>cancel</c>: closes a confirmation.</item>
 /// </list>
 /// </summary>
@@ -39,7 +39,7 @@ public sealed class DiscordInteractions
 
         using var scope = _scopes.CreateScope();
         var services = scope.ServiceProvider;
-        if (customId.StartsWith("rs:", StringComparison.Ordinal))
+        if (customId.StartsWith("rs:", StringComparison.Ordinal) || customId.StartsWith("top:", StringComparison.Ordinal))
             return await RecentPageAsync(services, customId.Split(':'), cancellationToken).ConfigureAwait(false);
         var links = services.GetRequiredService<IDiscordLinkRepository>();
         if (await links.GetByDiscordIdAsync(presserId, cancellationToken).ConfigureAwait(false) is not { } link)
@@ -69,8 +69,12 @@ public sealed class DiscordInteractions
             return DiscordButtonResult.Say("That button doesn't do anything anymore.");
 
         var player = await community.GetPlayerAsync(userId, ruleset, cancellationToken).ConfigureAwait(false);
-        if (player is null || player.IsRestricted
-            || await commands.RecentCardAsync(services, community, player, index, cancellationToken).ConfigureAwait(false) is not { } card)
+        if (player is null || player.IsRestricted)
+            return DiscordButtonResult.Say("There's nothing to show there.");
+        var card = parts[0] == "top"
+            ? await commands.BestCardAsync(community, player, index, cancellationToken).ConfigureAwait(false)
+            : await commands.RecentCardAsync(services, community, player, index, cancellationToken).ConfigureAwait(false);
+        if (card is null)
             return DiscordButtonResult.Say("There's nothing to show there.");
         return new DiscordButtonResult(card, null);
     }

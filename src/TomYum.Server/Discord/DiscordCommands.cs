@@ -77,7 +77,7 @@ public sealed partial class DiscordCommands
         new("rank", "A player's rank and pp", [UserOption, ModeOption]),
         new("recent", "A player's latest play (buttons go back through the last 50)", [UserOption, ModeOption]),
         new("rs", "Same as /recent", [UserOption, ModeOption]),
-        new("best", "A player's top plays", [UserOption, ModeOption]),
+        new("best", "A player's top plays (buttons go through the top 100)", [UserOption, ModeOption]),
         new("top", "The pp ranking", [new("mode", "Ruleset (osu! if left out)", Choices: Rulesets), new("country", "Two-letter country code, e.g. NL")]),
         new("leaderboard", "A beatmap's leaderboard", [new("beatmap", "Beatmap id or link", Required: true), new("mode", "Ruleset (the map's own if left out)", Choices: Rulesets)]),
         new("map", "A beatmap: difficulty, length, BPM and pp", [new("beatmap", "Beatmap or set link, or a beatmap id", Required: true), new("mods", "Mods, e.g. HDDT"), new("mode", "Ruleset (converts from osu!)", Choices: Rulesets)]),
@@ -264,23 +264,10 @@ public sealed partial class DiscordCommands
             ? new DiscordReply(card, player.IsRestricted)
             : DiscordReply.Text($"{DiscordFormat.Escape(player.Username)} has no {DiscordFormat.Ruleset(player.Ruleset)} plays yet.", player.IsRestricted);
 
-    private async Task<DiscordReply> BestAsync(OsuWebCommunity community, PlayerCard player, CancellationToken cancellationToken)
-    {
-        var scores = await community.GetBestAsync(player.UserId, player.Ruleset, 5, cancellationToken).ConfigureAwait(false);
-        if (scores.Count == 0)
-            return DiscordReply.Text($"{DiscordFormat.Escape(player.Username)} has no ranked {DiscordFormat.Ruleset(player.Ruleset)} plays yet.", player.IsRestricted);
-
-        var blocks = scores.Select((s, i) => _format.ScoreBlock(s, string.Create(CultureInfo.InvariantCulture, $"**{i + 1}.** ")));
-        return new DiscordReply(new DiscordPost(Embed: new DiscordEmbed
-        {
-            AuthorName = $"{player.Username}'s top {DiscordFormat.Ruleset(player.Ruleset)} plays",
-            AuthorUrl = _format.ProfileIn(player.UserId, player.Ruleset),
-            AuthorIconUrl = _format.Avatar(player.UserId),
-            ThumbnailUrl = _format.Avatar(player.UserId),
-            Description = string.Join("\n\n", blocks),
-            Color = DiscordFormat.Accent,
-        }), player.IsRestricted);
-    }
+    private async Task<DiscordReply> BestAsync(OsuWebCommunity community, PlayerCard player, CancellationToken cancellationToken) =>
+        await BestCardAsync(community, player, 0, cancellationToken).ConfigureAwait(false) is { } card
+            ? new DiscordReply(card, player.IsRestricted)
+            : DiscordReply.Text($"{DiscordFormat.Escape(player.Username)} has no ranked {DiscordFormat.Ruleset(player.Ruleset)} plays yet.", player.IsRestricted);
 
     private async Task<DiscordReply> TopAsync(OsuWebCommunity community, IReadOnlyDictionary<string, string> options, CancellationToken cancellationToken)
     {
