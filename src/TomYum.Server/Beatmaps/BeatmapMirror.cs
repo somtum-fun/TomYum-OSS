@@ -19,6 +19,12 @@ public sealed class MirrorOptions
 
     /// <summary>How many requests a minute this server makes to it.</summary>
     public int RequestsPerMinute { get; set; } = 120;
+
+    /// <summary>
+    /// How the server introduces itself; defaults to naming its website (catboy.best refuses
+    /// anonymous clients, and ones whose link doesn't lead anywhere public).
+    /// </summary>
+    public string? UserAgent { get; set; }
 }
 
 /// <summary>
@@ -45,8 +51,12 @@ public sealed class BeatmapMirror
     /// <summary>The DI key of the mirror's own pace.</summary>
     public const string PaceKey = "mirror";
 
-    /// <summary>How the server introduces itself (catboy.best refuses anonymous clients).</summary>
-    public const string UserAgent = "TomYum/0.1 (osu! private server; +https://github.com/sundeiii/TomYum)";
+    /// <summary>The server's introduction: <see cref="MirrorOptions.UserAgent"/>, else one naming <paramref name="site"/>.</summary>
+    public static string UserAgentFor(MirrorOptions options, string site)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return string.IsNullOrWhiteSpace(options.UserAgent) ? $"TomYum/0.1 (osu! private server; +{site})" : options.UserAgent;
+    }
 
     public bool IsEnabled => _options.Enabled;
 

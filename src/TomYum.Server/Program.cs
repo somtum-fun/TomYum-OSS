@@ -197,7 +197,8 @@ builder.Services.AddHttpClient<BeatmapMirror>(http =>
 {
     http.BaseAddress = new Uri(beatmapMirrorOptions.Url.TrimEnd('/') + "/");
     http.Timeout = TimeSpan.FromSeconds(10);
-    http.DefaultRequestHeaders.UserAgent.ParseAdd(BeatmapMirror.UserAgent);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd(BeatmapMirror.UserAgentFor(beatmapMirrorOptions,
+        $"https://osu.{(BanchoHosts.ResolveDomain(builder.Configuration) is { Length: > 0 } siteDomain ? siteDomain : "localhost")}"));
 });
 builder.Services.AddHttpClient<OsuApiClient>(http =>
 {
