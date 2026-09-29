@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 using TomYum.Performance;
@@ -15,7 +16,7 @@ namespace TomYum.Server.Beatmaps;
 /// <summary>
 /// The rest of what osu!stable asks the server (bancho.py's set): the pre-login check, song
 /// select's map statuses and grades (<c>osu-getbeatmapinfo.php</c>), outdated maps' new files
-/// (<c>/web/maps/{file}</c>), favourites, screenshots (<c>osu-screenshot.php</c>, shown at
+/// (<c>/web/maps/{file}</c>), favourites, friends, in-game comments (<c>osu-comment.php</c>), screenshots (<c>osu-screenshot.php</c>, shown at
 /// <c>/ss/{file}</c>), star ratings with mods (<c>/difficulty-rating</c>), and the calls that only
 /// need an answer.
 /// </summary>
@@ -40,6 +41,7 @@ public static partial class StableClientEndpoints
         app.MapGet("/web/osu-addfavourite.php", HandleAddFavouriteAsync).RequireHost(hosts);
         app.MapGet("/web/osu-getfavourites.php", HandleFavouritesAsync).RequireHost(hosts);
         app.MapGet("/web/osu-getfriends.php", HandleFriendsAsync).RequireHost(hosts);
+        app.MapPost("/web/osu-comment.php", HandleCommentAsync).RequireHost(hosts).DisableAntiforgery();
         app.MapPost("/web/osu-screenshot.php", HandleScreenshotAsync).RequireHost(hosts).DisableAntiforgery();
         app.MapGet("/ss/{file}", HandleScreenshotFile).RequireHost(hosts);
         app.MapPost("/difficulty-rating", HandleDifficultyRatingAsync).RequireHost(hosts);
@@ -146,6 +148,77 @@ public static partial class StableClientEndpoints
         return Results.Text(string.Join('\n', friends), "text/plain");
     }
 
+    /// <summary>
+    /// In-game comments (form: <c>u</c>, <c>p</c>, <c>b</c> map, <c>s</c> set, <c>r</c> score, <c>a</c> get/post;
+    /// posting adds <c>target</c> song/map/replay, <c>starttime</c>, <c>comment</c> and a supporter's colour <c>f</c>).
+    /// Getting answers one <c>time	target	format	text</c> line per comment.
+    /// </summary>
+    internal static async Task<IResult> HandleCommentAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        if (!context.Request.HasFormContentType)
+            return Results.BadRequest();
+        var form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+        if (await UserAsync(context, form["u"], form["p"], cancellationToken).ConfigureAwait(false) is not { } user)
+            return Results.Unauthorized();
+        if (context.RequestServices.GetService<IBeatmapCommentRepository>() is not { } comments)
+            return Results.Text(string.Empty, "text/plain");
+        _ = long.TryParse(form["b"], NumberStyles.None, CultureInfo.InvariantCulture, out var beatmapId);
+        _ = long.TryParse(form["s"], NumberStyles.None, CultureInfo.InvariantCulture, out var setId);
+        _ = long.TryParse(form["r"], NumberStyles.None, CultureInfo.InvariantCulture, out var scoreId);
+
+        if (form["a"] == "get")
+        {
+            var users = context.RequestServices.GetRequiredService<IUserRepository>();
+            var lines = new List<string>();
+            foreach (var comment in await comments.ForPlayAsync(setId, beatmapId, scoreId, cancellationToken).ConfigureAwait(false))
+            {
+                var author = await users.GetByIdAsync(comment.UserId, cancellationToken).ConfigureAwait(false);
+                if (author is null || author.IsRestricted)
+                    continue;
+                var format = CommentFormat(author.Privileges) + (comment.Colour is { } shade ? "|" + shade : string.Empty);
+                lines.Add(string.Create(CultureInfo.InvariantCulture, $"{comment.Time}\t{comment.TargetType}\t{format}\t{comment.Text}"));
+            }
+            return Results.Text(string.Join('\n', lines), "text/plain");
+        }
+
+        if (form["a"] != "post")
+            return Results.BadRequest();
+        // Restricted and silenced players can't comment, like they can't chat.
+        if (user.IsRestricted || user.SilenceEndUtc > DateTimeOffset.UtcNow)
+            return Results.Text(string.Empty, "text/plain");
+        var text = form["comment"].ToString().Trim();
+        if (text.Length is 0 or > 80 || !int.TryParse(form["starttime"], NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var time))
+            return Results.BadRequest();
+        var (targetType, targetId) = form["target"].ToString() switch
+        {
+            "song" => ("song", setId),
+            "map" => ("map", beatmapId),
+            "replay" when scoreId > 0 => ("replay", scoreId),
+            _ => (string.Empty, 0L),
+        };
+        if (targetId <= 0)
+            return Results.BadRequest();
+        // Colours are a supporter perk; osu! sends them as hex without the #.
+        var colour = form["f"].ToString().TrimStart('#');
+        await comments.AddAsync(new BeatmapComment
+        {
+            TargetType = targetType,
+            TargetId = targetId,
+            UserId = user.Id,
+            Time = Math.Max(0, time),
+            Text = text,
+            Colour = user.Privileges.HasFlag(UserPrivileges.Supporter) && HexColour().IsMatch(colour) ? colour.ToLowerInvariant() : null,
+            CreatedAt = DateTime.UtcNow,
+        }, cancellationToken).ConfigureAwait(false);
+        return Results.Text(string.Empty, "text/plain");
+    }
+
+    /// <summary>How osu! styles a commenter: staff as "bat" (osu!'s nominator colour), supporters in their colour.</summary>
+    private static string CommentFormat(UserPrivileges privileges) =>
+        (privileges & (UserPrivileges.Moderator | UserPrivileges.Administrator | UserPrivileges.Developer)) != 0 ? "bat"
+        : privileges.HasFlag(UserPrivileges.Supporter) ? "supporter"
+        : string.Empty;
+
     /// <summary>An uploaded screenshot (form: <c>u</c>, <c>p</c>, file <c>ss</c>); answers its file name.</summary>
     internal static async Task<IResult> HandleScreenshotAsync(HttpContext context, IConfiguration configuration, CancellationToken cancellationToken)
     {
@@ -246,6 +319,9 @@ public static partial class StableClientEndpoints
             ? user
             : null;
     }
+
+    [GeneratedRegex("^[0-9a-fA-F]{6}$")]
+    private static partial Regex HexColour();
 
     [GeneratedRegex(@"^[0-9a-f]{12}\.(png|jpg)$")]
     private static partial Regex ScreenshotName();

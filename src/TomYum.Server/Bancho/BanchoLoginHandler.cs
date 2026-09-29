@@ -194,7 +194,7 @@ public sealed class BanchoLoginHandler
         var announce = new BanchoPacketWriter(128);
         LoginResponseBuilder.WritePresence(announce, presence);
         LoginResponseBuilder.WriteStats(announce, presence);
-        _registry.EnqueueAbout(player, announce.ToArray(), exceptUserId: player.UserId);
+        _registry.EnqueueAbout(player, announce.ToArray(), exceptUserId: player.UserId, isUpdate: false);
 
         _logger.LogInformation(
             "Login ok: {Username} (id {UserId}) on {Version}; {Online} online.",

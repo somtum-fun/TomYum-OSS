@@ -73,6 +73,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IUserAchievementRepository, UserAchievementRepository>();
         services.AddScoped<IStaffLogRepository, StaffLogRepository>();
         services.AddScoped<IChatLogRepository, ChatLogRepository>();
+        services.AddScoped<IBeatmapCommentRepository, BeatmapCommentRepository>();
         services.AddScoped<IClientHashRepository, ClientHashRepository>();
         services.AddScoped<IDiscordLinkRepository, DiscordLinkRepository>();
         services.AddScoped<ICustomBeatmapSetRepository, CustomBeatmapSetRepository>();

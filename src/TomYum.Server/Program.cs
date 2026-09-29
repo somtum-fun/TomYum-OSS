@@ -94,6 +94,7 @@ else
     builder.Services.AddSingleton<IUserAchievementRepository, InMemoryUserAchievementRepository>();
     builder.Services.AddSingleton<IClientHashRepository, InMemoryClientHashRepository>();
     builder.Services.AddSingleton<IDiscordLinkRepository, InMemoryDiscordLinkRepository>();
+    builder.Services.AddSingleton<IBeatmapCommentRepository, TomYum.Server.Beatmaps.InMemoryBeatmapCommentRepository>();
 }
 // Friends live on the website with its accounts (phpbb_zebra); otherwise in memory.
 Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<IFriendRepository, InMemoryFriendRepository>(builder.Services);
@@ -266,6 +267,7 @@ builder.Services.AddSingleton<IClientPacketHandler, FriendAddHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, FriendRemoveHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, SetAwayMessageHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, ToggleBlockNonFriendDmsHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, ReceiveUpdatesHandler>();
 
 // Multiplayer match handlers.
 builder.Services.AddSingleton<IClientPacketHandler, JoinLobbyHandler>();

@@ -7,7 +7,7 @@ using Xunit;
 
 namespace TomYum.Server.Tests.OsuWeb;
 
-/// <summary>Friends and favourites in the website's tables, and the filtered leaderboard query.</summary>
+/// <summary>Friends and favourites in the website's tables, the filtered leaderboard query, and in-game comments.</summary>
 public sealed class FriendsDatabaseTests : OsuWebDatabaseTest
 {
     [MySqlFact]
@@ -47,5 +47,17 @@ public sealed class FriendsDatabaseTests : OsuWebDatabaseTest
         Assert.Equal([3, 2], (await scores.GetLeaderboardAsync("md5", 0, 50, null, new LeaderboardFilter(Mods: 8))).Select(s => s.UserId));
         Assert.Equal([4, 1], (await scores.GetLeaderboardAsync("md5", 0, 50, null, new LeaderboardFilter(UserIds: [1, 4]))).Select(s => s.UserId));
         Assert.Equal([2], (await scores.GetLeaderboardAsync("md5", 0, 50, null, new LeaderboardFilter(8, [1, 2]))).Select(s => s.UserId));
+    }
+
+    [MySqlFact]
+    public async Task Comments_AreStored_AndFoundForAPlay()
+    {
+        await NewTomYumContextAsync();
+        var comments = new BeatmapCommentRepository(NewTomYumContext());
+        foreach (var (type, target, time) in new[] { ("song", 10L, 300), ("map", 20L, 100), ("map", 21L, 50), ("replay", 77L, 200) })
+            await comments.AddAsync(new BeatmapComment { TargetType = type, TargetId = target, UserId = 1, Time = time, Text = type, CreatedAt = DateTime.UtcNow });
+
+        Assert.Equal([100, 300], (await comments.ForPlayAsync(10, 20, 0)).Select(c => c.Time));
+        Assert.Equal([100, 200, 300], (await comments.ForPlayAsync(10, 20, 77)).Select(c => c.Time));
     }
 }

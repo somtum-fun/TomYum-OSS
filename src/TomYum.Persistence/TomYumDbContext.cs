@@ -51,6 +51,9 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Difficulty ids handed out for custom sets.</summary>
     public DbSet<CustomBeatmapSlot> CustomBeatmapSlots => Set<CustomBeatmapSlot>();
 
+    /// <summary>osu!stable's in-game comments.</summary>
+    public DbSet<BeatmapComment> BeatmapComments => Set<BeatmapComment>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
