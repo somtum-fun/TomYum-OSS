@@ -911,3 +911,19 @@ CREATE TABLE tags (
   created_at timestamp NULL,
   updated_at timestamp NULL
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web database (SHOW CREATE TABLE user_contest_entries): contest uploads (the seasonal backgrounds).
+DROP TABLE IF EXISTS user_contest_entries;
+CREATE TABLE user_contest_entries (
+  id int unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  original_filename varchar(255) NULL,
+  hash varchar(255) NULL,
+  ext varchar(255) NULL,
+  filesize int NULL,
+  user_id int unsigned NULL,
+  contest_id int unsigned NULL,
+  created_at timestamp NULL,
+  updated_at timestamp NULL,
+  deleted_at timestamp NULL,
+  show_in_client tinyint(1) NOT NULL DEFAULT 0
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
