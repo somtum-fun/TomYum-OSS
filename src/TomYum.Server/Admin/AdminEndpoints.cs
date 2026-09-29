@@ -56,6 +56,7 @@ public static class AdminEndpoints
             .AddEndpointFilter<AdminAuthFilter>();
 
         admin.MapPost("/beatmapsets/{setId:int}/import", ImportSetAsync);
+        admin.MapBadges();
         admin.MapPost("/beatmaps/import", ImportBeatmapAsync);
         admin.MapGet("/beatmapsets/{setId:int}", GetSetAsync);
         admin.MapPost("/beatmapsets/{setId:int}/status", ChangeStatusAsync);
