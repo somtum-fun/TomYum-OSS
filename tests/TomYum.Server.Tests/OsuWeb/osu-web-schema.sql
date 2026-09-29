@@ -889,3 +889,25 @@ CREATE TABLE phpbb_zebra (
   PRIMARY KEY (user_id, zebra_id),
   KEY zebra_friend (zebra_id, friend)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web database (SHOW CREATE TABLE osu_user_beatmapset_ratings): players' 1-10 map ratings.
+DROP TABLE IF EXISTS osu_user_beatmapset_ratings;
+CREATE TABLE osu_user_beatmapset_ratings (
+  user_id int unsigned NOT NULL DEFAULT 0,
+  beatmapset_id mediumint unsigned NOT NULL,
+  rating tinyint unsigned NOT NULL,
+  date timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (user_id, beatmapset_id),
+  KEY split_ratings (beatmapset_id, rating)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- osu-web database (SHOW CREATE TABLE tags): beatmap tags (lazer's tag voting).
+DROP TABLE IF EXISTS tags;
+CREATE TABLE tags (
+  id bigint unsigned NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  name varchar(255) NOT NULL,
+  ruleset_id smallint unsigned NULL,
+  description varchar(255) NOT NULL,
+  created_at timestamp NULL,
+  updated_at timestamp NULL
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;

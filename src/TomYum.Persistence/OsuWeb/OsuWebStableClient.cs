@@ -79,6 +79,36 @@ public sealed class OsuWebStableClient
         return added;
     }
 
+    /// <summary>The set's average rating (0 without votes), and whether <paramref name="userId"/> already voted.</summary>
+    public async Task<(bool Voted, double Average)> RatingAsync(int userId, int beatmapsetId, CancellationToken cancellationToken = default)
+    {
+        var voted = await _db.Database.SqlQuery<int>(
+            $"SELECT COUNT(*) AS Value FROM osu_user_beatmapset_ratings WHERE user_id = {userId} AND beatmapset_id = {beatmapsetId}")
+            .SingleAsync(cancellationToken).ConfigureAwait(false) > 0;
+        return (voted, await AverageRatingAsync(beatmapsetId, cancellationToken).ConfigureAwait(false));
+    }
+
+    /// <summary>The set's average rating, 0 without votes (what the website shows).</summary>
+    public async Task<double> AverageRatingAsync(int beatmapsetId, CancellationToken cancellationToken = default) =>
+        await _db.Database.SqlQuery<double>(
+            $"SELECT CAST(COALESCE(AVG(rating), 0) AS DOUBLE) AS Value FROM osu_user_beatmapset_ratings WHERE beatmapset_id = {beatmapsetId}")
+            .SingleAsync(cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// The player's 1-10 rating after playing (one per player and set, like osu!), kept where the
+    /// website keeps ratings; the set's average is updated. Returns the new average.
+    /// </summary>
+    public async Task<double> RateAsync(int userId, int beatmapsetId, int rating, CancellationToken cancellationToken = default)
+    {
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT IGNORE INTO osu_user_beatmapset_ratings (user_id, beatmapset_id, rating, date) VALUES ({userId}, {beatmapsetId}, {Math.Clamp(rating, 1, 10)}, UTC_TIMESTAMP())",
+            cancellationToken).ConfigureAwait(false);
+        var average = await AverageRatingAsync(beatmapsetId, cancellationToken).ConfigureAwait(false);
+        await _db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE osu_beatmapsets SET rating = {average} WHERE beatmapset_id = {beatmapsetId}", cancellationToken).ConfigureAwait(false);
+        return average;
+    }
+
     /// <summary>The sets the player favourited, newest first (song select's favourites filter).</summary>
     public async Task<IReadOnlyList<int>> FavouriteSetIdsAsync(int userId, CancellationToken cancellationToken = default) =>
         await _db.Database.SqlQuery<int>(
