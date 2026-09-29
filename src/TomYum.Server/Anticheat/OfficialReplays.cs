@@ -41,7 +41,7 @@ public sealed class OfficialReplays
 
     public bool IsAvailable => !string.IsNullOrWhiteSpace(_api.ApiKey);
 
-    private sealed record OfficialScore(long ScoreId, string Username, int Mods, bool ReplayAvailable);
+    private sealed record OfficialScore(long ScoreId, string Username, int Mods, bool ReplayAvailable, int Count300, int Count100, int Count50, int CountMiss);
 
     /// <summary>
     /// osu!'s top plays on the map (up to <paramref name="count"/>, those with replays), as references; empty when
@@ -59,7 +59,8 @@ public sealed class OfficialReplays
         foreach (var (score, index) in withReplays.Select((s, i) => (s, i)))
         {
             if (await ReplayAsync(score.ScoreId, ruleset, cancellationToken).ConfigureAwait(false) is { } frames)
-                references.Add(new CircleguardReference(score.ScoreId, score.Username + " (osu!)", score.Mods, frames, FramesOnly: true));
+                references.Add(new CircleguardReference(score.ScoreId, score.Username + " (osu!)", score.Mods, frames, FramesOnly: true,
+                    score.Count300, score.Count100, score.Count50, score.CountMiss));
             progress?.Invoke(index + 1, withReplays.Count);
         }
         return references;
@@ -79,7 +80,8 @@ public sealed class OfficialReplays
                 long.Parse(s.GetProperty("score_id").GetString()!, CultureInfo.InvariantCulture),
                 s.GetProperty("username").GetString() ?? string.Empty,
                 int.Parse(s.GetProperty("enabled_mods").GetString()!, CultureInfo.InvariantCulture),
-                s.GetProperty("replay_available").GetString() == "1")).ToList();
+                s.GetProperty("replay_available").GetString() == "1",
+                Count(s, "count300"), Count(s, "count100"), Count(s, "count50"), Count(s, "countmiss"))).ToList();
             _lists[key] = (_time.GetUtcNow(), scores, count);
             return scores;
         }
@@ -89,6 +91,10 @@ public sealed class OfficialReplays
             return [];
         }
     }
+
+    /// <summary>A count from osu!'s v1 answer (a number in a string); 0 when missing.</summary>
+    private static int Count(JsonElement score, string name) =>
+        score.TryGetProperty(name, out var value) && int.TryParse(value.GetString(), NumberStyles.None, CultureInfo.InvariantCulture, out var count) ? count : 0;
 
     /// <summary>One official replay's frames, from disk or osu! (paced to osu!'s ten a minute).</summary>
     private async Task<byte[]?> ReplayAsync(long scoreId, int ruleset, CancellationToken cancellationToken)

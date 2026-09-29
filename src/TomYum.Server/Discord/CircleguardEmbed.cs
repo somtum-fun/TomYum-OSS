@@ -110,7 +110,7 @@ public static class CircleguardEmbed
             : string.Create(CultureInfo.InvariantCulture, $"{format.Site}/scores/{nearest.ScoreId}");
         var who = $"[{DiscordFormat.LinkLabel(nearest.Username)}]({url})";
         return similarity.Matched is not null
-            ? string.Create(CultureInfo.InvariantCulture, $"🚨 **Matches {who}'s replay**: {nearest.Distance:0.0} px apart (a copy is under {similarity.Threshold:0} px)")
-            : string.Create(CultureInfo.InvariantCulture, $"{who}: {nearest.Distance:0.0} px apart (a copy is under {similarity.Threshold:0} px)");
+            ? string.Create(CultureInfo.InvariantCulture, $"🚨 **Matches {who}'s replay**: {nearest.Distance:0.0} px apart (a copy is under {similarity.Threshold:0} px and scored the same)")
+            : string.Create(CultureInfo.InvariantCulture, $"{who}: {nearest.Distance:0.0} px apart (a copy is under {similarity.Threshold:0} px and scored the same)");
     }
 }
