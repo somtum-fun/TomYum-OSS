@@ -29,13 +29,14 @@ public sealed class BanchoBot
 
     /// <summary>
     /// Builds the bot's <see cref="BanchoPresence"/>: a bot-flagged, always-idle presence so it
-    /// renders in the user list. Country/location are left at zero (the bot has no real locale).
+    /// renders in the user list, from Saint Helena like osu!'s BanchoBot.
     /// </summary>
     public static BanchoPresence CreatePresence() => new()
     {
         UserId = UserId,
         Username = Name,
         Privileges = BanchoPrivileges.Player,
+        CountryCode = CountryCodes.ToNumeric("sh"),
         // Action 0 = idle; the bot is never "playing".
         Action = 0,
         ActionInfo = "Looking after TomYum",
