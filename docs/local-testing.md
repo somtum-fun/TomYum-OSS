@@ -38,7 +38,7 @@ The first run creates `.env`. Open it (`nano .env`) and set, adding lines that a
 ```ini
 NGINX_PORT=8180                        # keep osu-web off 8080 (TomYum uses it) for every compose command
 APP_URL=https://osu.localtest.me
-BANCHO_BOT_USER_ID=1                   # TomYum's BanchoBot
+BANCHO_BOT_USER_ID=3                   # TomYum's BanchoBot
 SHARED_INTEROP_SECRET=pick-a-long-random-string   # TomYum uses the same value
 TRUSTED_PROXIES=PRIVATE_SUBNETS        # trust Caddy/nginx so the site knows it's on https
 REGISTRATION_MODE_WEB=true             # allow sign-up on the website (off by default)

@@ -104,7 +104,7 @@ public sealed partial class RegistrationService
 
         var created = await _users.AddAsync(user, cancellationToken).ConfigureAwait(false);
 
-        // The first real registration (id 3; 1 = BanchoBot, 2 = the dev-seed user) is the server
+        // The first real registration (id 4; 2 = the dev-seed user, 3 = BanchoBot) is the server
         // owner and is granted Owner privileges automatically, mirroring bancho.py granting the
         // first account staff. The id is only known after AddAsync, so update the just-created row
         // with the elevated privileges (UpdateAsync, not a second insert — that would duplicate PK).
@@ -119,10 +119,10 @@ public sealed partial class RegistrationService
     }
 
     /// <summary>
-    /// The user id of the server owner: the first real registration. Ids 1 and 2 are reserved for
-    /// BanchoBot and the development seed user respectively, so the first player to register is id 3.
+    /// The user id of the server owner: the first real registration. Ids up to 3 are reserved (2 for
+    /// the development seed user, 3 for BanchoBot), so the first player to register is id 4.
     /// </summary>
-    public const int OwnerUserId = 3;
+    public const int OwnerUserId = BanchoBot.UserId + 1;
 
     /// <summary>Returns a copy of <paramref name="user"/> with its <see cref="User.Privileges"/> replaced.</summary>
     private static User CloneWith(User user, UserPrivileges privileges) => new()

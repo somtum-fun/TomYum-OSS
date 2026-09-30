@@ -406,6 +406,10 @@ if (databaseOptions.Enabled)
     var db = scope.ServiceProvider.GetRequiredService<TomYumDbContext>();
     var applied = await db.MigrateAsync();
 
+    // TomYum's own accounts: ids up to BanchoBot's are reserved, so sign-ups start after it.
+    if (!databaseOptions.UseOsuWebAccounts)
+        await db.Database.ExecuteSqlRawAsync($"ALTER TABLE users AUTO_INCREMENT = {BanchoBot.UserId + 1}");
+
     app.Logger.LogInformation("Database schema up to date ({Host}/{Name}); applied {Migrations}.",
         databaseOptions.Host, databaseOptions.Name, applied.Count == 0 ? "nothing" : string.Join(", ", applied));
 
@@ -512,8 +516,8 @@ if (app.Environment.IsDevelopment())
     {
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordHasher>();
         var bcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("faker123"));
-        // Explicit id 2 keeps the id scheme aligned: 1 = BanchoBot (virtual), 2 = this dev
-        // user, 3 = first real registration (granted Owner). MySQL accepts an explicit value
+        // Explicit id 2 keeps the id scheme aligned: 2 = this dev user, 3 = BanchoBot (virtual),
+        // 4 = first real registration (granted Owner). MySQL accepts an explicit value
         // for an AUTO_INCREMENT key and advances the counter past it. With osu-web accounts the
         // ids are shared with website sign-ups, so let osu-web assign it (2 may already be taken).
         await users.AddAsync(new User

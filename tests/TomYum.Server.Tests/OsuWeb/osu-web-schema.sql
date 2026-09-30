@@ -958,3 +958,6 @@ CREATE TABLE messages (
   timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (message_id, timestamp)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+-- Ids up to BanchoBot's (3) are reserved, like on a real server; players start at 4.
+ALTER TABLE phpbb_users AUTO_INCREMENT = 4;

@@ -17,7 +17,7 @@ public sealed class InMemoryUserRepository : IUserRepository
 {
     private readonly ConcurrentDictionary<string, User> _bySafeName = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<int, User> _byId = new();
-    private int _nextId = 2;
+    private int _nextId = BanchoBot.UserId; // 1-3 reserved (2 = dev seed, 3 = BanchoBot)
 
     /// <inheritdoc />
     public Task<User?> GetByIdAsync(int id, CancellationToken cancellationToken = default) =>

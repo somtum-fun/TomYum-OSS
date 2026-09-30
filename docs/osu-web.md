@@ -46,7 +46,7 @@ Set these in osu-web's `.env` before first start:
 | Setting | Value | Why |
 |---|---|---|
 | `APP_URL` | `https://osu.<your domain>` | Links and redirects on the site. |
-| `BANCHO_BOT_USER_ID` | `1` | osu-web defaults to user **3**; TomYum's BanchoBot is **1**. |
+| `BANCHO_BOT_USER_ID` | `3` | TomYum's BanchoBot (osu-web's default too, like official osu!). |
 | `CLIENT_CHECK_VERSION` | `false` | Already the default; keeps stable-client checks off. |
 
 Then, **once**, create osu-web's user groups. Its migrations don't, and both osu-web's own sign-up
@@ -221,7 +221,8 @@ Verified against the osu-web checkout (`database/migrations/2015_01_01_133337_ba
    `Beatmap.CustomIdFloor` moved from 100,000,000 to **10,000,000**. Custom ids are 10,000,000 –
    16,777,215; official ids stay below that. osu-web is left unmodified.
 2. ~~**User ids.**~~ **Done:** `phpbb_users` auto-increments from 2. TomYum inserts BanchoBot as
-   `user_id = 1` in osu-web's `bot` group at startup (osu-web needs `BANCHO_BOT_USER_ID=1`), and in
+   `user_id = 3` in osu-web's `bot` group at startup (osu-web's `BANCHO_BOT_USER_ID=3`; not 1,
+   which lazer treats as its guest user and shows no avatar for), and in
    osu-web mode the Development seed user takes the next free id instead of a fixed 2.
 3. **Search and leaderboards on the site.** osu-web's score listings go through Elasticsearch,
    filled by `osu-elastic-indexer` (`score-indexer` in osu-web's compose) from a Redis queue.

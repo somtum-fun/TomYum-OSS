@@ -253,7 +253,7 @@ services:
       SAVE_REPLAYS: "true"
       # Straight into the website's uploads, where it reads lazer replays from.
       REPLAYS_PATH: /uploads/replay
-      BANCHO_BOT_USER_ID: "1"
+      BANCHO_BOT_USER_ID: "3"
       CLIENT_CHECK_VERSION: "false"
     volumes:
       - osu-web-uploads:/uploads
