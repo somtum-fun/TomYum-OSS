@@ -179,6 +179,8 @@ accounts, chat and leaderboards with them._
       the profile graph and highest rank (`ModeRankHistoryJob`). 2026-09-30
 - [x] BanchoBot counts as online on the website and in lazer, with its avatar and flag (Saint Helena);
       stable and IRC players count as online there too. 2026-09-29
+- [x] Admin panel: tournament banners on profiles (osu-web's own banners: a tournament, one image,
+      given to players; uploaded or fetched from an address, stored at normal and double size). 2026-09-30
 - [x] Last.fm scrobbling: players connect it in account settings; passed plays (stable and lazer)
       are scrobbled as the map's song, and shown as "now playing" while they play. 2026-09-30
 - [x] Ranked mods: the admin panel picks lazer mods that count as ranked (pp, medals) besides osu!'s;
