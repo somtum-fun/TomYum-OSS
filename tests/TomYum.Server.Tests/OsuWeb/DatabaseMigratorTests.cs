@@ -37,6 +37,7 @@ public sealed class DatabaseMigratorTests : OsuWebDatabaseTest
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE custom_beatmap_slots");
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE beatmap_comments");
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE mode_rank_history");
+            await legacy.Database.ExecuteSqlRawAsync("DROP TABLE lastfm_links");
             legacy.UserStats.Add(new UserStats { UserId = 2, Mode = 0, Pp = 338.5 });
             legacy.Scores.Add(new Score { UserId = 2, BeatmapMd5 = "abc", Grade = "A", Passed = true, SubmittedAt = DateTimeOffset.UtcNow });
             await legacy.SaveChangesAsync();

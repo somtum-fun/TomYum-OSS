@@ -96,6 +96,17 @@ panel (**Admin panel → Ranked mods**) count as ranked too, whatever their sett
   marks stable plays. Stable plays aren't affected.
 - The lazer client still shows such a mod as unranked while playing: only the server's answer changes.
 
+## Last.fm
+
+Players connect Last.fm in the website's account settings (**Last.fm → Connect Last.fm**; the section
+shows when the server has a Last.fm key). Their plays are then scrobbled, stable's and lazer's alike
+(`LastFmScrobbler` follows the website's scores): every passed play, as the map's song, in its
+original script when the map has it, with its length at the play's speed (DT, HT, …). Songs under 30
+seconds aren't scrobbled (Last.fm's rule). While they play, Last.fm shows the song as "now playing"
+(from the online list: stable's presence, lazer's spectator server). Someone who takes the server's
+access away on Last.fm is disconnected here too. The key and secret stay in the game server
+(`TOMYUM_LASTFM__APIKEY`, `TOMYUM_LASTFM__APISECRET`); the website asks it for the player's status.
+
 ## Research
 
 Checked 2026-09-27 against ppy's current sources:

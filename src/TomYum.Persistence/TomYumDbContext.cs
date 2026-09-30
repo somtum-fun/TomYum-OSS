@@ -54,6 +54,9 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Relax/Autopilot ranks by day (the profile's rank graph in those modes).</summary>
     public DbSet<ModeRankSnapshot> ModeRankHistory => Set<ModeRankSnapshot>();
 
+    /// <summary>Players' Last.fm accounts (their plays are scrobbled there).</summary>
+    public DbSet<LastFmLink> LastFmLinks => Set<LastFmLink>();
+
     /// <summary>osu!stable's in-game comments.</summary>
     public DbSet<BeatmapComment> BeatmapComments => Set<BeatmapComment>();
 
