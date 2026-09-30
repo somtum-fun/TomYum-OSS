@@ -77,6 +77,18 @@ public sealed class AdminApiTests
     }
 
     [Fact]
+    public async Task AnImportAClientAskedFor_SaysWhoAndWhichClient()
+    {
+        var (services, _, log) = Build(new FakeApi { Sets = { [7] = [Map(70, 7)] } });
+
+        using var scope = services.CreateScope();
+        await scope.ServiceProvider.GetRequiredService<BeatmapSetImporter>().ImportAsync(7, actorId: 2, via: "lazer");
+
+        var entry = Assert.Single(log.Entries);
+        Assert.Equal((2, "lazer"), (entry.ActorId, entry.Via));
+    }
+
+    [Fact]
     public async Task Import_ReportsSetsTheApiDoesntKnow()
     {
         var (services, repository, log) = Build(new FakeApi());

@@ -55,9 +55,10 @@ public sealed class BeatmapSetImporter
 
     /// <summary>
     /// Imports set <paramref name="setId"/> for staff member <paramref name="actorId"/> (optionally as
-    /// part of bulk job <paramref name="jobId"/>); a result with no difficulties when the API doesn't know it.
+    /// part of bulk job <paramref name="jobId"/>, or on its own for the client <paramref name="via"/>); a
+    /// result with no difficulties when the API doesn't know it.
     /// </summary>
-    public async Task<BeatmapSetImportResult> ImportAsync(int setId, int actorId, string? jobId = null, CancellationToken cancellationToken = default)
+    public async Task<BeatmapSetImportResult> ImportAsync(int setId, int actorId, string? jobId = null, string? via = null, CancellationToken cancellationToken = default)
     {
         BeatmapSetImportResult result;
         try
@@ -66,18 +67,18 @@ public sealed class BeatmapSetImporter
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await LogAsync(setId, actorId, jobId, "failed", Invariant($"Set {setId}: {ex.Message}"), cancellationToken).ConfigureAwait(false);
+            await LogAsync(setId, actorId, jobId, via, "failed", Invariant($"Set {setId}: {ex.Message}"), cancellationToken).ConfigureAwait(false);
             throw;
         }
 
         if (result.Found)
         {
-            await LogAsync(setId, actorId, jobId, "imported",
+            await LogAsync(setId, actorId, jobId, via, "imported",
                 Invariant($"{result.Artist} - {result.Title} ({result.Difficulties} difficulties)"), cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            await LogAsync(setId, actorId, jobId, "not_found", Invariant($"Set {setId} isn't on osu!"), cancellationToken).ConfigureAwait(false);
+            await LogAsync(setId, actorId, jobId, via, "not_found", Invariant($"Set {setId} isn't on osu!"), cancellationToken).ConfigureAwait(false);
         }
         return result;
     }
@@ -120,7 +121,7 @@ public sealed class BeatmapSetImporter
         return new BeatmapSetImportResult(setId, set[0].Artist, set[0].Title, set.Count);
     }
 
-    private async Task LogAsync(int setId, int actorId, string? jobId, string result, string summary, CancellationToken cancellationToken)
+    private async Task LogAsync(int setId, int actorId, string? jobId, string? via, string result, string summary, CancellationToken cancellationToken)
     {
         try
         {
@@ -133,6 +134,7 @@ public sealed class BeatmapSetImporter
                 Summary = summary.Length > 512 ? summary[..512] : summary,
                 Result = result,
                 JobId = jobId,
+                Via = via,
             }, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

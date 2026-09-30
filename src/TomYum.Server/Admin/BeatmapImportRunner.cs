@@ -150,7 +150,7 @@ public sealed class BeatmapImportRunner : BackgroundService
             {
                 using var scope = _scopes.CreateScope();
                 var result = await scope.ServiceProvider.GetRequiredService<BeatmapSetImporter>()
-                    .ImportAsync(setId, job.StartedBy, job.Id, cancellationToken).ConfigureAwait(false);
+                    .ImportAsync(setId, job.StartedBy, job.Id, cancellationToken: cancellationToken).ConfigureAwait(false);
                 if (result.Found)
                     job.Imported++;
                 else

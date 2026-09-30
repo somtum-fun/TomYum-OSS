@@ -42,6 +42,7 @@ public sealed class DatabaseMigratorTests : OsuWebDatabaseTest
             await legacy.SaveChangesAsync();
             // A column added by a later migration (after saving: the model still has it).
             await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE scores DROP COLUMN FromLazer");
+            await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE staff_log DROP COLUMN Via");
         }
 
         await using var db = NewTomYumContext();

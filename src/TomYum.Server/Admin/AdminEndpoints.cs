@@ -186,7 +186,7 @@ public static class AdminEndpoints
         if (setId is not { } set || set <= 0 || set >= TomYum.Domain.Entities.Beatmap.CustomIdFloor)
             return Results.NotFound(new { error = "osu! doesn't know that beatmap." });
 
-        var result = await importer.ImportAsync(set, ActorId(context), cancellationToken: cancellationToken).ConfigureAwait(false);
+        var result = await importer.ImportAsync(set, ActorId(context), cancellationToken: cancellationToken, via: Via(context)).ConfigureAwait(false);
         return result.Found ? Results.Ok(result) : Results.NotFound(result);
     }
 
@@ -220,8 +220,15 @@ public static class AdminEndpoints
 
     private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, HttpContext context, CancellationToken cancellationToken)
     {
-        var result = await importer.ImportAsync(setId, ActorId(context), cancellationToken: cancellationToken).ConfigureAwait(false);
+        var result = await importer.ImportAsync(setId, ActorId(context), cancellationToken: cancellationToken, via: Via(context)).ConfigureAwait(false);
         return result.Found ? Results.Ok(result) : Results.NotFound(result);
+    }
+
+    /// <summary>The client an automatic import is for (<c>?via=</c>), when it's one we know.</summary>
+    internal static string? Via(HttpContext context)
+    {
+        var via = context.Request.Query["via"].ToString();
+        return via is "lazer" or "website" or "multiplayer" ? via : null;
     }
 
     /// <summary>The set's difficulties as the game server sees them (status, and whether staff set it).</summary>

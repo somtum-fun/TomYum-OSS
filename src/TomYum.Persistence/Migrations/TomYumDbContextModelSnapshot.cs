@@ -434,6 +434,10 @@ namespace TomYum.Persistence.Migrations
                     b.Property<long?>("TargetId")
                         .HasColumnType("bigint");
 
+                    b.Property<string>("Via")
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
                     b.HasKey("Id");
 
                     b.HasIndex("JobId");
