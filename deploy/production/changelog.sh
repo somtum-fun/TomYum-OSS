@@ -10,8 +10,14 @@ cd "$(dirname "$0")" || exit 1
 web=$(grep -E '^OSU_WEB_PATH=' .env 2>/dev/null | cut -d= -f2-)
 web=${web:-../../../osu-web}
 
-# The layout changed (2026-09-30, then without authors): rebuild once.
-layout=3
+# Commit authors: email=GitHub login:GitHub account id:website user id.
+authors="--author=sundei@sundei.ee=sundeiii:76597738:2"
+
+# Commits left off the changelog (changes to the changelog's own authors, not worth listing).
+skip="--skip=c2ed1c4 --skip=35fde80 --skip=7d6df42"
+
+# The layout changed (2026-09-30): rebuild once.
+layout=4
 state="$HOME/.tomyum-changelog-layout"
 reset=
 if [ -n "$RESET" ] || [ "$(cat "$state" 2>/dev/null)" != "$layout" ]; then
@@ -22,7 +28,7 @@ fi
 import() {
 	git -C "$1" log --reverse --no-merges --since="${SINCE:-2026-09-28}" --name-only \
 		--format='%x1e%H%x1f%cI%x1f%s%x1f%b%x1f%ae%x1f' \
-		| docker compose exec -T php php artisan tomyum:changelog-import "$2" --repository="$3" $4
+		| docker compose exec -T php php artisan tomyum:changelog-import "$2" --repository="$3" $authors $skip $4
 }
 
 import ../.. server sundeiii/TomYum $reset && import "$web" web sundeiii/osu-web && echo "$layout" > "$state"
