@@ -107,8 +107,10 @@ seconds aren't scrobbled (Last.fm's rule). While they play, Last.fm shows the so
 access away on Last.fm is disconnected here too. Their settings list their last ten Last.fm scrobbles
 (Spotify and the rest too), the ones from osu! here saying whether they were played on stable or lazer
 (the server keeps its last 50 per player to tell), and their profile shows what Last.fm says they're
-listening to right now, asked again every 30 seconds while the page is open (Last.fm itself at most
-every 30 seconds per player). The key and secret stay in the game server
+listening to right now; both show the cover art (the map's cover for osu! plays) and are asked for
+again every 10 seconds while the page is open (Last.fm itself at most every 10 seconds per player).
+
+The website's API documentation (generated at build, like osu.ppy.sh/docs) is at `/docs/`. The key and secret stay in the game server
 (`TOMYUM_LASTFM__APIKEY`, `TOMYUM_LASTFM__APISECRET`); the website asks it for the player's status.
 
 ## Research
