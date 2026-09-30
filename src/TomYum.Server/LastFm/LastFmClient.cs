@@ -24,7 +24,7 @@ public sealed class LastFmOptions
 public sealed record LastFmTrack(string Artist, string Title, int DurationSeconds);
 
 /// <summary>What someone is listening to right now, as Last.fm shows it (from osu! or anything else that scrobbles).</summary>
-public sealed record LastFmListening(string Artist, string Title, string? Url);
+public sealed record LastFmListening(string Artist, string Title, string? Url, string? Image = null);
 
 /// <summary>A track in someone's Last.fm history (from osu! or anything else that scrobbles).</summary>
 /// <param name="Artist">The artist.</param>
@@ -32,7 +32,8 @@ public sealed record LastFmListening(string Artist, string Title, string? Url);
 /// <param name="Url">Its page on Last.fm.</param>
 /// <param name="At">When it was scrobbled (when it started); null while it's playing.</param>
 /// <param name="NowPlaying">Whether it's playing right now.</param>
-public sealed record LastFmRecentTrack(string Artist, string Title, string? Url, DateTimeOffset? At, bool NowPlaying);
+/// <param name="Image">Its cover art (the biggest Last.fm has), or null.</param>
+public sealed record LastFmRecentTrack(string Artist, string Title, string? Url, DateTimeOffset? At, bool NowPlaying, string? Image = null);
 
 /// <summary>An error Last.fm answered with (https://www.last.fm/api/errorcodes).</summary>
 public sealed class LastFmException : Exception
@@ -128,7 +129,7 @@ public sealed class LastFmClient
 
     /// <summary>The track playing now among <paramref name="recent"/>, or null.</summary>
     public static LastFmListening? Listening(IEnumerable<LastFmRecentTrack> recent) =>
-        recent.FirstOrDefault(t => t.NowPlaying) is { } now ? new LastFmListening(now.Artist, now.Title, now.Url) : null;
+        recent.FirstOrDefault(t => t.NowPlaying) is { } now ? new LastFmListening(now.Artist, now.Title, now.Url, now.Image) : null;
 
     /// <summary>The tracks of a <c>user.getRecentTracks</c> answer.</summary>
     public static IReadOnlyList<LastFmRecentTrack> Recent(JsonElement answer)
@@ -156,9 +157,27 @@ public sealed class LastFmClient
                 && long.TryParse(uts.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds)
                 ? DateTimeOffset.FromUnixTimeSeconds(seconds)
                 : null;
-            result.Add(new LastFmRecentTrack(artist, title, track.TryGetProperty("url", out var url) ? url.GetString() : null, at, nowPlaying));
+            result.Add(new LastFmRecentTrack(artist, title, track.TryGetProperty("url", out var url) ? url.GetString() : null, at, nowPlaying, Image(track)));
         }
         return result;
+    }
+
+    /// <summary>Last.fm's grey star, which it gives for tracks without art.</summary>
+    private const string NoArt = "2a96cbd8b46e442fc41c2b86b821562f";
+
+    /// <summary>A track's biggest cover art, or null (none, or only Last.fm's placeholder).</summary>
+    private static string? Image(JsonElement track)
+    {
+        if (!track.TryGetProperty("image", out var images) || images.ValueKind != JsonValueKind.Array)
+            return null;
+        string? best = null;
+        foreach (var image in images.EnumerateArray())
+        {
+            // Listed small to big: the last one with an address wins.
+            if (image.TryGetProperty("#text", out var text) && text.GetString() is { Length: > 0 } address)
+                best = address;
+        }
+        return best is null || best.Contains(NoArt, StringComparison.Ordinal) ? null : best;
     }
 
     /// <summary>

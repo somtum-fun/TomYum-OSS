@@ -16,15 +16,18 @@ public sealed record LastFmLinkRequest(string? Token);
 public static class LastFmEndpoints
 {
     /// <summary>How long a "listening to" answer is reused (profiles are viewed often; Last.fm is asked at most this often).</summary>
-    private static readonly TimeSpan ListeningFor = TimeSpan.FromSeconds(30);
+    private static readonly TimeSpan ListeningFor = TimeSpan.FromSeconds(10);
 
     /// <summary>How long a profile waits for Last.fm before showing nothing.</summary>
     private static readonly TimeSpan ListeningWait = TimeSpan.FromSeconds(3);
 
     private static readonly ConcurrentDictionary<int, (DateTimeOffset At, LastFmListening? Listening)> Listening = new();
 
+    // The settings page asks for the history every 10 seconds too: Last.fm at most that often per player.
+    private static readonly ConcurrentDictionary<int, (DateTimeOffset At, IReadOnlyList<LastFmRecentTrack> Tracks)> History = new();
+
     /// <summary>A track of a player's Last.fm history, and where it was played when it came from osu! here.</summary>
-    public sealed record RecentTrack(string Artist, string Title, string? Url, DateTimeOffset? At, bool NowPlaying, string? Client, int? BeatmapId);
+    public sealed record RecentTrack(string Artist, string Title, string? Url, DateTimeOffset? At, bool NowPlaying, string? Client, int? BeatmapId, string? Image = null);
 
     /// <summary>How far apart Last.fm's time and ours can be for a track to be the same play.</summary>
     private static readonly TimeSpan SamePlay = TimeSpan.FromMinutes(2);
@@ -43,12 +46,16 @@ public static class LastFmEndpoints
             .Take(LastFmScrobbler.KeptPerPlayer).ToListAsync(cancellationToken).ConfigureAwait(false);
 
         IReadOnlyList<LastFmRecentTrack> history;
+        if (History.TryGetValue(link.UserId, out var cached) && DateTimeOffset.UtcNow - cached.At <= ListeningFor)
+            history = cached.Tracks;
+        else
         using (var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
         {
             wait.CancelAfter(ListeningWait);
             try
             {
                 history = await client.RecentAsync(link.Username, 10, wait.Token).ConfigureAwait(false);
+                History[link.UserId] = (DateTimeOffset.UtcNow, history);
             }
             catch (Exception ex) when (ex is LastFmException or HttpRequestException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
@@ -64,7 +71,7 @@ public static class LastFmEndpoints
                                            && string.Equals(s.Title, track.Title, StringComparison.OrdinalIgnoreCase)
                                            && (new DateTimeOffset(DateTime.SpecifyKind(s.ScrobbledAt, DateTimeKind.Utc)) - at).Duration() <= SamePlay)
                 : null;
-            return new RecentTrack(track.Artist, track.Title, track.Url, track.At, track.NowPlaying, play?.Client, play?.BeatmapId);
+            return new RecentTrack(track.Artist, track.Title, track.Url, track.At, track.NowPlaying, play?.Client, play?.BeatmapId, track.Image);
         })];
     }
 
@@ -158,6 +165,7 @@ public static class LastFmEndpoints
             await db.LastFmLinks.Where(l => l.UserId == userId).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
             await db.LastFmScrobbles.Where(s => s.UserId == userId).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
             Listening.TryRemove(userId, out _);
+            History.TryRemove(userId, out _);
             return Results.Ok();
         });
     }

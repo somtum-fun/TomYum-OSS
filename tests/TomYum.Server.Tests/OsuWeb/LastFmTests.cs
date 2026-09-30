@@ -46,11 +46,13 @@ public sealed class LastFmTests : OsuWebDatabaseTest
     public void Listening_IsTheTrackLastFmMarksNowPlaying()
     {
         using var playing = System.Text.Json.JsonDocument.Parse(
-            """{"recenttracks":{"track":[{"artist":{"#text":"xi"},"name":"FREEDOM DiVE","url":"https://www.last.fm/music/xi/_/FREEDOM+DiVE","@attr":{"nowplaying":"true"}},{"artist":{"#text":"A"},"name":"Old","date":{"uts":"1790700000"}}]}}""");
+            """{"recenttracks":{"track":[{"artist":{"#text":"xi"},"name":"FREEDOM DiVE","url":"https://www.last.fm/music/xi/_/FREEDOM+DiVE","image":[{"#text":"https://lastfm.freetls.fastly.net/i/u/34s/art.png","size":"small"},{"#text":"https://lastfm.freetls.fastly.net/i/u/300x300/art.png","size":"extralarge"}],"@attr":{"nowplaying":"true"}},{"artist":{"#text":"A"},"name":"Old","image":[{"#text":"https://lastfm.freetls.fastly.net/i/u/300x300/2a96cbd8b46e442fc41c2b86b821562f.png","size":"extralarge"}],"date":{"uts":"1790700000"}}]}}""");
         var recent = LastFmClient.Recent(playing.RootElement);
         Assert.Equal(2, recent.Count);
         Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1790700000), recent[1].At);
-        Assert.Equal(new LastFmListening("xi", "FREEDOM DiVE", "https://www.last.fm/music/xi/_/FREEDOM+DiVE"), LastFmClient.Listening(recent));
+        Assert.Null(recent[1].Image);   // Last.fm's grey star: no art
+        Assert.Equal(new LastFmListening("xi", "FREEDOM DiVE", "https://www.last.fm/music/xi/_/FREEDOM+DiVE", "https://lastfm.freetls.fastly.net/i/u/300x300/art.png"),
+            LastFmClient.Listening(recent));
 
         using var idle = System.Text.Json.JsonDocument.Parse("""{"recenttracks":{"track":{"artist":{"#text":"A"},"name":"Old"}}}""");
         Assert.Null(LastFmClient.Listening(LastFmClient.Recent(idle.RootElement)));
