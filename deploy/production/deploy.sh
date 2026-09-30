@@ -18,6 +18,8 @@ git -C "$web" pull -q
 
 docker compose --profile build build osu-web-build
 docker compose build
+# The website's new tables before anything restarts (TomYum reads some of them, e.g. account locks).
+docker compose run --rm artisan migrate --force
 docker compose up -d
 # Old build layers pile up with every deploy (they once filled the disk): keep a day's worth.
 docker builder prune -f --filter until=24h >/dev/null

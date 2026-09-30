@@ -114,7 +114,7 @@ public static class BanchoEndpoints
         var countryIso = IpCountry.FromHeader(header)
                          ?? context.RequestServices.GetService<IpCountry>()?.Lookup(LoginIps.ClientAddress(context))
                          ?? string.Empty;
-        var outcome = await loginHandler.HandleAsync(body, countryIso, cancellationToken).ConfigureAwait(false);
+        var outcome = await loginHandler.HandleAsync(body, countryIso, cancellationToken, LoginIps.ClientAddress(context)).ConfigureAwait(false);
 
         // Where they logged in from, for staff (a failed login has no session).
         if (outcome.Token is { } token

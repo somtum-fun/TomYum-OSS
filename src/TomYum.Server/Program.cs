@@ -234,6 +234,7 @@ builder.Services.AddTomYumPlugins(builder.Configuration);
 // --- osu!Direct beatmap browser ---
 // Named HttpClient for the mirror; options let operators point at any mino.pw-compatible mirror.
 builder.Services.Configure<DirectOptions>(builder.Configuration.GetSection(DirectOptions.Section));
+builder.Services.Configure<TomYum.Server.Bancho.ClientVerificationOptions>(builder.Configuration.GetSection(TomYum.Server.Bancho.ClientVerificationOptions.Section));
 builder.Services.AddHttpClient(DirectEndpoints.HttpClientName, http =>
 {
     http.Timeout = TimeSpan.FromSeconds(15);

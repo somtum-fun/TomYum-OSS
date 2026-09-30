@@ -86,17 +86,25 @@ public sealed class ScoreModeration
         return result;
     }
 
-    /// <summary>Removes all of a player's scores (in one mode, or all modes).</summary>
-    public async Task<ScoreRemovalResult> WipeAsync(int userId, int? mode, int actorId, string? reason, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Removes a player's scores (in one mode, or all modes); with <paramref name="after"/>, only those set
+    /// after it (a rollback): their earlier plays become their bests again.
+    /// </summary>
+    public async Task<ScoreRemovalResult> WipeAsync(int userId, int? mode, int actorId, string? reason, DateTimeOffset? after = null, CancellationToken cancellationToken = default)
     {
         var scores = _db.Scores.AsNoTracking().Where(s => s.UserId == userId);
         if (mode is { } m)
             scores = scores.Where(s => s.Mode == m);
+        if (after is { } since)
+            scores = scores.Where(s => s.SubmittedAt > since);
         var all = await scores.ToListAsync(cancellationToken).ConfigureAwait(false);
 
         var result = await RemoveScoresAsync(userId, all, cancellationToken).ConfigureAwait(false);
         var which = mode is { } wiped ? GameMode.ToShortName(wiped) : "all modes";
-        await LogAsync(actorId, "user.wipe_scores", userId, Invariant($"Wiped {result.Removed} score(s) ({which})"), reason, cancellationToken)
+        var summary = after is { } rolledBack
+            ? Invariant($"Rolled back to {rolledBack:yyyy-MM-dd HH:mm} UTC: removed {result.Removed} score(s) ({which})")
+            : Invariant($"Wiped {result.Removed} score(s) ({which})");
+        await LogAsync(actorId, after is null ? "user.wipe_scores" : "user.rollback", userId, summary, reason, cancellationToken)
             .ConfigureAwait(false);
         return result;
     }

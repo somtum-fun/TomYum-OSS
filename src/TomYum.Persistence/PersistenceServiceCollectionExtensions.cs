@@ -54,6 +54,8 @@ public static class PersistenceServiceCollectionExtensions
             services.AddScoped<OsuWebBadges>();
             services.AddScoped<OsuWebDailyChallenge>();
             services.AddScoped<OsuWebStableClient>();
+            services.AddScoped<OsuWebClientVerification>();
+            services.AddScoped<OsuWebAccountFlags>();
             services.AddScoped<OsuWebLazerRelax>();
             services.AddScoped<OsuWebScrobbles>();
             services.AddScoped<OsuWebIrcKeys>();

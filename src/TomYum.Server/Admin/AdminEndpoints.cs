@@ -23,7 +23,8 @@ public sealed record BeatmapImportRequest(int? BeatmapId, string? Checksum);
 public sealed record StatusChangeRequest(string? Status, IReadOnlyList<int>? BeatmapIds);
 
 /// <summary>Body of <c>POST /_admin/users/{id}/wipe-scores</c>; no mode = every mode.</summary>
-public sealed record WipeScoresRequest(int? Mode, string? Reason);
+/// <summary>Body of <c>POST /_admin/users/{id}/wipe-scores</c>: a mode or all, and (a rollback) only scores set after <c>After</c>.</summary>
+public sealed record WipeScoresRequest(int? Mode, string? Reason, DateTimeOffset? After = null);
 
 /// <summary>Body of <c>POST /_admin/log</c>: an action the website did itself (restrict, silence, …).</summary>
 public sealed record StaffLogRequest(string? Action, long? TargetId, string? Summary, string? Result);
@@ -60,6 +61,7 @@ public static class AdminEndpoints
         admin.MapModeStats();
         admin.MapModeScores();
         admin.MapModeRankings();
+        admin.MapAccounts();
         TomYum.Server.LastFm.LastFmEndpoints.MapLastFm(admin);
         admin.MapPost("/beatmaps/import", ImportBeatmapAsync);
         admin.MapGet("/beatmapsets/{setId:int}", GetSetAsync);
@@ -79,7 +81,7 @@ public static class AdminEndpoints
         admin.MapGet("/users/{userId:int}/scores", async (int userId, int? mode, bool? best, int? limit, ScoreModeration scores, CancellationToken cancellationToken) =>
             Results.Ok(await scores.ListAsync(userId, mode, best ?? false, limit ?? 50, cancellationToken).ConfigureAwait(false)));
         admin.MapPost("/users/{userId:int}/wipe-scores", async (int userId, WipeScoresRequest request, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken) =>
-            Results.Ok(await scores.WipeAsync(userId, request.Mode, ActorId(context), request.Reason, cancellationToken).ConfigureAwait(false)));
+            Results.Ok(await scores.WipeAsync(userId, request.Mode, ActorId(context), request.Reason, request.After, cancellationToken).ConfigureAwait(false)));
         // Every score's pp again (after a pp algorithm update): same as a status change does per map.
         admin.MapPost("/scores/recalculate", RecalculateAllScoresAsync);
         admin.MapDelete("/scores/{scoreId:long}", async (long scoreId, string? reason, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken) =>

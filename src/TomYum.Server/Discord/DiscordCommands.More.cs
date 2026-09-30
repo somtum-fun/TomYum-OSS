@@ -417,7 +417,7 @@ public sealed partial class DiscordCommands
             return DiscordReply.Text("Give a reason.", isPrivate: true);
 
         int? mode = options.GetValueOrDefault("mode") is { } modeText && modeText != "all" ? DiscordFormat.ParseRuleset(modeText) : null;
-        var result = await scores.WipeAsync(target.Id, mode, staff.Id, reason, cancellationToken).ConfigureAwait(false);
+        var result = await scores.WipeAsync(target.Id, mode, staff.Id, reason, cancellationToken: cancellationToken).ConfigureAwait(false);
         var which = mode is { } m ? DiscordFormat.Ruleset(m) : "every mode";
         return DiscordReply.Text(string.Create(CultureInfo.InvariantCulture,
             $"Wiped {result.Removed} score(s) of **{DiscordFormat.Escape(target.Username)}** in {which}; their stats were recalculated."), isPrivate: true);
