@@ -33,6 +33,7 @@ public sealed class BanchoLoginHandler
     private readonly PresenceStats? _presenceStats;
     private readonly IFriendRepository? _friends;
     private readonly TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? _privateMessages;
+    private readonly TomYum.Persistence.OsuWeb.OsuWebClientVerification? _clientVerification;
 
     /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
     public const int UnreadLimit = 50;
@@ -60,8 +61,11 @@ public sealed class BanchoLoginHandler
         IStaffLogRepository? staffLog = null,
         PresenceStats? presenceStats = null,
         IFriendRepository? friends = null,
-        TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? privateMessages = null)
+        TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? privateMessages = null,
+        Microsoft.Extensions.Options.IOptions<ClientVerificationOptions>? clientVerificationOptions = null,
+        TomYum.Persistence.OsuWeb.OsuWebClientVerification? clientVerification = null)
     {
+        _clientVerification = clientVerificationOptions?.Value.Enabled == true ? clientVerification : null;
         _friends = friends;
         _privateMessages = privateMessages;
         _presenceStats = presenceStats;
@@ -114,6 +118,18 @@ public sealed class BanchoLoginHandler
         // machine belongs to a restricted account (ban evasion), until staff verify it.
         if (_clientHashes is not null && await IsEvadingAsync(user, request.ClientHashes, cancellationToken).ConfigureAwait(false))
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, EvasionNotice), null);
+
+        // A device the player hasn't confirmed (ClientVerificationOptions): the client opens the
+        // website's verify page (osu.<domain>/p/verify), where they confirm it after signing in.
+        if (_clientVerification is not null && user.Id != BanchoBot.UserId)
+        {
+            var hashes = request.ClientHashes;
+            if (!await _clientVerification.IsVerifiedAsync(user.Id, hashes.OsuPathMd5, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5, cancellationToken).ConfigureAwait(false))
+            {
+                _logger.LogInformation("Login held: {Username} (id {UserId}) is on a device they haven't verified yet.", user.Username, user.Id);
+                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired), null);
+            }
+        }
 
         // Resolve the country for this session: prefer the live CF-IPCountry header, fall back
         // to the stored user country. If the stored country is "xx" and we have a real one
