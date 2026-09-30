@@ -45,6 +45,20 @@ public sealed class OsuWebClientVerification
         return !known;
     }
 
+    /// <summary>
+    /// Whether this device is still waiting for the player to confirm it on the website (a login from
+    /// it was held and it isn't verified yet). Only reads: for the client's polling while it waits.
+    /// </summary>
+    public async Task<bool> IsPendingAsync(int userId, string uniqueMd5, CancellationToken cancellationToken = default)
+    {
+        if (Md5(uniqueMd5) is not { } unique)
+            return false;
+        var rows = await _db.Database.SqlQueryRaw<int>(
+            "SELECT verified AS Value FROM osu_user_security WHERE user_id = {0} AND unique_md5 = {1}",
+            userId, unique).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Count > 0 && !rows.Contains(1);
+    }
+
     private static byte[]? Md5(string hex)
     {
         if (hex.Length != 32)

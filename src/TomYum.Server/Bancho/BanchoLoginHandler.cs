@@ -21,6 +21,23 @@ namespace TomYum.Server.Bancho;
 /// </remarks>
 public sealed class BanchoLoginHandler
 {
+    /// <summary>
+    /// Devices whose login was held for verification (player id, uninstall md5), and when: the next
+    /// login from one, after the player confirmed it on the website, is welcomed as verified.
+    /// </summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(int UserId, string Device), DateTimeOffset> HeldDevices = new();
+
+    private static void HoldDevice(int userId, string device)
+    {
+        var now = DateTimeOffset.UtcNow;
+        foreach (var held in HeldDevices)
+        {
+            if (now - held.Value > TimeSpan.FromDays(1))
+                HeldDevices.TryRemove(held.Key, out _);
+        }
+        HeldDevices[(userId, device)] = now;
+    }
+
     private readonly IUserRepository _users;
     private readonly IPasswordHasher _passwordHasher;
     private readonly IUserStatsRepository _userStats;
@@ -34,9 +51,13 @@ public sealed class BanchoLoginHandler
     private readonly IFriendRepository? _friends;
     private readonly TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? _privateMessages;
     private readonly TomYum.Persistence.OsuWeb.OsuWebClientVerification? _clientVerification;
+    private readonly TomYum.Persistence.OsuWeb.OsuWebAccountFlags? _accountFlags;
 
     /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
     public const int UnreadLimit = 50;
+
+    /// <summary>What a locked account is told (staff lock it from the admin panel).</summary>
+    public const string LockedNotice = "This account is locked. Please contact staff.";
 
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
@@ -63,8 +84,10 @@ public sealed class BanchoLoginHandler
         IFriendRepository? friends = null,
         TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? privateMessages = null,
         Microsoft.Extensions.Options.IOptions<ClientVerificationOptions>? clientVerificationOptions = null,
-        TomYum.Persistence.OsuWeb.OsuWebClientVerification? clientVerification = null)
+        TomYum.Persistence.OsuWeb.OsuWebClientVerification? clientVerification = null,
+        TomYum.Persistence.OsuWeb.OsuWebAccountFlags? accountFlags = null)
     {
+        _accountFlags = accountFlags;
         _clientVerification = clientVerificationOptions?.Value.Enabled == true ? clientVerification : null;
         _friends = friends;
         _privateMessages = privateMessages;
@@ -92,7 +115,8 @@ public sealed class BanchoLoginHandler
     /// <param name="body">Raw login request body.</param>
     /// <param name="countryIso">2-letter ISO country code (Cloudflare's, else GeoIP's), or empty.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public async Task<LoginOutcome> HandleAsync(string body, string countryIso, CancellationToken cancellationToken)
+    /// <param name="clientAddress">The player's IP address, for their login history (or null).</param>
+    public async Task<LoginOutcome> HandleAsync(string body, string countryIso, CancellationToken cancellationToken, string? clientAddress = null)
     {
         if (!LoginRequest.TryParse(body, out var request) || request is null)
         {
@@ -111,7 +135,16 @@ public sealed class BanchoLoginHandler
         if (!_passwordHasher.Verify(request.PasswordMd5, user.PasswordBcrypt))
         {
             _logger.LogInformation("Login failed: bad password for {Username}.", request.Username);
+            await RecordLoginAsync(user.Id, "bad_password", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
+        }
+
+        // Locked by staff (the admin panel): no logins anywhere until unlocked.
+        if (_accountFlags is not null && await _accountFlags.IsLockedAsync(user.Id, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogInformation("Login refused: {Username} (id {UserId}) is locked.", user.Username, user.Id);
+            await RecordLoginAsync(user.Id, "locked", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, LockedNotice), null);
         }
 
         // Hardware hashes: recorded for every login; an account's first login is refused when the
@@ -126,7 +159,9 @@ public sealed class BanchoLoginHandler
             var hashes = request.ClientHashes;
             if (!await _clientVerification.IsVerifiedAsync(user.Id, hashes.OsuPathMd5, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5, cancellationToken).ConfigureAwait(false))
             {
+                HoldDevice(user.Id, hashes.UninstallMd5);
                 _logger.LogInformation("Login held: {Username} (id {UserId}) is on a device they haven't verified yet.", user.Username, user.Id);
+                await RecordLoginAsync(user.Id, "held", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
                 return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired), null);
             }
         }
@@ -164,6 +199,8 @@ public sealed class BanchoLoginHandler
         if (_events is not null && !tournament)
             await _events.PublishAsync(new TomYum.Plugins.Abstractions.PlayerLoginEvent(user.Id, user.Username, resolvedCountry ?? string.Empty), cancellationToken).ConfigureAwait(false);
         var welcome = string.Create(CultureInfo.InvariantCulture, $"Welcome to TomYum, {user.Username}!");
+        if (HeldDevices.TryRemove((user.Id, request.ClientHashes.UninstallMd5), out _))
+            welcome = "This device is now verified. " + welcome;
 
         // Auto-join the player to the auto-join channels (e.g. #osu) so they can chat immediately,
         // and advertise every channel in the login burst. CHANNEL_AUTO_JOIN tells the client to
@@ -234,8 +271,26 @@ public sealed class BanchoLoginHandler
         _logger.LogInformation(
             "Login ok: {Username} (id {UserId}) on {Version}; {Online} online.",
             user.Username, user.Id, request.OsuVersion, _registry.Count);
+        await RecordLoginAsync(user.Id, "ok", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
 
         return new LoginOutcome(responseBody, player.Token);
+    }
+
+    /// <summary>The login in the account's history (the admin panel); a failure to record never fails the login.</summary>
+    private async Task RecordLoginAsync(int userId, string result, string? address, string country, string version, CancellationToken cancellationToken)
+    {
+        if (_accountFlags is null)
+            return;
+        try
+        {
+            await _accountFlags.RecordLoginAsync(userId, "stable", result, address, country, version, cancellationToken).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // the history is best effort: the login goes on
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LogWarning(ex, "Couldn't record {UserId}'s login in their history.", userId);
+        }
     }
 
     /// <summary>

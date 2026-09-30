@@ -78,13 +78,17 @@ public sealed class DiscordWatch
     }
 
     /// <summary>A pass that was just announced-or-not: queues its milestones and checks it for suspicious signs.</summary>
-    public async Task OnScoreAsync(OsuWebCommunity community, ScoreCard score, bool tookFirst, CancellationToken cancellationToken)
+    /// <remarks>A player on the anti-cheat whitelist (the admin panel, <c>whitelisted</c>) isn't checked.</remarks>
+    /// <returns>Why the play looked suspicious (reported to staff), or nothing.</returns>
+    public async Task<IReadOnlyList<string>> OnScoreAsync(OsuWebCommunity community, ScoreCard score, bool tookFirst, CancellationToken cancellationToken, bool whitelisted = false)
     {
         ArgumentNullException.ThrowIfNull(community);
         ArgumentNullException.ThrowIfNull(score);
         if (!score.Passed)
-            return;
+            return [];
         _milestoneQueue[(score.UserId, score.Ruleset)] = _time.GetUtcNow() + MilestoneDelay;
+        if (whitelisted)
+            return [];
 
         var reasons = new List<string>();
         if (score.Pp is { } pp)
@@ -117,6 +121,7 @@ public sealed class DiscordWatch
 
         if (reasons.Count > 0)
             await _gateway.PostAsync(_options.ReportsChannel, SuspiciousPost(score, reasons), cancellationToken).ConfigureAwait(false);
+        return reasons;
     }
 
     /// <summary>A report, with staff buttons.</summary>

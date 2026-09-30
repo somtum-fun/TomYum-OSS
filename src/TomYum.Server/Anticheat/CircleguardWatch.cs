@@ -142,13 +142,43 @@ public sealed class CircleguardWatch : BackgroundService
 
     private async Task CheckAsync(IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, CancellationToken cancellationToken)
     {
+        // Whitelisted by staff (the admin panel): anti-cheat leaves them alone.
+        if (services.GetService<OsuWebAccountFlags>() is { } flags && await flags.IsWhitelistedAsync(score.UserId, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogInformation("circleguard: score {ScoreId} not checked (player {UserId} is whitelisted).", score.ScoreId, score.UserId);
+            return;
+        }
+
         var scan = await _scanner.ScanAsync(services, community, score, path, References, References, cancellationToken: cancellationToken).ConfigureAwait(false);
         var verdict = scan.Verdict;
         var restricted = false;
         if (verdict.RiskScore > _options.RestrictAbove)
             restricted = await RestrictAsync(services, score, verdict, cancellationToken).ConfigureAwait(false);
-        if (verdict.RiskScore >= _options.ReportAt && _discord is not null)
-            await _discord.CircleguardAsync(score, scan, restricted, cancellationToken).ConfigureAwait(false);
+        if (verdict.RiskScore >= _options.ReportAt)
+        {
+            if (!restricted)
+                await LogFlaggedAsync(services, score, verdict, cancellationToken).ConfigureAwait(false);
+            if (_discord is not null)
+                await _discord.CircleguardAsync(score, scan, restricted, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>A flagged play that didn't restrict, kept in the staff log (the admin panel shows the last one).</summary>
+    private async Task LogFlaggedAsync(IServiceProvider services, ScoreCard score, CircleguardVerdict verdict, CancellationToken cancellationToken)
+    {
+        if (services.GetService<IStaffLogRepository>() is not { } log)
+            return;
+        var summary = string.Create(CultureInfo.InvariantCulture,
+            $"circleguard flagged score {score.ScoreId} (risk {verdict.RiskScore}/100): {string.Join("; ", verdict.Reasons)}");
+        await log.AddAsync(new StaffLogEntry
+        {
+            CreatedAt = _time.GetUtcNow().UtcDateTime,
+            ActorId = BanchoBot.UserId,
+            Action = "anticheat.flagged",
+            TargetId = score.UserId,
+            Summary = summary.Length > 512 ? summary[..512] : summary,
+            Result = "circleguard",
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Restricts the player as BanchoBot, like the GMT panel would (not staff: they're only reported).</summary>

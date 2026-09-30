@@ -28,8 +28,9 @@ public static partial class StableClientEndpoints
     {
         ArgumentNullException.ThrowIfNull(app);
 
+        app.MapGet("/web/bancho_connect.php", HandleBanchoConnectAsync).RequireHost(hosts);
+
         // Answers the client only needs to get (bancho.py answers these the same way).
-        app.MapGet("/web/bancho_connect.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapGet("/web/osu-markasread.php", HandleMarkAsReadAsync).RequireHost(hosts);
         app.MapPost("/web/osu-session.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapPost("/web/osu-error.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
@@ -45,6 +46,34 @@ public static partial class StableClientEndpoints
         app.MapPost("/web/osu-screenshot.php", HandleScreenshotAsync).RequireHost(hosts).DisableAntiforgery();
         app.MapGet("/ss/{file}", HandleScreenshotFile).RequireHost(hosts);
         app.MapPost("/difficulty-rating", HandleDifficultyRatingAsync).RequireHost(hosts);
+    }
+
+    /// <summary>
+    /// The client's check before logging in, which it also polls while a login is held for device
+    /// verification (<c>retry=1</c>): the player's country when they may log in, <c>error: verify</c>
+    /// while the device (<c>ch</c>: osu md5 : adapters : adapters md5 : uninstall md5 : disk md5) still
+    /// waits for them on the website, and <c>error: pass</c> for a wrong password (as Ripple's lets
+    /// answers). The country is what makes a waiting client log in again, on its own.
+    /// </summary>
+    internal static async Task<IResult> HandleBanchoConnectAsync(HttpContext context, CancellationToken cancellationToken)
+    {
+        var query = context.Request.Query;
+        var user = await UserAsync(context, query["u"], query["h"], cancellationToken).ConfigureAwait(false);
+        if (user is null)
+            return Results.Text("error: pass\n", "text/plain");
+
+        // Only while the client is waiting: a first try goes on to log in, which holds it and
+        // opens the verify page.
+        if (query["retry"] != "0"
+            && context.RequestServices.GetService<Microsoft.Extensions.Options.IOptions<ClientVerificationOptions>>()?.Value.Enabled == true
+            && context.RequestServices.GetService<OsuWebClientVerification>() is { } verification
+            && ((string?)query["ch"])?.Split(':') is { Length: >= 5 } hashes
+            && await verification.IsPendingAsync(user.Id, hashes[3], cancellationToken).ConfigureAwait(false))
+        {
+            return Results.Text("error: verify\n", "text/plain");
+        }
+
+        return Results.Text(user.Country.ToLowerInvariant(), "text/plain");
     }
 
     /// <summary>
