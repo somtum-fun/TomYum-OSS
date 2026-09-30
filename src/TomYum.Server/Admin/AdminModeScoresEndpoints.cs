@@ -11,10 +11,19 @@ namespace TomYum.Server.Admin;
 public sealed record ModeScore(
     long Id, int BeatmapId, int Mods, double Pp, double Accuracy, string Grade, int MaxCombo, bool Perfect,
     long Score, bool Passed, DateTimeOffset PlayedAt, int Count300, int Count100, int Count50, int CountMiss, int CountGeki, int CountKatu,
-    bool Stable);
+    bool Stable, bool HasReplay);
 
 /// <summary>A page of a profile list, and how many there are in all.</summary>
 public sealed record ModeScorePage(int Total, IReadOnlyList<ModeScore> Scores);
+
+/// <summary>A place on a map's Relax/Autopilot leaderboard.</summary>
+public sealed record ModeLeaderboardEntry(int Position, int UserId, ModeScore Score);
+
+/// <summary>A map's Relax/Autopilot leaderboard, and the viewer's own best on it (wherever it places).</summary>
+public sealed record ModeLeaderboard(IReadOnlyList<ModeLeaderboardEntry> Scores, ModeLeaderboardEntry? UserScore);
+
+/// <summary>Only these players' plays (the website's country, friend and team boards), posted since a country's list can be long.</summary>
+public sealed record ModeLeaderboardPlayers(IReadOnlyList<int> UserIds);
 
 /// <summary>
 /// A player's Relax/Autopilot plays for their profile's lists in those modes (the website doesn't have
@@ -27,12 +36,14 @@ public static class AdminModeScoresEndpoints
         ArgumentNullException.ThrowIfNull(admin);
         admin.MapGet("/users/{userId:int}/mode-scores/{mode:int}", GetAsync);
         admin.MapGet("/mode-scores/{scoreId:long}", GetOneAsync);
+        admin.MapGet("/beatmaps/{beatmapId:int}/mode-scores/{mode:int}", LeaderboardAsync);
+        admin.MapPost("/beatmaps/{beatmapId:int}/mode-scores/{mode:int}", PlayersLeaderboardAsync);
         admin.MapGet("/replays/mode-score/{scoreId:long}", ReplayAsync);
     }
 
     internal static async Task<IResult> GetAsync(
         int userId, int mode, string? type, int? offset, int? limit, bool? includeFails,
-        TomYumDbContext db, RestrictedUsers restricted, TimeProvider time, CancellationToken cancellationToken)
+        TomYumDbContext db, RestrictedUsers restricted, TimeProvider time, IConfiguration configuration, CancellationToken cancellationToken)
     {
         if (mode is < GameMode.RelaxOffset or > GameMode.AutopilotOffset + 3)
             return Results.BadRequest(new { error = "Only Relax (4-6) and Autopilot (8) are kept here." });
@@ -48,7 +59,7 @@ public static class AdminModeScoresEndpoints
                 var total = await best.CountAsync(cancellationToken).ConfigureAwait(false);
                 var page = await best.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue).Skip(skip).Take(take)
                     .ToListAsync(cancellationToken).ConfigureAwait(false);
-                return Results.Ok(new ModeScorePage(total, [.. page.Select(s => Describe(s, mode))]));
+                return Results.Ok(new ModeScorePage(total, [.. page.Select(s => Describe(s, mode, configuration))]));
             }
             case "recent":
             {
@@ -58,7 +69,7 @@ public static class AdminModeScoresEndpoints
                     recent = recent.Where(s => s.Passed);
                 var total = await recent.CountAsync(cancellationToken).ConfigureAwait(false);
                 var page = await recent.OrderByDescending(s => s.Id).Skip(skip).Take(take).ToListAsync(cancellationToken).ConfigureAwait(false);
-                return Results.Ok(new ModeScorePage(total, [.. page.Select(s => Describe(s, mode))]));
+                return Results.Ok(new ModeScorePage(total, [.. page.Select(s => Describe(s, mode, configuration))]));
             }
             case "firsts":
             {
@@ -71,11 +82,84 @@ public static class AdminModeScoresEndpoints
                     .GroupBy(s => s.BeatmapMd5).Select(g => new { Md5 = g.Key, Pp = g.Max(s => s.Pp) })
                     .ToDictionaryAsync(g => g.Md5, g => g.Pp, cancellationToken).ConfigureAwait(false);
                 var firsts = mine.Where(s => !rivals.TryGetValue(s.BeatmapMd5, out var pp) || s.Pp > pp).OrderByDescending(s => s.SubmittedAt).ToList();
-                return Results.Ok(new ModeScorePage(firsts.Count, [.. firsts.Skip(skip).Take(take).Select(s => Describe(s, mode))]));
+                return Results.Ok(new ModeScorePage(firsts.Count, [.. firsts.Skip(skip).Take(take).Select(s => Describe(s, mode, configuration))]));
             }
             default:
                 return Results.BadRequest(new { error = "type: best, recent or firsts." });
         }
+    }
+
+    /// <summary>
+    /// A map's Relax/Autopilot leaderboard for the website's beatmap page: the in-game one (by pp,
+    /// restricted players left out), plus the viewer's best when <paramref name="viewerId"/> is given.
+    /// <paramref name="mods"/> keeps plays with exactly those mods, like the in-game "Selected Mods"
+    /// board; the Relax/Autopilot bit itself is ignored (the mode already says it).
+    /// </summary>
+    internal static Task<IResult> LeaderboardAsync(
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods,
+        TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken) =>
+        BoardAsync(beatmapId, mode, limit, viewerId, mods, null, beatmaps, db, restricted, configuration, cancellationToken);
+
+    /// <summary>The same leaderboard with only <see cref="ModeLeaderboardPlayers.UserIds"/>'s plays (country, friends, team).</summary>
+    internal static Task<IResult> PlayersLeaderboardAsync(
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods, ModeLeaderboardPlayers players,
+        TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken) =>
+        BoardAsync(beatmapId, mode, limit, viewerId, mods, players.UserIds ?? [], beatmaps, db, restricted, configuration, cancellationToken);
+
+    private static async Task<IResult> BoardAsync(
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods, IReadOnlyList<int>? userIds,
+        TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken)
+    {
+        if (mode is < GameMode.RelaxOffset or > GameMode.AutopilotOffset + 3)
+            return Results.BadRequest(new { error = "Only Relax (4-6) and Autopilot (8) are kept here." });
+        var beatmap = await beatmaps.GetByIdAsync(beatmapId, cancellationToken).ConfigureAwait(false);
+        if (beatmap is null)
+            return Results.Ok(new ModeLeaderboard([], null));
+
+        // As the in-game board (ScoreRepository.GetLeaderboardAsync): by pp, restricted players left
+        // out except to themselves.
+        var hiddenFromBoard = restricted.Ids.Where(id => id != viewerId).ToList();
+        var top = await Board(db, beatmap.Md5, mode, mods, userIds).Where(s => !hiddenFromBoard.Contains(s.UserId))
+            .OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue).Take(Math.Clamp(limit ?? 50, 1, 100))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var entries = top.Select((s, i) => new ModeLeaderboardEntry(i + 1, s.UserId, Describe(s, mode, configuration))).ToList();
+
+        ModeLeaderboardEntry? mine = entries.FirstOrDefault(e => e.UserId == viewerId);
+        if (mine is null && viewerId is { } viewer)
+        {
+            var best = await Board(db, beatmap.Md5, mode, mods, userIds).FirstOrDefaultAsync(s => s.UserId == viewer, cancellationToken).ConfigureAwait(false);
+            if (best is not null && best.Passed)
+            {
+                var hidden = restricted.Ids.Where(id => id != viewer).ToList();
+                var position = 1 + await Board(db, beatmap.Md5, mode, mods, userIds)
+                    .CountAsync(s => s.Pp > best.Pp && !hidden.Contains(s.UserId), cancellationToken).ConfigureAwait(false);
+                mine = new ModeLeaderboardEntry(position, viewer, Describe(best, mode, configuration));
+            }
+        }
+        return Results.Ok(new ModeLeaderboard(entries, mine));
+    }
+
+    /// <summary>Relax (128) and Autopilot (8192): implied by the mode, so a mods filter leaves them out.</summary>
+    private const int ModeMods = 128 | 8192;
+
+    /// <summary>
+    /// A map's bests in a mode, optionally only those with exactly <paramref name="mods"/> (besides RX/AP)
+    /// and only <paramref name="userIds"/>'s.
+    /// </summary>
+    private static IQueryable<Score> Board(TomYumDbContext db, string md5, int mode, int? mods, IReadOnlyList<int>? userIds)
+    {
+        var board = db.Scores.AsNoTracking().Where(s => s.BeatmapMd5 == md5 && s.Mode == mode && s.Status == ScoreStatus.Best);
+        if (userIds is not null)
+        {
+            var ids = userIds.ToList();
+            board = board.Where(s => ids.Contains(s.UserId));
+        }
+        if (mods is { } wanted)
+        {
+            var want = wanted & ~ModeMods;
+            board = board.Where(s => (s.Mods & ~ModeMods) == want);
+        }
+        return board;
     }
 
     /// <summary>One Relax/Autopilot play for its page: who, which mode, its place on the map's leaderboard, whether there's a replay.</summary>
@@ -94,7 +178,7 @@ public static class AdminModeScoresEndpoints
         }
         return Results.Ok(new
         {
-            score = Describe(score, score.Mode),
+            score = Describe(score, score.Mode, configuration),
             userId = score.UserId,
             mode = score.Mode,
             position,
@@ -113,9 +197,9 @@ public static class AdminModeScoresEndpoints
         return Results.File(OsrFile.Build(score, player, frames), "application/octet-stream", $"{player} - {score.BeatmapMd5} ({score.Id}).osr");
     }
 
-    private static ModeScore Describe(Score s, int mode) => new(
+    private static ModeScore Describe(Score s, int mode, IConfiguration configuration) => new(
         s.Id, s.BeatmapId, s.Mods, s.Pp,
         AccuracyCalculator.Compute(GameMode.AsVanilla(mode), s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss),
         s.Grade, s.MaxCombo, s.Perfect, s.ScoreValue, s.Passed, s.SubmittedAt,
-        s.Count300, s.Count100, s.Count50, s.CountMiss, s.CountGeki, s.CountKatu, !s.FromLazer);
+        s.Count300, s.Count100, s.Count50, s.CountMiss, s.CountGeki, s.CountKatu, !s.FromLazer, ReplayFiles.Exists(configuration, s.Id));
 }
