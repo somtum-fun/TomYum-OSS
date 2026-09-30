@@ -67,4 +67,17 @@ teardown path today; when a reaper lands it will share the same teardown.)
 - Closing the `#spectator` tab by hand (without stopping spectating) isn't specially handled — the
   channel is managed by the spectate flow, not by manual channel join/part, exactly like `#multiplayer`.
 
-See also: `src/TomYum.Server/Bancho/SpectatorManager.cs` (internals).
+## Tournament client
+
+osu!'s tournament client (version ending in `tourney`) logs in once per window, all with the same
+account. Those windows are extra sessions: they don't replace the player's own game, aren't listed
+as players, and get no channels, PMs or login announcement. A window follows a match with
+`TOURNAMENT_MATCH_INFO_REQUEST(93)` (the match's state), `TOURNAMENT_JOIN_MATCH_CHANNEL(108)` (its
+state from then on and its `#multiplayer` chat) and `TOURNAMENT_LEAVE_MATCH_CHANNEL(109)`, and
+spectates players like a game does: frames go to the session that asked, so each window shows its
+own player. Closing a window only undoes what it did.
+
+To use it, put a `tournament.cfg` in the osu! folder and start osu! with `-devserver <domain>` as usual.
+
+See also: `src/TomYum.Server/Bancho/SpectatorManager.cs` (internals),
+`src/TomYum.Server/Bancho/Packets/TournamentHandlers.cs`.

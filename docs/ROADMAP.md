@@ -3,7 +3,7 @@
 > **Docs convention.** `docs/` holds the documentation (contributors, operators): one page per
 > feature, plus this checklist.
 
-_Last updated: 2026-09-29. .NET 10; production at sundei.eu (stable, lazer and the website)._
+_Last updated: 2026-09-30. .NET 10; production at sundei.eu (stable, lazer and the website)._
 
 This is the living checklist for the big feature wave requested on 2026-07-07: `.osu` cache →
 plugin host → moderation/HWID → spectating → DAN/Session ports → custom beatmaps → **osu!lazer
@@ -11,7 +11,7 @@ support**. Work top-to-bottom; each box is committed + tested on its own so any 
 cleanly. Deferred by explicit decision: **IRC** (do lazer+stable first). circleguard was deferred
 too and is now done (Anticheat, below).
 
-Legend: `[ ]` todo · `[~]` in progress · `[x]` done · 🔒 blocked-by · ⚖️ decision needed.
+Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decision · 🔒 blocked-by · ⚖️ decision needed.
 
 ---
 
@@ -94,7 +94,7 @@ _Core watch-and-relay done 2026-07-08 (`docs/spectating.md`). 143 tests. Chat ch
 ## Phase 4 — DAN mode + Session plugins (ports) 🔒 Phase 1 + Phase 3
 _Clean-room reimplementations of the old server's DAN mode and session.py (that fork is GPL — behaviour only)._
 
-- [ ] **DAN mode** plugin — mania clear validator: bot spectates on `CHANGE_ACTION`, taints on pause
+- [ ] ⏸ **DAN mode** plugin (not wanted for now, 2026-09-29) — mania clear validator: bot spectates on `CHANGE_ACTION`, taints on pause
       frame, vetoes score submit; `is_dan` per-diff flag + set-granularity tag endpoint; transient per-login state.
 - [~] **Session** plugin — `session.<domain>` vhost, opaque web-session table (IP/UA binding).
   - [x] **Auth core** (loose source `plugins/tomyum-session/`): `/login` (bcrypt, mint token, cookie),
@@ -141,7 +141,8 @@ services next to osu-web (docs/lazer.md): osu-web is the API, OAuth and chat; pp
 does multiplayer/spectating/presence; ppy's score processor does lazer pp and stats. TomYum shares the
 accounts, chat and leaderboards with them._
 
-- [x] Identity scheme — one account table (osu-web's); BanchoBot is user 1 on both.
+- [x] Identity scheme — one account table (osu-web's); BanchoBot is user 3 on both, like osu!'s
+      (moved from 1 on 2026-09-30: lazer treats id 1 as its guest user and shows no avatar for it).
 - [x] Shared presence/chat — stable ↔ website chat bridge (lazer chats through the website), BanchoBot
       answers on both, `/np` from both.
 - [x] OAuth2, `/api/v2`, score submission, SignalR hubs, notification websocket — ppy's services
@@ -164,15 +165,23 @@ accounts, chat and leaderboards with them._
 - [x] Stable map ratings (`osu-rate.php`, kept with the website's ratings; the leaderboard shows the average),
       the client's anti-cheat flags (`lastfm.php`: hq!osu restricts, relife traces warn and alert staff),
       osu!'s beatmap tags synced daily for lazer's tag voting. 2026-09-29
-- [x] Admin panel: seasonal backgrounds (lazer + stable's `osu-getseasonal.php`), Quick Play / Ranked Play
+- [x] Admin panel: seasonal backgrounds (lazer + stable's `osu-getseasonal.php`), Ranked Play
       pools (the spectator server fills them with featured-artist maps; extra maps added there), news posts
       (osu-wiki markdown, not synced from GitHub). The changelog from git history (`deploy/production/changelog.sh`,
       run by `deploy.sh`); popular beatmaps from this week's plays. 2026-09-29
 - [x] One osu! API budget for the whole server (50 requests a minute; osu! asks for at most 60) and map
       lookups from catboy.best first (osu!'s v2 format; paused on a 429 until Retry-After, an hour on a
       403; bulk imports and backfills skip it, since Mino counts sweeping many sets as crawling). 2026-09-29
-- [ ] Stable tournament client (`TournamentMatchInfoRequest`, match channel join/leave); lazer Quick Play
-      (matchmaking pools: none set up yet).
+- [x] Admin panel, more: Ranked Play pools with their map lists, badges, user titles. 2026-09-29
+- [x] Relax/Autopilot on the website: profiles (`/users/{id}/osurx` and the like, with a Vanilla/RX/AP
+      switch), rankings (`?variant=rx|ap`), score pages with pp and the replay; plays from stable get the
+      Classic mod, lazer's say so (`FromLazer`). Rank history: everyone's rank once a day, 90 days, for
+      the profile graph and highest rank (`ModeRankHistoryJob`). 2026-09-30
+- [x] BanchoBot counts as online on the website and in lazer, with its avatar and flag (Saint Helena);
+      stable and IRC players count as online there too. 2026-09-29
+- [x] Stable tournament client — its windows are extra sessions on the same account (they don't kick
+      the player's game or show as players), follow a match's state and chat
+      (`TournamentMatchInfoRequest`, match channel join/leave) and spectate players. 2026-09-30
 
 ## osu-web website 🔒 Phase A: none · Phase B: decisions below
 _osu-web (ppy's Laravel site) runs unmodified as the website; long-term it owns the schema and TomYum
@@ -183,7 +192,7 @@ uses its tables. Human doc: `docs/osu-web.md`._
       in-game `POST /users` → TomYum; rest → osu-web). Accounts/scores not shared yet.
 - [x] Custom beatmap id floor → **10,000,000** (`Beatmap.CustomIdFloor`), so custom ids fit osu-web's
       `MEDIUMINT UNSIGNED` `beatmap_id`/`beatmapset_id` (max 16,777,215). Was 100,000,000.
-- [x] BanchoBot as a real `phpbb_users` row (id 1, `bot` group) + osu-web `BANCHO_BOT_USER_ID=1`.
+- [x] BanchoBot as a real `phpbb_users` row (id 3, `bot` group) + osu-web `BANCHO_BOT_USER_ID=3`.
 - [x] **Phase B, accounts:** `OsuWebUserRepository` over `phpbb_users` + groups (`Database:OsuWebName`);
       website and in-game accounts are the same. No auto-Owner in this mode (staff via osu-web `admin`).
 - [x] **Phase B, beatmaps (mirror):** every map written to TomYum's table and osu-web's
@@ -196,7 +205,7 @@ uses its tables. Human doc: `docs/osu-web.md`._
 - [x] **Phase B, medals:** TomYum's catalog added to osu-web's `osu_achievements`; unlocks sent through
       osu-web's InterOp API (activity entry + notification), direct insert as fallback; in-game sign-ups
       pushed to the website search via InterOp. Local end-to-end guide: `docs/local-testing.md`.
-- [ ] **Phase B, rest:** TomYum reads scores (and medals) from osu-web → beatmaps become osu-web-only
+- [ ] ⏸ **Phase B, rest** (not now, 2026-09-30: the mirror keeps them in step): TomYum reads scores (and medals) from osu-web → beatmaps become osu-web-only
       (RecalcPp follows). Replaces the EF-migrations item in Phase 0 for these tables.
 - [x] Phase 7 rescope: osu-web serves `/api/v2` + `/oauth/token`, ppy's spectator server the realtime hubs.
 - [x] **Daily challenge** — osu-web opens the room each day; TomYum keeps its queue filled and the
@@ -224,6 +233,10 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
 - [x] **Discord bot** (docs/discord.md): slash commands, two-way `#osu` relay, announcements
       (#1s, big plays, medals, new players, ranked/loved), account linking via BanchoBot with
       group roles, staff user/server log channels. 2026-09-28.
+- [x] **Operations** (sundei.eu): mail through Proton (`osu@sundei.eu`, email verification on), downtime
+      alerts by Discord DM to the admin (`watchdog.sh`, paused while `deploy.sh` runs), nightly backups
+      (`backup.sh`, kept on the VM; the Proton Drive copy isn't set up), the store says "not available".
+      2026-09-29
 - [ ] Redis cross-node online state (multi-instance) — needed before scaling lazer realtime; ADR-0003.
 - [ ] Storage providers multi-target write / single read — needed for Phase 5 upload; ADR-0006.
 - [x] **Anticheat** — circleguard (sundeiii/lazer-circleguard, C#) checks every ranked pass, stable and

@@ -25,7 +25,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - Score submission with pp for all four modes, plus Relax and Autopilot leaderboards and stats
 - Leaderboards (global, selected mods, friends, country), replays, map updates, song select statuses
   and grades, favourites, screenshots, star ratings with mods, osu!direct, in-game comments
-- Multiplayer: lobby, rooms, the full match lifecycle, BanchoBot's `!mp` commands
+- Multiplayer: lobby, rooms, the full match lifecycle, BanchoBot's `!mp` commands, the tournament client
 - BanchoBot `!`-commands, staff tiers and supporter mapped to client badges
 - Medals, rank history, country from the client's IP
 
@@ -34,11 +34,13 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
   [osu-server-spectator](https://github.com/ppy/osu-server-spectator) (spectating, multiplayer,
   playlists, the daily challenge), sharing accounts, scores and rankings with stable
 - Lazer plays with Relax get relax pp and leaderboards like stable's
-- Quick Play and Ranked Play (matchmaking pools set up from the admin panel)
+- Relax and Autopilot on the website: profiles, rank graphs, rankings and score pages
+- Ranked Play (matchmaking pools set up from the admin panel)
 
 **Everything around it**
 - Moderation: restrictions, silences, a chat log, score removal, staff panels on the website
-  (BN imports, GMT tools, admin, the daily challenge map picker, seasonal backgrounds, news)
+  (BN imports, GMT tools, admin, the daily challenge map picker, seasonal backgrounds, news,
+  Ranked Play pools, badges, user titles)
 - A changelog made from the repositories' history on every deploy (`deploy/production/deploy.sh`)
 - Anti-cheat: hardware/client hash checks and alt detection, circleguard replay scans
 - Custom beatmaps (uploaded sets, graveyard, guest difficulties) next to the official ones
@@ -46,9 +48,11 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - An IRC server (port 6667) for IRC clients and bots, logging in with the website's IRC key
 - Plugins: compiled `.dll` or loose `.cs`, with events, commands and HTTP routes
 - EF Core migrations, Docker Compose / k8s deployment, Caddy and a Cloudflare tunnel in front
+- Email (sign-up verification), downtime alerts by Discord DM, nightly backups
 
-**Not done yet** (see the roadmap): the stable tournament client; the DAN mode plugin, custom medals, multi-instance (Redis-backed)
-online state, and multi-target storage.
+**Not done yet** (see the roadmap): custom medals, multi-instance (Redis-backed) online state, and
+multi-target storage. Put off for now: the DAN mode plugin, and TomYum reading scores straight from
+the website's tables (they're mirrored today).
 
 ## Documentation by topic
 
