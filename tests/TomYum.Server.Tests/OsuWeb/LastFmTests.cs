@@ -46,11 +46,14 @@ public sealed class LastFmTests : OsuWebDatabaseTest
     public void Listening_IsTheTrackLastFmMarksNowPlaying()
     {
         using var playing = System.Text.Json.JsonDocument.Parse(
-            """{"recenttracks":{"track":[{"artist":{"#text":"xi"},"name":"FREEDOM DiVE","url":"https://www.last.fm/music/xi/_/FREEDOM+DiVE","@attr":{"nowplaying":"true"}},{"artist":{"#text":"A"},"name":"Old"}]}}""");
-        Assert.Equal(new LastFmListening("xi", "FREEDOM DiVE", "https://www.last.fm/music/xi/_/FREEDOM+DiVE"), LastFmClient.Listening(playing.RootElement));
+            """{"recenttracks":{"track":[{"artist":{"#text":"xi"},"name":"FREEDOM DiVE","url":"https://www.last.fm/music/xi/_/FREEDOM+DiVE","@attr":{"nowplaying":"true"}},{"artist":{"#text":"A"},"name":"Old","date":{"uts":"1790700000"}}]}}""");
+        var recent = LastFmClient.Recent(playing.RootElement);
+        Assert.Equal(2, recent.Count);
+        Assert.Equal(DateTimeOffset.FromUnixTimeSeconds(1790700000), recent[1].At);
+        Assert.Equal(new LastFmListening("xi", "FREEDOM DiVE", "https://www.last.fm/music/xi/_/FREEDOM+DiVE"), LastFmClient.Listening(recent));
 
         using var idle = System.Text.Json.JsonDocument.Parse("""{"recenttracks":{"track":{"artist":{"#text":"A"},"name":"Old"}}}""");
-        Assert.Null(LastFmClient.Listening(idle.RootElement));
+        Assert.Null(LastFmClient.Listening(LastFmClient.Recent(idle.RootElement)));
     }
 
     [MySqlFact]
@@ -93,6 +96,17 @@ public sealed class LastFmTests : OsuWebDatabaseTest
         await InsertAsync(fan, 100, passed: true, "{}");      // from lazer
         Assert.Equal(1, await scrobbler.ScrobbleAsync());
         Assert.Equal("lazer", (await NewTomYumContext().LastFmScrobbles.OrderByDescending(x => x.Id).FirstAsync()).Client);
+
+        // The settings page's history: Last.fm's (Spotify too), with the plays from here saying where they were played.
+        var lazerPlay = await NewTomYumContext().LastFmScrobbles.OrderByDescending(x => x.Id).FirstAsync();
+        var uts = new DateTimeOffset(DateTime.SpecifyKind(lazerPlay.ScrobbledAt, DateTimeKind.Utc)).ToUnixTimeSeconds();
+        lastFm.Answer = $$$"""{"recenttracks":{"track":[{"artist":{"#text":"Olivia Rodrigo"},"name":"vampire","@attr":{"nowplaying":"true"}},{"artist":{"#text":"米津玄師"},"name":"Lemon","date":{"uts":"{{{uts}}}"}}]}}""";
+        var history = await LastFmEndpoints.RecentAsync(
+            new LastFmClient(new HttpClient(lastFm), new LastFmOptions { ApiKey = "key", ApiSecret = "secret" }), NewTomYumContext(),
+            await NewTomYumContext().LastFmLinks.SingleAsync(), CancellationToken.None);
+        Assert.Equal(("vampire", true, (string?)null), (history[0].Title, history[0].NowPlaying, history[0].Client));
+        Assert.Equal(("Lemon", "lazer", (int?)100), (history[1].Title, history[1].Client, history[1].BeatmapId));
+        lastFm.Answer = """{"scrobbles":{}}""";
 
         // Access taken away on Last.fm: disconnected here too.
         lastFm.Answer = """{"error":9,"message":"Invalid session key"}""";

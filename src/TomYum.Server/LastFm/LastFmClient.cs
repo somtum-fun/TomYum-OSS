@@ -26,6 +26,14 @@ public sealed record LastFmTrack(string Artist, string Title, int DurationSecond
 /// <summary>What someone is listening to right now, as Last.fm shows it (from osu! or anything else that scrobbles).</summary>
 public sealed record LastFmListening(string Artist, string Title, string? Url);
 
+/// <summary>A track in someone's Last.fm history (from osu! or anything else that scrobbles).</summary>
+/// <param name="Artist">The artist.</param>
+/// <param name="Title">The song's title.</param>
+/// <param name="Url">Its page on Last.fm.</param>
+/// <param name="At">When it was scrobbled (when it started); null while it's playing.</param>
+/// <param name="NowPlaying">Whether it's playing right now.</param>
+public sealed record LastFmRecentTrack(string Artist, string Title, string? Url, DateTimeOffset? At, bool NowPlaying);
+
 /// <summary>An error Last.fm answered with (https://www.last.fm/api/errorcodes).</summary>
 public sealed class LastFmException : Exception
 {
@@ -102,23 +110,31 @@ public sealed class LastFmClient
         using var _ = await CallAsync(call, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>What Last.fm says <paramref name="username"/> is listening to now, or null.</summary>
-    public async Task<LastFmListening?> ListeningAsync(string username, CancellationToken cancellationToken = default)
+    /// <summary>What Last.fm says <paramref name="username"/> listened to lately, newest first (the one playing now first).</summary>
+    public async Task<IReadOnlyList<LastFmRecentTrack>> RecentAsync(string username, int limit, CancellationToken cancellationToken = default)
     {
         using var answer = await CallAsync(new Dictionary<string, string>
         {
             ["method"] = "user.getRecentTracks",
             ["user"] = username,
-            ["limit"] = "1",
+            ["limit"] = limit.ToString(CultureInfo.InvariantCulture),
         }, cancellationToken, sign: false).ConfigureAwait(false);
-        return Listening(answer.RootElement);
+        return Recent(answer.RootElement);
     }
 
-    /// <summary>The track marked "now playing" in a <c>user.getRecentTracks</c> answer, or null.</summary>
-    public static LastFmListening? Listening(JsonElement answer)
+    /// <summary>What Last.fm says <paramref name="username"/> is listening to now, or null.</summary>
+    public async Task<LastFmListening?> ListeningAsync(string username, CancellationToken cancellationToken = default) =>
+        Listening(await RecentAsync(username, 1, cancellationToken).ConfigureAwait(false));
+
+    /// <summary>The track playing now among <paramref name="recent"/>, or null.</summary>
+    public static LastFmListening? Listening(IEnumerable<LastFmRecentTrack> recent) =>
+        recent.FirstOrDefault(t => t.NowPlaying) is { } now ? new LastFmListening(now.Artist, now.Title, now.Url) : null;
+
+    /// <summary>The tracks of a <c>user.getRecentTracks</c> answer.</summary>
+    public static IReadOnlyList<LastFmRecentTrack> Recent(JsonElement answer)
     {
         if (!answer.TryGetProperty("recenttracks", out var recent) || !recent.TryGetProperty("track", out var tracks))
-            return null;
+            return [];
 
         var list = tracks.ValueKind switch
         {
@@ -126,19 +142,23 @@ public sealed class LastFmClient
             JsonValueKind.Object => [tracks],
             _ => [],
         };
+        var result = new List<LastFmRecentTrack>();
         foreach (var track in list)
         {
-            if (!track.TryGetProperty("@attr", out var attributes) || !attributes.TryGetProperty("nowplaying", out var now) || now.GetString() != "true")
-                continue;
             var artist = track.TryGetProperty("artist", out var a)
                 ? a.ValueKind == JsonValueKind.Object ? (a.TryGetProperty("#text", out var text) ? text.GetString() : null) : a.GetString()
                 : null;
             var title = track.TryGetProperty("name", out var n) ? n.GetString() : null;
             if (string.IsNullOrEmpty(artist) || string.IsNullOrEmpty(title))
-                return null;
-            return new LastFmListening(artist, title, track.TryGetProperty("url", out var url) ? url.GetString() : null);
+                continue;
+            var nowPlaying = track.TryGetProperty("@attr", out var attributes) && attributes.TryGetProperty("nowplaying", out var now) && now.GetString() == "true";
+            DateTimeOffset? at = track.TryGetProperty("date", out var date) && date.TryGetProperty("uts", out var uts)
+                && long.TryParse(uts.GetString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds)
+                ? DateTimeOffset.FromUnixTimeSeconds(seconds)
+                : null;
+            result.Add(new LastFmRecentTrack(artist, title, track.TryGetProperty("url", out var url) ? url.GetString() : null, at, nowPlaying));
         }
-        return null;
+        return result;
     }
 
     /// <summary>

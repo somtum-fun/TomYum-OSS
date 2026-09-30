@@ -16,5 +16,6 @@ public sealed class LastFmScrobble
 
     public int BeatmapId { get; init; }
 
+    /// <summary>The time Last.fm files it under (when the play started).</summary>
     public DateTime ScrobbledAt { get; init; }
 }

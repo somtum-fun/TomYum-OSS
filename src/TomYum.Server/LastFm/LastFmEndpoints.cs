@@ -23,6 +23,51 @@ public static class LastFmEndpoints
 
     private static readonly ConcurrentDictionary<int, (DateTimeOffset At, LastFmListening? Listening)> Listening = new();
 
+    /// <summary>A track of a player's Last.fm history, and where it was played when it came from osu! here.</summary>
+    public sealed record RecentTrack(string Artist, string Title, string? Url, DateTimeOffset? At, bool NowPlaying, string? Client, int? BeatmapId);
+
+    /// <summary>How far apart Last.fm's time and ours can be for a track to be the same play.</summary>
+    private static readonly TimeSpan SamePlay = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// The player's Last.fm history (Spotify and the rest too), newest first; the plays scrobbled from
+    /// osu! here say where they were played. When Last.fm can't be asked, only the plays from here.
+    /// </summary>
+    public static async Task<IReadOnlyList<RecentTrack>> RecentAsync(LastFmClient client, TomYumDbContext db, LastFmLink link, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(db);
+        ArgumentNullException.ThrowIfNull(link);
+
+        var ours = await db.LastFmScrobbles.AsNoTracking().Where(s => s.UserId == link.UserId).OrderByDescending(s => s.Id)
+            .Take(LastFmScrobbler.KeptPerPlayer).ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        IReadOnlyList<LastFmRecentTrack> history;
+        using (var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
+        {
+            wait.CancelAfter(ListeningWait);
+            try
+            {
+                history = await client.RecentAsync(link.Username, 10, wait.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is LastFmException or HttpRequestException || (ex is OperationCanceledException && !cancellationToken.IsCancellationRequested))
+            {
+                return [.. ours.Take(10).Select(s => new RecentTrack(s.Artist, s.Title, null,
+                    new DateTimeOffset(DateTime.SpecifyKind(s.ScrobbledAt, DateTimeKind.Utc)), false, s.Client, s.BeatmapId))];
+            }
+        }
+
+        return [.. history.Select(track =>
+        {
+            var play = track.At is { } at
+                ? ours.FirstOrDefault(s => string.Equals(s.Artist, track.Artist, StringComparison.OrdinalIgnoreCase)
+                                           && string.Equals(s.Title, track.Title, StringComparison.OrdinalIgnoreCase)
+                                           && (new DateTimeOffset(DateTime.SpecifyKind(s.ScrobbledAt, DateTimeKind.Utc)) - at).Duration() <= SamePlay)
+                : null;
+            return new RecentTrack(track.Artist, track.Title, track.Url, track.At, track.NowPlaying, play?.Client, play?.BeatmapId);
+        })];
+    }
+
     public static void MapLastFm(this RouteGroupBuilder admin)
     {
         ArgumentNullException.ThrowIfNull(admin);
@@ -31,11 +76,9 @@ public static class LastFmEndpoints
         {
             var client = services.GetService<LastFmClient>();
             var link = await db.LastFmLinks.AsNoTracking().FirstOrDefaultAsync(l => l.UserId == userId, cancellationToken).ConfigureAwait(false);
-            var recent = link is null
+            var recent = link is null || client is null
                 ? []
-                : await db.LastFmScrobbles.AsNoTracking().Where(s => s.UserId == userId).OrderByDescending(s => s.Id).Take(10)
-                    .Select(s => new { s.Artist, s.Title, s.Client, s.BeatmapId, s.ScrobbledAt })
-                    .ToListAsync(cancellationToken).ConfigureAwait(false);
+                : await RecentAsync(client, db, link, cancellationToken).ConfigureAwait(false);
             return Results.Ok(new
             {
                 configured = client is not null,
@@ -77,7 +120,7 @@ public static class LastFmEndpoints
             return Results.Ok(new { username = link.Username });
         });
 
-        // What a connected player is listening to (Last.fm's "now playing"), for their profile; 204 when nothing.
+        // What a connected player is listening to (Last.fm's "now playing"), for their profile; 204 when not connected.
         admin.MapGet("/lastfm/{userId:int}/listening", async (int userId, IServiceProvider services, TomYumDbContext db, TimeProvider time,
             CancellationToken cancellationToken) =>
         {
@@ -85,12 +128,13 @@ public static class LastFmEndpoints
                 return Results.NoContent();
 
             var now = time.GetUtcNow();
+            var username = await db.LastFmLinks.AsNoTracking().Where(l => l.UserId == userId).Select(l => l.Username)
+                .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+            if (username is null)
+                return Results.NoContent();
             if (!Listening.TryGetValue(userId, out var cached) || now - cached.At > ListeningFor)
             {
-                var username = await db.LastFmLinks.AsNoTracking().Where(l => l.UserId == userId).Select(l => l.Username)
-                    .FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
                 LastFmListening? listening = null;
-                if (username is not null)
                 {
                     using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     wait.CancelAfter(ListeningWait);
@@ -106,7 +150,7 @@ public static class LastFmEndpoints
                 cached = (now, listening);
                 Listening[userId] = cached;
             }
-            return cached.Listening is { } song ? Results.Ok(song) : Results.NoContent();
+            return Results.Ok(new { listening = cached.Listening });
         });
 
         admin.MapPost("/lastfm/{userId:int}/unlink", async (int userId, TomYumDbContext db, CancellationToken cancellationToken) =>
