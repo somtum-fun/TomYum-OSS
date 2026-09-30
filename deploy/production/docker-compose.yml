@@ -219,7 +219,10 @@ services:
         condition: service_healthy
 
   score-processor:
-    image: pppy/osu-queue-score-statistics:latest
+    # ppy's processor with the admin panel's ranked mods (deploy/score-processor).
+    build:
+      context: ../score-processor
+    image: tomyum-score-processor
     restart: unless-stopped
     command: ["queue", "watch"]
     environment:

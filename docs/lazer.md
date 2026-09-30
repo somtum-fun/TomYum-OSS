@@ -80,6 +80,22 @@ TOMYUM_DAILYCHALLENGE__RULESETS=osu         # rotates by day, e.g. osu,osu,taiko
 To open a day's room before 00:05 (e.g. the first time), fill the queue and run
 `docker compose exec osu-web php artisan daily-challenge:create-next`.
 
+## Ranked mods
+
+lazer plays give pp (and count for medals) only when every mod on them is ranked. osu! decides that
+in its game code (`Mod.Ranked`: the usual mods with their normal settings). TomYum builds ppy's score
+processor from source (`deploy/score-processor`) with one change: mods staff switch on in the admin
+panel (**Admin panel → Ranked mods**) count as ranked too, whatever their settings.
+
+- The processor makes `tomyum_ranked_mods` (osu-web's database) when it starts and writes which mods
+  osu! ranks (`osu_ranked`, shown in the panel); the panel sets `ranked`.
+- Every 30 seconds it looks for mods whose `ranked` changed (`applied` is the value old scores were
+  last worked out for): lazer scores with that mod lose their pp and get it worked out again, go
+  back into the search index, and their players' totals are recalculated.
+- Relax and Autopilot aren't offered (they have their own leaderboards here, like stable's); Classic
+  marks stable plays. Stable plays aren't affected.
+- The lazer client still shows such a mod as unranked while playing: only the server's answer changes.
+
 ## Research
 
 Checked 2026-09-27 against ppy's current sources:
