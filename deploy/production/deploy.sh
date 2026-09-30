@@ -5,6 +5,13 @@
 set -e
 cd "$(dirname "$0")"
 
+# Pull TomYum first, then run the pulled version of this script (a shell reads its script as it
+# goes: pulled halfway, a new step wouldn't run, as the website's migrations once didn't).
+if [ -z "$TOMYUM_DEPLOY_PULLED" ]; then
+    git -C ../.. pull -q
+    TOMYUM_DEPLOY_PULLED=1 exec ./deploy.sh "$@"
+fi
+
 web=$(grep -E '^OSU_WEB_PATH=' .env 2>/dev/null | cut -d= -f2-)
 web=${web:-../../../osu-web}
 
@@ -12,7 +19,6 @@ web=${web:-../../../osu-web}
 mkdir -p "$HOME/.tomyum-watchdog"
 echo $(( $(date +%s) + 600 )) > "$HOME/.tomyum-watchdog/paused-until"
 
-git -C ../.. pull -q
 git -C "$web" pull -q
 [ -d ../../../lazer-circleguard ] && git -C ../../../lazer-circleguard pull -q
 
