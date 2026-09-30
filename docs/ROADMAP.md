@@ -179,6 +179,8 @@ accounts, chat and leaderboards with them._
       the profile graph and highest rank (`ModeRankHistoryJob`). 2026-09-30
 - [x] BanchoBot counts as online on the website and in lazer, with its avatar and flag (Saint Helena);
       stable and IRC players count as online there too. 2026-09-29
+- [x] Ranked mods: the admin panel picks lazer mods that count as ranked (pp, medals) besides osu!'s;
+      TomYum's build of ppy's score processor reads them and works out old scores again. 2026-09-30
 - [x] Stable tournament client — its windows are extra sessions on the same account (they don't kick
       the player's game or show as players), follow a match's state and chat
       (`TournamentMatchInfoRequest`, match channel join/leave) and spectate players. 2026-09-30
