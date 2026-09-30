@@ -23,6 +23,9 @@ public sealed class LastFmOptions
 /// <param name="DurationSeconds">How long it played (the map's length at the play's speed).</param>
 public sealed record LastFmTrack(string Artist, string Title, int DurationSeconds);
 
+/// <summary>What someone is listening to right now, as Last.fm shows it (from osu! or anything else that scrobbles).</summary>
+public sealed record LastFmListening(string Artist, string Title, string? Url);
+
 /// <summary>An error Last.fm answered with (https://www.last.fm/api/errorcodes).</summary>
 public sealed class LastFmException : Exception
 {
@@ -99,6 +102,45 @@ public sealed class LastFmClient
         using var _ = await CallAsync(call, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>What Last.fm says <paramref name="username"/> is listening to now, or null.</summary>
+    public async Task<LastFmListening?> ListeningAsync(string username, CancellationToken cancellationToken = default)
+    {
+        using var answer = await CallAsync(new Dictionary<string, string>
+        {
+            ["method"] = "user.getRecentTracks",
+            ["user"] = username,
+            ["limit"] = "1",
+        }, cancellationToken, sign: false).ConfigureAwait(false);
+        return Listening(answer.RootElement);
+    }
+
+    /// <summary>The track marked "now playing" in a <c>user.getRecentTracks</c> answer, or null.</summary>
+    public static LastFmListening? Listening(JsonElement answer)
+    {
+        if (!answer.TryGetProperty("recenttracks", out var recent) || !recent.TryGetProperty("track", out var tracks))
+            return null;
+
+        var list = tracks.ValueKind switch
+        {
+            JsonValueKind.Array => tracks.EnumerateArray().ToList(),
+            JsonValueKind.Object => [tracks],
+            _ => [],
+        };
+        foreach (var track in list)
+        {
+            if (!track.TryGetProperty("@attr", out var attributes) || !attributes.TryGetProperty("nowplaying", out var now) || now.GetString() != "true")
+                continue;
+            var artist = track.TryGetProperty("artist", out var a)
+                ? a.ValueKind == JsonValueKind.Object ? (a.TryGetProperty("#text", out var text) ? text.GetString() : null) : a.GetString()
+                : null;
+            var title = track.TryGetProperty("name", out var n) ? n.GetString() : null;
+            if (string.IsNullOrEmpty(artist) || string.IsNullOrEmpty(title))
+                return null;
+            return new LastFmListening(artist, title, track.TryGetProperty("url", out var url) ? url.GetString() : null);
+        }
+        return null;
+    }
+
     /// <summary>
     /// Last.fm's call signature: every parameter (but <c>format</c> and <c>callback</c>) as name and
     /// value, sorted by name, then the secret, MD5 in hex.
@@ -124,10 +166,11 @@ public sealed class LastFmClient
         ["duration"] = track.DurationSeconds.ToString(CultureInfo.InvariantCulture),
     };
 
-    private async Task<JsonDocument> CallAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken)
+    private async Task<JsonDocument> CallAsync(Dictionary<string, string> parameters, CancellationToken cancellationToken, bool sign = true)
     {
         parameters["api_key"] = _options.ApiKey;
-        parameters["api_sig"] = Sign(parameters, _options.ApiSecret);
+        if (sign)
+            parameters["api_sig"] = Sign(parameters, _options.ApiSecret);
         parameters["format"] = "json";
 
         using var content = new FormUrlEncodedContent(parameters);

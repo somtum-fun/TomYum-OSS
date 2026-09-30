@@ -316,6 +316,45 @@ namespace TomYum.Persistence.Migrations
                     b.ToTable("lastfm_links", (string)null);
                 });
 
+            modelBuilder.Entity("TomYum.Domain.Entities.LastFmScrobble", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Artist")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<int>("BeatmapId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Client")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("varchar(8)");
+
+                    b.Property<DateTime>("ScrobbledAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("varchar(255)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Id");
+
+                    b.ToTable("lastfm_scrobbles", (string)null);
+                });
+
             modelBuilder.Entity("TomYum.Domain.Entities.ModeRankSnapshot", b =>
                 {
                     b.Property<int>("UserId")

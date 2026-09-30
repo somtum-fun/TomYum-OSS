@@ -9,6 +9,11 @@ public sealed class ScrobblePlay
 
     public uint UserId { get; set; }
 
+    public uint BeatmapId { get; set; }
+
+    /// <summary>Set for stable's plays (the game server's own score id).</summary>
+    public ulong? LegacyScoreId { get; set; }
+
     public bool Passed { get; set; }
 
     public string Artist { get; set; } = string.Empty;
@@ -61,7 +66,7 @@ public sealed class OsuWebScrobbles
     public async Task<IReadOnlyList<ScrobblePlay>> AfterAsync(ulong afterId, int limit, CancellationToken cancellationToken = default) =>
         await _db.Database.SqlQueryRaw<ScrobblePlay>(
             """
-            SELECT s.id AS ScoreId, s.user_id AS UserId, s.passed AS Passed,
+            SELECT s.id AS ScoreId, s.user_id AS UserId, s.beatmap_id AS BeatmapId, s.legacy_score_id AS LegacyScoreId, s.passed AS Passed,
               bs.artist AS Artist, COALESCE(bs.artist_unicode, '') AS ArtistUnicode,
               bs.title AS Title, COALESCE(bs.title_unicode, '') AS TitleUnicode,
               CAST(b.total_length AS SIGNED) AS Length, CAST(s.data AS CHAR) AS Data,
