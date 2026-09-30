@@ -19,6 +19,7 @@ public sealed class StaffLogEntryConfiguration : IEntityTypeConfiguration<StaffL
         builder.Property(e => e.Summary).IsRequired().HasMaxLength(512);
         builder.Property(e => e.Result).HasMaxLength(32);
         builder.Property(e => e.JobId).HasMaxLength(32);
+        builder.Property(e => e.Via).HasMaxLength(16);
         builder.HasIndex(e => new { e.Action, e.Id });
         builder.HasIndex(e => e.TargetId);
         builder.HasIndex(e => e.JobId);

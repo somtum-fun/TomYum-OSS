@@ -27,6 +27,12 @@ public sealed class StaffLogEntry
     /// <summary>Outcome, e.g. <c>imported</c>, <c>not_found</c>, <c>failed</c>; null when there's only one.</summary>
     public string? Result { get; init; }
 
+    /// <summary>
+    /// For something a client did by itself (a map lazer or the website asked about imported): which
+    /// client — <c>lazer</c>, <c>website</c> or <c>multiplayer</c>; null for staff actions.
+    /// </summary>
+    public string? Via { get; init; }
+
     /// <summary>The bulk job this was part of, if any.</summary>
     public string? JobId { get; init; }
 }

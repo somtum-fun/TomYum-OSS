@@ -39,6 +39,8 @@ public sealed class StaffLogRepositoryTests : OsuWebDatabaseTest
         await db.Database.ExecuteSqlRawAsync("DROP TABLE staff_log");
         await db.EnsureRuntimeTablesAsync();
         await db.EnsureRuntimeTablesAsync(); // idempotent
+        // Columns from later migrations come on top (DatabaseMigrator baselines, then migrates).
+        await db.Database.ExecuteSqlRawAsync("ALTER TABLE staff_log ADD `Via` varchar(16) NULL");
 
         var log = new StaffLogRepository(db);
         await log.AddAsync(Entry("beatmapset.import", 5, job: "job", summary: new string('x', 512)));
