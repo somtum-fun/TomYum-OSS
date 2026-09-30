@@ -243,8 +243,8 @@ public sealed class DiscordTests
         var players = new PlayerRegistry();
         players.Add(BanchoBot.CreatePresence());
         players.Add(new BanchoPresence { UserId = 2, Username = "Bravo" });
-        players.Add(new BanchoPresence { UserId = 3, Username = "alpha" });
-        players.Add(new BanchoPresence { UserId = 4, Username = "Hidden" }).IsRestricted = true;
+        players.Add(new BanchoPresence { UserId = 4, Username = "alpha" });
+        players.Add(new BanchoPresence { UserId = 5, Username = "Hidden" }).IsRestricted = true;
         var services = new ServiceCollection().AddSingleton<IDiscordLinkRepository>(new InMemoryDiscordLinkRepository()).BuildServiceProvider();
         var commands = new DiscordCommands(services.GetRequiredService<IServiceScopeFactory>(), players, new DiscordLinkCodes(), new DiscordFormat("https://osu.test", "https://a.test"));
 

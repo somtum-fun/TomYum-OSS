@@ -74,7 +74,7 @@ public sealed class OsuWebDbContext : DbContext
         {
             user.ToTable("phpbb_users");
             user.HasKey(u => u.UserId);
-            // Auto-increment, but an explicit id (BanchoBot = 1, the dev seed) is inserted as given.
+            // Auto-increment, but an explicit id (BanchoBot = 3, the dev seed) is inserted as given.
             user.Property(u => u.UserId).HasColumnName("user_id").ValueGeneratedOnAdd();
             user.Property(u => u.UserType).HasColumnName("user_type");
             user.Property(u => u.GroupId).HasColumnName("group_id");

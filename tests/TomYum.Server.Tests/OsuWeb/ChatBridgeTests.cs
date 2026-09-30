@@ -36,9 +36,9 @@ public sealed class ChatBridgeTests
     public void PrivateMessage_ReachesTheRecipient_AsAnActionWhenItIsOne()
     {
         var (bridge, players, _) = NewBridge();
-        var recipient = players.Add(new BanchoPresence { UserId = 3, Username = "Friend" });
+        var recipient = players.Add(new BanchoPresence { UserId = 4, Username = "Friend" });
 
-        bridge.Deliver(new WebChatMessage(1, 2, "Lilian", null, 3, "waves", true));
+        bridge.Deliver(new WebChatMessage(1, 2, "Lilian", null, 4, "waves", true));
 
         Assert.Equal(("Lilian", "\u0001ACTION waves\u0001", "Friend"), ReadMessage(recipient.DequeueAll()));
     }
@@ -90,7 +90,7 @@ public sealed class ChatBridgeTests
         Assert.False(bridge.IsForBanchoBot(new WebChatMessage(1, lilian, "Lilian", "#osu", null, "hi all", false)));
         Assert.False(bridge.IsForBanchoBot(new WebChatMessage(1, 2, "Lilian", "#nope", null, "!ping", false)));
         Assert.False(bridge.IsForBanchoBot(new WebChatMessage(1, BanchoBot.UserId, "BanchoBot", "#osu", null, "!ping", false)));
-        Assert.False(bridge.IsForBanchoBot(new WebChatMessage(1, 2, "Lilian", null, 3, "!ping", false)));
+        Assert.False(bridge.IsForBanchoBot(new WebChatMessage(1, 2, "Lilian", null, 4, "!ping", false)));
     }
 
     [Fact]

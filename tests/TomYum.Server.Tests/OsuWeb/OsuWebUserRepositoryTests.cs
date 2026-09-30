@@ -26,20 +26,20 @@ public sealed class OsuWebUserRepositoryTests : OsuWebDatabaseTest
             Country = "th",
         });
 
-        Assert.Equal(2, created.Id); // phpbb_users auto-increments from 2
+        Assert.Equal(4, created.Id); // ids up to BanchoBot's (3) are reserved
         Assert.Equal("some_player", created.SafeName);
         Assert.Equal("th", created.Country);
         Assert.Equal(UserPrivileges.Normal, created.Privileges);
 
         // What osu-web will see.
-        Assert.Equal("some player", await ScalarAsync<string>("SELECT username_clean FROM phpbb_users WHERE user_id = 2"));
-        Assert.Equal("TH", await ScalarAsync<string>("SELECT country_acronym FROM phpbb_users WHERE user_id = 2"));
-        Assert.Equal(bcrypt, await ScalarAsync<string>("SELECT user_password FROM phpbb_users WHERE user_id = 2"));
+        Assert.Equal("some player", await ScalarAsync<string>("SELECT username_clean FROM phpbb_users WHERE user_id = 4"));
+        Assert.Equal("TH", await ScalarAsync<string>("SELECT country_acronym FROM phpbb_users WHERE user_id = 4"));
+        Assert.Equal(bcrypt, await ScalarAsync<string>("SELECT user_password FROM phpbb_users WHERE user_id = 4"));
         Assert.Equal("default", await ScalarAsync<string>(
-            "SELECT g.identifier FROM phpbb_users u JOIN phpbb_groups g ON g.group_id = u.group_id WHERE u.user_id = 2"));
+            "SELECT g.identifier FROM phpbb_users u JOIN phpbb_groups g ON g.group_id = u.group_id WHERE u.user_id = 4"));
         Assert.Equal("default", await ScalarAsync<string>(
             "SELECT g.identifier FROM phpbb_user_group m JOIN phpbb_groups g ON g.group_id = m.group_id " +
-            "WHERE m.user_id = 2 AND m.user_pending = 0"));
+            "WHERE m.user_id = 4 AND m.user_pending = 0"));
     }
 
     [MySqlFact]
@@ -104,11 +104,11 @@ public sealed class OsuWebUserRepositoryTests : OsuWebDatabaseTest
         await repository.EnsureBotAsync(BanchoBot.UserId, BanchoBot.Name);
         var player = await repository.AddAsync(NewUser("First Player"));
 
-        Assert.Equal(1, await ScalarAsync<long>("SELECT COUNT(*) FROM phpbb_users WHERE user_id = 1"));
+        Assert.Equal(1, await ScalarAsync<long>($"SELECT COUNT(*) FROM phpbb_users WHERE user_id = {BanchoBot.UserId}"));
         Assert.Equal("bot", await ScalarAsync<string>(
-            "SELECT g.identifier FROM phpbb_users u JOIN phpbb_groups g ON g.group_id = u.group_id WHERE u.user_id = 1"));
-        Assert.Equal(string.Empty, await ScalarAsync<string>("SELECT user_password FROM phpbb_users WHERE user_id = 1"));
-        Assert.Equal(2, player.Id);
+            $"SELECT g.identifier FROM phpbb_users u JOIN phpbb_groups g ON g.group_id = u.group_id WHERE u.user_id = {BanchoBot.UserId}"));
+        Assert.Equal(string.Empty, await ScalarAsync<string>($"SELECT user_password FROM phpbb_users WHERE user_id = {BanchoBot.UserId}"));
+        Assert.Equal(BanchoBot.UserId + 1, player.Id);
     }
 
     [MySqlFact]

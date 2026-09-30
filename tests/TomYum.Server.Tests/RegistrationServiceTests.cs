@@ -133,8 +133,8 @@ public class RegistrationServiceTests
     {
         var service = NewService(out _);
 
-        // A fresh in-memory repo assigns id 3 to the first registration (1 = BanchoBot,
-        // 2 = dev seed), so the first real player becomes the server Owner automatically.
+        // A fresh in-memory repo assigns id 4 to the first registration (2 = dev seed,
+        // 3 = BanchoBot), so the first real player becomes the server Owner automatically.
         var result = await service.RegisterAsync(
             "Owner", "owner@tomyum.dev", "s3cure-pass", create: true, country: "xx", CancellationToken.None);
 

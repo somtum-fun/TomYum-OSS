@@ -16,8 +16,11 @@ namespace TomYum.Server.Bancho;
 /// </remarks>
 public sealed class BanchoBot
 {
-    /// <summary>BanchoBot's reserved user id (1, matching bancho.py / the official server).</summary>
-    public const int UserId = 1;
+    /// <summary>
+    /// BanchoBot's reserved user id: 3, like the official server's (lazer shows no avatar for id 1,
+    /// its guest user).
+    /// </summary>
+    public const int UserId = 3;
 
     /// <summary>BanchoBot's display name.</summary>
     public const string Name = "BanchoBot";
