@@ -104,9 +104,11 @@ shows when the server has a Last.fm key). Their plays are then scrobbled, stable
 original script when the map has it, with its length at the play's speed (DT, HT, …). Songs under 30
 seconds aren't scrobbled (Last.fm's rule). While they play, Last.fm shows the song as "now playing"
 (from the online list: stable's presence, lazer's spectator server). Someone who takes the server's
-access away on Last.fm is disconnected here too. Their settings list the last ten scrobbles (and
-whether each was played on stable or lazer; 50 are kept), and their profile shows what Last.fm says
-they're listening to right now (Last.fm is asked at most every 30 seconds per player). The key and secret stay in the game server
+access away on Last.fm is disconnected here too. Their settings list their last ten Last.fm scrobbles
+(Spotify and the rest too), the ones from osu! here saying whether they were played on stable or lazer
+(the server keeps its last 50 per player to tell), and their profile shows what Last.fm says they're
+listening to right now, asked again every 30 seconds while the page is open (Last.fm itself at most
+every 30 seconds per player). The key and secret stay in the game server
 (`TOMYUM_LASTFM__APIKEY`, `TOMYUM_LASTFM__APISECRET`); the website asks it for the player's status.
 
 ## Research

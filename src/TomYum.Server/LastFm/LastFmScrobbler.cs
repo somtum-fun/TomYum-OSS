@@ -112,7 +112,7 @@ public sealed class LastFmScrobbler : BackgroundService
                     try
                     {
                         await _lastFm.ScrobbleAsync(link.SessionKey, track, startedAt, cancellationToken).ConfigureAwait(false);
-                        await RememberAsync(db, link.UserId, track, play, endedAt.UtcDateTime, cancellationToken).ConfigureAwait(false);
+                        await RememberAsync(db, link.UserId, track, play, startedAt.UtcDateTime, cancellationToken).ConfigureAwait(false);
                         scrobbled++;
                     }
                     catch (LastFmException ex) when (ex.SessionInvalid)
@@ -184,7 +184,7 @@ public sealed class LastFmScrobbler : BackgroundService
             _nowPlaying.Remove(userId);
     }
 
-    /// <summary>Keeps the scrobble for the player's settings page (the newest <see cref="KeptPerPlayer"/>).</summary>
+    /// <summary>Keeps the scrobble (at the time Last.fm files it under: the play's start) for the player's settings page (the newest <see cref="KeptPerPlayer"/>).</summary>
     private static async Task RememberAsync(TomYumDbContext db, int userId, LastFmTrack track, ScrobblePlay play, DateTime at, CancellationToken cancellationToken)
     {
         db.LastFmScrobbles.Add(new Domain.Entities.LastFmScrobble
