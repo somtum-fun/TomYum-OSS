@@ -22,6 +22,9 @@ public sealed class LastFmScrobbler : BackgroundService
     /// <summary>Last.fm doesn't take songs shorter than this.</summary>
     public const int MinimumSeconds = 30;
 
+    /// <summary>Scrobbles kept per player (the settings page shows the newest).</summary>
+    public const int KeptPerPlayer = 50;
+
     private readonly IServiceScopeFactory _scopes;
     private readonly LastFmClient _lastFm;
     private readonly OnlinePlayers? _online;
@@ -109,6 +112,7 @@ public sealed class LastFmScrobbler : BackgroundService
                     try
                     {
                         await _lastFm.ScrobbleAsync(link.SessionKey, track, startedAt, cancellationToken).ConfigureAwait(false);
+                        await RememberAsync(db, link.UserId, track, play, endedAt.UtcDateTime, cancellationToken).ConfigureAwait(false);
                         scrobbled++;
                     }
                     catch (LastFmException ex) when (ex.SessionInvalid)
@@ -178,6 +182,26 @@ public sealed class LastFmScrobbler : BackgroundService
         // Stopped playing: the next map is news again.
         foreach (var userId in _nowPlaying.Keys.Where(id => !playing.Contains(id)).ToList())
             _nowPlaying.Remove(userId);
+    }
+
+    /// <summary>Keeps the scrobble for the player's settings page (the newest <see cref="KeptPerPlayer"/>).</summary>
+    private static async Task RememberAsync(TomYumDbContext db, int userId, LastFmTrack track, ScrobblePlay play, DateTime at, CancellationToken cancellationToken)
+    {
+        db.LastFmScrobbles.Add(new Domain.Entities.LastFmScrobble
+        {
+            UserId = userId,
+            Artist = track.Artist.Length > 255 ? track.Artist[..255] : track.Artist,
+            Title = track.Title.Length > 255 ? track.Title[..255] : track.Title,
+            Client = play.LegacyScoreId is null ? "lazer" : "stable",
+            BeatmapId = (int)play.BeatmapId,
+            ScrobbledAt = at,
+        });
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+
+        var oldestKept = await db.LastFmScrobbles.Where(s => s.UserId == userId).OrderByDescending(s => s.Id)
+            .Skip(KeptPerPlayer - 1).Select(s => (long?)s.Id).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        if (oldestKept is { } id)
+            await db.LastFmScrobbles.Where(s => s.UserId == userId && s.Id < id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private async Task DisconnectAsync(TomYumDbContext db, int userId, Dictionary<int, Domain.Entities.LastFmLink> links, CancellationToken cancellationToken)

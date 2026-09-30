@@ -42,6 +42,17 @@ public sealed class LastFmTests : OsuWebDatabaseTest
         Assert.Equal(new LastFmTrack("xi", "FREEDOM DiVE", 263), LastFmScrobbler.Track("xi", "", "FREEDOM DiVE", "", 263));
     }
 
+    [Fact]
+    public void Listening_IsTheTrackLastFmMarksNowPlaying()
+    {
+        using var playing = System.Text.Json.JsonDocument.Parse(
+            """{"recenttracks":{"track":[{"artist":{"#text":"xi"},"name":"FREEDOM DiVE","url":"https://www.last.fm/music/xi/_/FREEDOM+DiVE","@attr":{"nowplaying":"true"}},{"artist":{"#text":"A"},"name":"Old"}]}}""");
+        Assert.Equal(new LastFmListening("xi", "FREEDOM DiVE", "https://www.last.fm/music/xi/_/FREEDOM+DiVE"), LastFmClient.Listening(playing.RootElement));
+
+        using var idle = System.Text.Json.JsonDocument.Parse("""{"recenttracks":{"track":{"artist":{"#text":"A"},"name":"Old"}}}""");
+        Assert.Null(LastFmClient.Listening(idle.RootElement));
+    }
+
     [MySqlFact]
     public async Task PassedPlays_OfConnectedPlayers_AreScrobbled()
     {
@@ -67,7 +78,7 @@ public sealed class LastFmTests : OsuWebDatabaseTest
             new LastFmClient(new HttpClient(lastFm), new LastFmOptions { ApiKey = "key", ApiSecret = "secret" }), NullLogger<LastFmScrobbler>.Instance);
         Assert.Equal(0, await scrobbler.ScrobbleAsync()); // starts at the newest score
 
-        await InsertAsync(fan, 100, passed: true, """{"mods":[{"acronym":"DT"}]}""");
+        await InsertAsync(fan, 100, passed: true, """{"mods":[{"acronym":"DT"}]}""", legacyScoreId: 77); // from stable
         await InsertAsync(fan, 100, passed: false, "{}");     // failed: not listened through
         await InsertAsync(other, 100, passed: true, "{}");    // not connected
         await InsertAsync(fan, 200, passed: true, "{}");      // 20 seconds: too short for Last.fm
@@ -76,6 +87,12 @@ public sealed class LastFmTests : OsuWebDatabaseTest
 
         var call = Assert.Single(lastFm.Calls);
         Assert.Equal(("track.scrobble", "session", "米津玄師", "Lemon", "160"), (call["method"], call["sk"], call["artist"], call["track"], call["duration"]));
+        var logged = Assert.Single(await NewTomYumContext().LastFmScrobbles.ToListAsync());
+        Assert.Equal((fan, "米津玄師", "Lemon", "stable", 100), (logged.UserId, logged.Artist, logged.Title, logged.Client, logged.BeatmapId));
+
+        await InsertAsync(fan, 100, passed: true, "{}");      // from lazer
+        Assert.Equal(1, await scrobbler.ScrobbleAsync());
+        Assert.Equal("lazer", (await NewTomYumContext().LastFmScrobbles.OrderByDescending(x => x.Id).FirstAsync()).Client);
 
         // Access taken away on Last.fm: disconnected here too.
         lastFm.Answer = """{"error":9,"message":"Invalid session key"}""";
@@ -84,9 +101,9 @@ public sealed class LastFmTests : OsuWebDatabaseTest
         Assert.False(await NewTomYumContext().LastFmLinks.AnyAsync());
     }
 
-    private Task InsertAsync(int userId, int beatmapId, bool passed, string data) => ExecuteAsync($$"""
-        INSERT INTO scores (user_id, ruleset_id, beatmap_id, preserve, ranked, `rank`, passed, accuracy, max_combo, total_score, data, pp, ended_at)
-        VALUES ({{userId}}, 0, {{beatmapId}}, 1, 1, '{{(passed ? "S" : "F")}}', {{(passed ? 1 : 0)}}, 0.98, 400, 900000, '{{data}}', NULL, UTC_TIMESTAMP())
+    private Task InsertAsync(int userId, int beatmapId, bool passed, string data, int? legacyScoreId = null) => ExecuteAsync($$"""
+        INSERT INTO scores (user_id, ruleset_id, beatmap_id, preserve, ranked, `rank`, passed, accuracy, max_combo, total_score, data, pp, legacy_score_id, ended_at)
+        VALUES ({{userId}}, 0, {{beatmapId}}, 1, 1, '{{(passed ? "S" : "F")}}', {{(passed ? 1 : 0)}}, 0.98, 400, 900000, '{{data}}', NULL, {{(legacyScoreId?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "NULL")}}, UTC_TIMESTAMP())
         """);
 
     private sealed class FakeLastFm : HttpMessageHandler
