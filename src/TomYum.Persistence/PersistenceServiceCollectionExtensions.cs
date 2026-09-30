@@ -55,6 +55,7 @@ public static class PersistenceServiceCollectionExtensions
             services.AddScoped<OsuWebDailyChallenge>();
             services.AddScoped<OsuWebStableClient>();
             services.AddScoped<OsuWebLazerRelax>();
+            services.AddScoped<OsuWebScrobbles>();
             services.AddScoped<OsuWebIrcKeys>();
             services.AddScoped<OsuWebTags>();
             services.AddScoped(sp => new OsuWebPrivateMessages(sp.GetRequiredService<OsuWebDbContext>(), options.OsuWebChatName));

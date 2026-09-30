@@ -338,6 +338,20 @@ if (circleguardOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService<TomYum.Server.Anticheat.CircleguardWatch>();
 }
 
+// Last.fm: players who connect it (account settings on the website) get their plays scrobbled.
+var lastFmOptions = new TomYum.Server.LastFm.LastFmOptions();
+builder.Configuration.GetSection(TomYum.Server.LastFm.LastFmOptions.SectionName).Bind(lastFmOptions);
+if (lastFmOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
+{
+    builder.Services.AddSingleton(lastFmOptions);
+    builder.Services.AddHttpClient<TomYum.Server.LastFm.LastFmClient>(http =>
+    {
+        http.Timeout = TimeSpan.FromSeconds(15);
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/0.1 (osu! private server)");
+    });
+    builder.Services.AddHostedService<TomYum.Server.LastFm.LastFmScrobbler>();
+}
+
 // Where players log in to the game from (staff see it on Discord's /user).
 builder.Services.AddSingleton(sp => new LoginIps(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
 

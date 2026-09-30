@@ -293,6 +293,29 @@ namespace TomYum.Persistence.Migrations
                     b.ToTable("discord_links", (string)null);
                 });
 
+            modelBuilder.Entity("TomYum.Domain.Entities.LastFmLink", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("LinkedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("SessionKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("UserId");
+
+                    b.ToTable("lastfm_links", (string)null);
+                });
+
             modelBuilder.Entity("TomYum.Domain.Entities.ModeRankSnapshot", b =>
                 {
                     b.Property<int>("UserId")
