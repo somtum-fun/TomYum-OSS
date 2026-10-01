@@ -76,7 +76,7 @@ builder.Services.AddSingleton<RestrictedUsers>();
 // Maintenance mode (only staff log in) and in-game alerts, from the admin panel.
 builder.Services.AddSingleton(sp => new Maintenance(sp.GetRequiredService<PlayerRegistry>(), sp.GetRequiredService<IServiceScopeFactory>(),
     TimeProvider.System, sp.GetRequiredService<ILogger<Maintenance>>(), sp.GetService<StackExchange.Redis.IConnectionMultiplexer>(),
-    sp.GetService<OsuWebChatBridge>()));
+    sp.GetService<OsuWebChatBridge>(), sp.GetService<ChannelRegistry>()));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Maintenance>());
 builder.Services.AddSingleton<ChatLog>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ChatLog>());

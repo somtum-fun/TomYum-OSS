@@ -32,18 +32,34 @@ public sealed class Maintenance : BackgroundService
     /// <summary>What players are told when the admin gives no message.</summary>
     public const string DefaultMessage = "production is under maintenance. You'll be reconnected automatically when it's over.";
 
+    /// <summary>BanchoBot's message to everyone online 5 seconds before the lock.</summary>
+    public const string KeepOpenMessage = "Maintenance starts in 5 seconds. If you're submitting a score, please don't close your osu! client: you'll be reconnected shortly after the server is back, and it will be sent then.";
+
+    /// <summary>The lock always starts at least this long after it's turned on, so the countdown in #osu can run.</summary>
+    public static readonly TimeSpan MinimumDelay = TimeSpan.FromSeconds(10);
+
+    /// <summary>BanchoBot counts down in #osu from this many seconds.</summary>
+    private const int CountdownFrom = 10;
+
+    /// <summary>The seconds left when players get <see cref="KeepOpenMessage"/>.</summary>
+    private const int KeepOpenAt = 5;
+
     private readonly PlayerRegistry _players;
     private readonly IServiceScopeFactory _scopes;
     private readonly TimeProvider _time;
     private readonly ILogger<Maintenance> _logger;
     private readonly IConnectionMultiplexer? _redis;
     private readonly OsuWebChatBridge? _bridge;
+    private readonly ChannelRegistry? _channels;
     private MaintenanceState _state = MaintenanceState.Off;
     private bool _lockApplied;
+    private int _lastCountdown = int.MaxValue;
+    private bool _keepOpenSent;
 
     public Maintenance(PlayerRegistry players, IServiceScopeFactory scopes, TimeProvider time, ILogger<Maintenance> logger,
-        IConnectionMultiplexer? redis = null, OsuWebChatBridge? bridge = null)
+        IConnectionMultiplexer? redis = null, OsuWebChatBridge? bridge = null, ChannelRegistry? channels = null)
     {
+        _channels = channels;
         _players = players;
         _scopes = scopes;
         _time = time;
@@ -64,16 +80,17 @@ public sealed class Maintenance : BackgroundService
     public async Task StartAsync(string? message, TimeSpan delay, int byUserId, CancellationToken cancellationToken = default)
     {
         var now = _time.GetUtcNow();
-        _state = new MaintenanceState(true, (message ?? string.Empty).Trim(), delay > TimeSpan.Zero ? now + delay : null, byUserId, now);
+        if (delay < MinimumDelay)
+            delay = MinimumDelay;
+        _state = new MaintenanceState(true, (message ?? string.Empty).Trim(), now + delay, byUserId, now);
         _lockApplied = false;
+        _lastCountdown = int.MaxValue;
+        _keepOpenSent = false;
         await SaveAsync().ConfigureAwait(false);
 
-        var when = delay > TimeSpan.Zero
-            ? string.Create(CultureInfo.InvariantCulture, $"Maintenance starts in {Describe(delay)}: ")
-            : "Maintenance has started: ";
+        var when = string.Create(CultureInfo.InvariantCulture, $"Maintenance starts in {Describe(delay)}: ");
         await AlertAsync(when + Notice, includeLazer: true, cancellationToken).ConfigureAwait(false);
-        _logger.LogWarning("Maintenance on (by user {UserId}); locked {When}.", byUserId, delay > TimeSpan.Zero ? "in " + Describe(delay) : "now");
-        ApplyLockIfDue();
+        _logger.LogWarning("Maintenance on (by user {UserId}); locked in {When}.", byUserId, Describe(delay));
     }
 
     /// <summary>Turns maintenance off; players come back as their clients reconnect.</summary>
@@ -126,17 +143,95 @@ public sealed class Maintenance : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await LoadAsync().ConfigureAwait(false);
+        // A restart during the countdown or the lock: nothing to count down or announce again.
+        _lastCountdown = 0;
+        _keepOpenSent = true;
+        _lockApplied = IsLocked;
         while (!stoppingToken.IsCancellationRequested)
         {
+            CountDown();
             ApplyLockIfDue();
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(1), _time, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(200), _time, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {
                 return;
             }
+        }
+    }
+
+    /// <summary>
+    /// The last <see cref="CountdownFrom"/> seconds: BanchoBot counts down in #osu, and at
+    /// <see cref="KeepOpenAt"/> seconds tells everyone online to keep their game open.
+    /// </summary>
+    private void CountDown()
+    {
+        if (!_state.Enabled || _state.StartsAt is not { } startsAt || _lockApplied)
+            return;
+        var left = (int)Math.Ceiling((startsAt - _time.GetUtcNow()).TotalSeconds);
+        if (left < 1 || left > CountdownFrom || left >= _lastCountdown)
+            return;
+        _lastCountdown = left;
+
+        if (left <= KeepOpenAt && !_keepOpenSent)
+        {
+            _keepOpenSent = true;
+            TellEveryone(KeepOpenMessage);
+        }
+        SayInOsu(string.Create(CultureInfo.InvariantCulture, $"Maintenance in {left}..."));
+    }
+
+    /// <summary>A BanchoBot message in #osu, in-game and in website/lazer chat.</summary>
+    private void SayInOsu(string text)
+    {
+        if (_channels?.Get("#osu") is { } channel)
+        {
+            var writer = new BanchoPacketWriter(128);
+            ChatEncoder.WriteMessage(writer, new BanchoMessage(BanchoBot.Name, text, channel.Name, BanchoBot.UserId));
+            var bytes = writer.ToArray();
+            foreach (var member in channel.Members)
+                member.Enqueue(bytes);
+        }
+        _bridge?.ForwardChannelMessage(BanchoBot.UserId, "#osu", text);
+    }
+
+    /// <summary>A BanchoBot private message to everyone online, in stable and in lazer.</summary>
+    private void TellEveryone(string text)
+    {
+        foreach (var player in _players.All)
+        {
+            if (player.IsIrc)
+                continue;
+            var writer = new BanchoPacketWriter(512);
+            ChatEncoder.WriteMessage(writer, new BanchoMessage(BanchoBot.Name, text, player.Presence.Username, BanchoBot.UserId));
+            player.Enqueue(writer.ToArray());
+        }
+        _ = TellLazerAsync(text);
+    }
+
+    private async Task TellLazerAsync(string text)
+    {
+        if (_bridge is null)
+            return;
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            if (scope.ServiceProvider.GetService<LazerPresence>() is not { } presence
+                || scope.ServiceProvider.GetService<TomYum.Domain.Repositories.IUserRepository>() is not { } users)
+                return;
+            foreach (var lazer in await presence.GetOnlineAsync().ConfigureAwait(false))
+            {
+                if (await users.GetByIdAsync(lazer.UserId).ConfigureAwait(false) is { } user)
+                    _bridge.ForwardPrivateMessage(BanchoBot.UserId, user.Username, text);
+            }
+        }
+#pragma warning disable CA1031 // a missed lazer message must not stop the countdown
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LogWarning(ex, "Lazer players couldn't be told about maintenance.");
         }
     }
 
@@ -146,6 +241,7 @@ public sealed class Maintenance : BackgroundService
         if (_lockApplied || !IsLocked)
             return;
         _lockApplied = true;
+        SayInOsu("Maintenance has started. See you soon!");
 
         var writer = new BanchoPacketWriter(256);
         writer.WriteStringPacket(ServerPacketId.Notification, Notice);
