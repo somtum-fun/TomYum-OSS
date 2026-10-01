@@ -268,6 +268,29 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
   - [ ] Discord webhooks (`qat-webhooks.json`) and `enableAutomation`; a bot account + OAuth client for
         `enableMessages` (docs/bots.md).
 
+## Old clients (2008–2015) 🔒 the patcher (step 1) — requested 2026-10-01
+_TomYum speaks today's stable protocol (builds from about 2023 log in fine). Clients from 2008–2015
+have no `-devserver`, older bancho protocols, older score submission and older rules. Reference:
+[osuTitanic](https://deepwiki.com/osuTitanic/titanic), a server built for 2007–2015 clients. Start with
+one era (e.g. late 2014 / 2015), then go back._
+
+- [ ] **Patcher / launcher** (owner's idea, own repo): points an old build at `<domain>` without
+      `-devserver`. Rewrite or redirect the `ppy.sh` hosts the build uses (`osu.`, `c.`/`c1.`–`c6.`/`ce.`,
+      `a.`, `b.`, `s.`, `i.`), handle its TLS/HTTP expectations (very old builds speak plain HTTP or
+      old TLS), and keep the client's own files untouched where possible. Decide: patched exe vs.
+      in-memory hook vs. local proxy.
+- [ ] **Version detection**: map a login's build (`bYYYYMMDD`) to its bancho protocol version and keep
+      it on the session, so every packet is encoded for that client.
+- [ ] **Protocol layer for old bancho**: login reply and body format, packet ids, presence/stats and
+      chat structures per protocol version (translation at the edge, the rest of TomYum unchanged).
+- [ ] **Old web endpoints**: score submission (`osu-submit.php` / old `osu-submit-modular` and their
+      keys and formats), leaderboards (`osu-osz2-getscores` versions), replays, beatmap info, avatars.
+- [ ] **Old rules**: score v1 and old mod sets, older `.osu` versions, star rating/pp for maps those
+      clients play; leaderboards shared with or separate from today's (⚖️ decision needed).
+- [ ] **Anti-cheat and verification** for old clients (no modern client hashes or device verification;
+      decide what's required).
+- [ ] Test build by build; a `docs/old-clients.md` page listing supported builds.
+
 ## Bot accounts 🔒 (none) — done 2026-10-01
 - [x] Admins/developers make bots in the panel (`/panel/bots`): `bot` group, an owner, an IRC key.
       Owners (user menu → My bots), admins and developers change the avatar, banner, me! page, name,
