@@ -7,13 +7,15 @@ namespace TomYum.Server.OsuWeb;
 
 /// <summary>
 /// Once, in the background: gives every osu! set already on the website what imports now bring
-/// from the osu! API v2 (featured artist track, description, nominators) and re-indexes it, so older
+/// from the osu! API v2 (featured artist track, description, nominators, who made it and each
+/// difficulty) and re-indexes it, so older
 /// imports show up under "Featured Artists" too. Needs the API v2 (<c>Osu:ClientId</c>/<c>ClientSecret</c>)
 /// and InterOp; done when <c>osu_counts</c> has <see cref="DoneName"/>.
 /// </summary>
 public sealed class BeatmapsetExtrasBackfill : BackgroundService
 {
-    public const string DoneName = "tomyum_beatmapset_extras_v2";
+    // v3: mappers (the set's creator and each difficulty's) too.
+    public const string DoneName = "tomyum_beatmapset_extras_v3";
 
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<BeatmapsetExtrasBackfill> _logger;
@@ -76,7 +78,7 @@ public sealed class BeatmapsetExtrasBackfill : BackgroundService
         try
         {
             if (await RunAsync(stoppingToken).ConfigureAwait(false) is { } updated)
-                _logger.LogInformation("Brought {Count} beatmap set(s) on the website up to date (featured artists, descriptions, nominators).", updated);
+                _logger.LogInformation("Brought {Count} beatmap set(s) on the website up to date (featured artists, descriptions, nominators, mappers).", updated);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {

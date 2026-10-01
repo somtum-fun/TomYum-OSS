@@ -137,17 +137,27 @@ public sealed class OsuWebInterop
     /// <summary>
     /// Gives a set on the website its osu! description (BBCode; the site keeps it as the set's
     /// description post), nominators (osu! users, shown with links to their osu! profiles) and
-    /// featured artist track (the "featured artist" badge and listing filter).
+    /// featured artist track (the "featured artist" badge and listing filter), and who made the set and
+    /// its difficulties on osu! (shown with their osu! profiles and avatars) when known.
     /// </summary>
     public async Task SyncBeatmapsetExtrasAsync(int beatmapsetId, BeatmapsetExtras extras, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(extras);
-        using var response = await PostJsonAsync(string.Create(CultureInfo.InvariantCulture, $"/_lio/tomyum/beatmapset-extras/{beatmapsetId}"), new
+        var body = new Dictionary<string, object?>
         {
-            description = extras.DescriptionBbcode,
-            nominators = extras.Nominators.Select(n => new { id = n.OsuUserId, username = n.Username, rulesets = n.Rulesets }),
-            track_id = extras.TrackId,
-        }, cancellationToken).ConfigureAwait(false);
+            ["description"] = extras.DescriptionBbcode,
+            ["nominators"] = extras.Nominators.Select(n => new { id = n.OsuUserId, username = n.Username, rulesets = n.Rulesets }),
+            ["track_id"] = extras.TrackId,
+        };
+        // Sent only when osu! was asked: the website keeps what it has otherwise.
+        if (extras.Mappers is { } mappers)
+        {
+            body["creator"] = extras.Creator is { } creator ? new { id = creator.OsuUserId, username = creator.Username } : null;
+            body["mappers"] = mappers.ToDictionary(
+                m => m.Key.ToString(CultureInfo.InvariantCulture),
+                m => m.Value.Select(u => new { id = u.OsuUserId, username = u.Username }));
+        }
+        using var response = await PostJsonAsync(string.Create(CultureInfo.InvariantCulture, $"/_lio/tomyum/beatmapset-extras/{beatmapsetId}"), body, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
     }
 

@@ -8,11 +8,21 @@ namespace TomYum.Server.Beatmaps;
 /// <summary>An osu! user who nominated a set (they have no account on this server).</summary>
 public sealed record OsuNominator(int OsuUserId, string Username, IReadOnlyList<string>? Rulesets);
 
+/// <summary>An osu! user who made a set or a difficulty (they have no account on this server).</summary>
+public sealed record OsuMapper(int OsuUserId, string Username);
+
 /// <summary>What the website shows about a set that the v1 API doesn't have.</summary>
 /// <param name="DescriptionBbcode">The description as its author wrote it (BBCode); null when the set has none.</param>
 /// <param name="Nominators">The current nominators (empty for sets nobody nominated, e.g. loved or graveyard).</param>
 /// <param name="TrackId">The featured artist track the set is of (osu!'s track id), or null when it isn't a featured artist song.</param>
-public sealed record BeatmapsetExtras(string? DescriptionBbcode, IReadOnlyList<OsuNominator> Nominators, int? TrackId = null);
+/// <param name="Creator">Who made the set on osu!; null when not known (or not asked).</param>
+/// <param name="Mappers">Who made each difficulty on osu! (by beatmap id); null to leave the website's as they are.</param>
+public sealed record BeatmapsetExtras(
+    string? DescriptionBbcode,
+    IReadOnlyList<OsuNominator> Nominators,
+    int? TrackId = null,
+    OsuMapper? Creator = null,
+    IReadOnlyDictionary<int, IReadOnlyList<OsuMapper>>? Mappers = null);
 
 /// <summary>
 /// The osu! API v2, with the client credentials of an OAuth application (<c>Osu:ClientId</c> /
@@ -69,7 +79,8 @@ public sealed class OsuApiV2Client
                 if (thread is not null)
                     description = DescriptionFromTopic(thread.RootElement);
             }
-            return new BeatmapsetExtras(description, nominators, trackId);
+            var (creator, mappers) = ParseMappers(set.RootElement);
+            return new BeatmapsetExtras(description, nominators, trackId, creator, mappers);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
         {
@@ -150,6 +161,66 @@ public sealed class OsuApiV2Client
             : null;
 
         return (nominators.DistinctBy(n => n.OsuUserId).ToList(), topicId);
+    }
+
+    /// <summary>
+    /// Who made the set (<c>user_id</c>, named from <c>user</c> / <c>related_users</c> / <c>creator</c>)
+    /// and each difficulty (its <c>owners</c>, else its <c>user_id</c> named from <c>related_users</c>).
+    /// </summary>
+    internal static (OsuMapper? Creator, IReadOnlyDictionary<int, IReadOnlyList<OsuMapper>> Mappers) ParseMappers(JsonElement set)
+    {
+        var names = new Dictionary<int, string>();
+        if (set.TryGetProperty("related_users", out var users) && users.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var user in users.EnumerateArray())
+            {
+                if (user.TryGetProperty("id", out var id) && id.TryGetInt32(out var userId)
+                    && user.TryGetProperty("username", out var name) && name.GetString() is { } username)
+                    names[userId] = username;
+            }
+        }
+        if (set.TryGetProperty("user", out var setUser) && setUser.ValueKind == JsonValueKind.Object
+            && setUser.TryGetProperty("id", out var setUserId) && setUserId.TryGetInt32(out var setUserIdValue)
+            && setUser.TryGetProperty("username", out var setUserName) && setUserName.GetString() is { } setUsername)
+            names[setUserIdValue] = setUsername;
+
+        OsuMapper? creator = null;
+        if (set.TryGetProperty("user_id", out var creatorId) && creatorId.TryGetInt32(out var creatorUserId) && creatorUserId > 0)
+        {
+            var creatorName = names.GetValueOrDefault(creatorUserId)
+                ?? (set.TryGetProperty("creator", out var c) && c.GetString() is { Length: > 0 } n ? n : $"#{creatorUserId}");
+            creator = new OsuMapper(creatorUserId, creatorName);
+        }
+
+        var mappers = new Dictionary<int, IReadOnlyList<OsuMapper>>();
+        if (set.TryGetProperty("beatmaps", out var beatmaps) && beatmaps.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var beatmap in beatmaps.EnumerateArray())
+            {
+                if (!beatmap.TryGetProperty("id", out var id) || !id.TryGetInt32(out var beatmapId))
+                    continue;
+                var owners = new List<OsuMapper>();
+                if (beatmap.TryGetProperty("owners", out var list) && list.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var owner in list.EnumerateArray())
+                    {
+                        if (owner.TryGetProperty("id", out var ownerId) && ownerId.TryGetInt32(out var ownerUserId) && ownerUserId > 0)
+                        {
+                            var ownerName = owner.TryGetProperty("username", out var on) && on.GetString() is { Length: > 0 } name
+                                ? name
+                                : names.GetValueOrDefault(ownerUserId, $"#{ownerUserId}");
+                            owners.Add(new OsuMapper(ownerUserId, ownerName));
+                        }
+                    }
+                }
+                if (owners.Count == 0 && beatmap.TryGetProperty("user_id", out var mapperId) && mapperId.TryGetInt32(out var mapperUserId) && mapperUserId > 0)
+                    owners.Add(new OsuMapper(mapperUserId, names.GetValueOrDefault(mapperUserId, $"#{mapperUserId}")));
+                if (owners.Count > 0)
+                    mappers[beatmapId] = owners.DistinctBy(o => o.OsuUserId).ToList();
+            }
+        }
+
+        return (creator, mappers);
     }
 
     /// <summary>
