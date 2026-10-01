@@ -33,6 +33,16 @@ QAT the next time they sign in. QAT's own BN/NAT management (evaluations, adding
 its database and doesn't change groups on the website. `admin` in the config (osu ids) are QAT's site
 admins.
 
+## NAT decide, the website follows
+
+- `natAreLeaders`: every NAT member is a NAT leader on the site (kept in step at sign-in).
+- `modesFromServer`: NAT/BN modes on the site come from the website's group modes at sign-in (NAT →
+  "evaluator", what assignments need; BN → full; probationary BN → probation).
+- `serverInterOp` (`url` `http://osu-web:8080`, `secret` = SHARED_INTEROP_SECRET): any BN change made
+  on the site (application passed, evaluation to full/probation or removal, resignation) sets the
+  player's `bng`/`bng_limited` groups on the website through `/_lio/tomyum/bn-groups/{id}`, with the
+  NAT member who did it in the group history. NAT and other groups are only changed by admins.
+
 ## Nomination events
 
 QAT's activity numbers come from map events. `eventFeed` polls this server's
