@@ -293,7 +293,21 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
         then. Needed before scaling lazer realtime too; ADR-0003.
   - [ ] Background jobs (Discord bot, daily challenge, imports, backfills) on one node only (a Redis lock).
   - [ ] Shared storage for `.osz`/replays/screenshots across nodes (see storage providers below).
-- [ ] Storage providers multi-target write / single read — needed for Phase 5 upload; ADR-0006.
+- [ ] **Object storage (S3 / R2 / Spaces / B2)** — ADR-0006. Only the design exists: `TomYum.Storage` has
+      `IStorageProvider`, `StorageOptions` (R2, AWS S3, OVH S3, Azure Blob, local; multi-target write /
+      single read) and nothing implements or reads them (no AWSSDK package; the csproj says "Stubs only").
+      Today TomYum writes to the `server-data` volume (`/app/data`: replays, custom `.osz`/`.osu`,
+      screenshots, `.osu` cache, assets, geoip — ~26 MB on 2026-10-01). Custom uploads already work on
+      local disk, so this is for scaling out and off-VM durability, not a blocker:
+  - [ ] One S3-compatible provider (AWS S3, Cloudflare R2, DigitalOcean Spaces, Backblaze B2, MinIO) plus
+        the local one behind `IStorageProvider`; bind `StorageOptions`; local stays the default.
+  - [ ] Route the file users through it: stable replays, custom map upload/download (`/d/*`, `/web/maps`),
+        screenshots (`/ss/*`), the `.osu` cache (shared with pp-sidecar).
+  - [ ] A one-off copy of `/app/data` into the bucket; a doc page (`docs/storage.md`).
+  - [ ] Same bucket for the rest of the stack, which already supports S3: osu-web uploads (`S3_*`) and
+        tomyum-spectator's lazer replays.
+- [x] **Config audit** (2026-10-01): every setting in TomYum's option classes is read somewhere, except
+      `Storage:*` (above). `src/TomYum.Caching/PlaceHolder.cs` is an empty leftover.
 - [x] **Anticheat** — circleguard (sundeiii/lazer-circleguard, C#) checks every ranked pass, stable and
       lazer, incl. against osu!'s top replays (docs/anticheat.md). 2026-09-29
 - [x] **IRC server** (docs/irc.md): port 6667, passwords from BanchoBot's `!irc`, the game's chat
