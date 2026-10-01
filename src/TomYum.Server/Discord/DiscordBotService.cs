@@ -43,12 +43,10 @@ public sealed partial class DiscordBotService : BackgroundService, IDiscordGatew
             LogLevel = LogSeverity.Info,
         });
         _client.Log += OnLogAsync;
+        // Ready fires once per new session; after a short drop the gateway resumes the same session
+        // without it. So _ready stays set across drops, and IsConnected follows the connection itself
+        // (clearing it on Disconnected dropped every post after Discord's routine reconnects).
         _client.Ready += OnReadyAsync;
-        _client.Disconnected += _ =>
-        {
-            _ready = false;
-            return Task.CompletedTask;
-        };
         _client.SlashCommandExecuted += command =>
         {
             // Discord.Net's gateway thread must not wait on the database.
