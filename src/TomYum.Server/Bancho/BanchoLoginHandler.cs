@@ -53,6 +53,7 @@ public sealed class BanchoLoginHandler
     private readonly TomYum.Persistence.OsuWeb.OsuWebClientVerification? _clientVerification;
     private readonly TomYum.Persistence.OsuWeb.OsuWebAccountFlags? _accountFlags;
     private readonly TomYum.Server.Admin.RestrictionNotices? _restrictionNotices;
+    private readonly TomYum.Server.Admin.Maintenance? _maintenance;
 
     /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
     public const int UnreadLimit = 50;
@@ -90,8 +91,10 @@ public sealed class BanchoLoginHandler
         Microsoft.Extensions.Options.IOptions<ClientVerificationOptions>? clientVerificationOptions = null,
         TomYum.Persistence.OsuWeb.OsuWebClientVerification? clientVerification = null,
         TomYum.Persistence.OsuWeb.OsuWebAccountFlags? accountFlags = null,
-        TomYum.Server.Admin.RestrictionNotices? restrictionNotices = null)
+        TomYum.Server.Admin.RestrictionNotices? restrictionNotices = null,
+        TomYum.Server.Admin.Maintenance? maintenance = null)
     {
+        _maintenance = maintenance;
         _restrictionNotices = restrictionNotices;
         _accountFlags = accountFlags;
         _clientVerification = clientVerificationOptions?.Value.Enabled == true ? clientVerification : null;
@@ -160,6 +163,14 @@ public sealed class BanchoLoginHandler
             _logger.LogInformation("Login refused: {Username} (id {UserId}) is locked.", user.Username, user.Id);
             await RecordLoginAsync(user.Id, "locked", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, LockedNotice), null);
+        }
+
+        // Maintenance (the admin panel): only staff get in. "Server error" makes stable keep
+        // reconnecting, so players are back on their own once it's over.
+        if (_maintenance?.IsLocked == true && !ModerationCommands.IsStaff(user.Privileges))
+        {
+            _logger.LogInformation("Login held: {Username} (id {UserId}); maintenance.", user.Username, user.Id);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.ServerError, _maintenance.Notice), null);
         }
 
         // Hardware hashes: recorded for every login; an account's first login is refused when the

@@ -166,6 +166,12 @@ public sealed class IrcSession : IDisposable
             await ErrorAsync("Your account is restricted; IRC isn't available.").ConfigureAwait(false);
             return false;
         }
+        if (scope.ServiceProvider.GetService<TomYum.Server.Admin.Maintenance>() is { IsLocked: true } maintenance
+            && !ModerationCommands.IsStaff(user.Privileges))
+        {
+            await ErrorAsync(maintenance.Notice).ConfigureAwait(false);
+            return false;
+        }
         if (_players.GetByUserId(user.Id) is { } online && !online.IsIrc)
         {
             await ErrorAsync("You're online in osu!; IRC and the game can't be used at the same time here.").ConfigureAwait(false);
