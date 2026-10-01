@@ -21,12 +21,14 @@ public sealed class ModerationTests
     private static readonly DateTimeOffset Now = DateTimeOffset.UtcNow;
 
     [Theory]
-    [InlineData(0, false, false)]
-    [InlineData(1, false, true)]  // banned account type
-    [InlineData(0, true, true)]   // warnings
-    public void Restricted_FollowsOsuWeb(int userType, bool warnings, bool restricted)
+    [InlineData(0, false, false, false)]
+    [InlineData(1, false, false, true)] // banned account type: deleted (admin panel), not restricted
+    [InlineData(0, true, true, false)]  // warnings: restricted
+    [InlineData(1, true, true, true)]
+    public void Restricted_And_Deleted_FollowOsuWeb(int userType, bool warnings, bool restricted, bool deleted)
     {
         Assert.Equal(restricted, OsuWebAccounts.IsRestricted((sbyte)userType, warnings));
+        Assert.Equal(deleted, OsuWebAccounts.IsDeleted((sbyte)userType));
     }
 
     [Fact]

@@ -64,6 +64,9 @@ public sealed class BanchoLoginHandler
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
 
+    /// <summary>Shown to a deleted account (the admin panel's Delete).</summary>
+    public const string DeletedNotice = "This account has been deleted.";
+
     /// <summary>Shown to a bot account trying the game: bots chat over IRC (port 6667) instead.</summary>
     public const string BotNotice = "Bot accounts can't log in to the game. Connect over IRC instead.";
 
@@ -146,6 +149,14 @@ public sealed class BanchoLoginHandler
             _logger.LogInformation("Login failed: bad password for {Username}.", request.Username);
             await RecordLoginAsync(user.Id, "bad_password", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
+        }
+
+        // Deleted from the admin panel: no logins (it isn't a restriction, which still lets them play).
+        if (user.IsDeleted)
+        {
+            _logger.LogInformation("Login refused: {Username} (id {UserId}) is deleted.", user.Username, user.Id);
+            await RecordLoginAsync(user.Id, "deleted", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, DeletedNotice), null);
         }
 
         // Bot accounts (the admin panel's bots) chat over IRC; the game is for players. BanchoBot

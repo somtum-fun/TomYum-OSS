@@ -224,13 +224,14 @@ public sealed class OsuWebUserRepository : IUserRepository
             LatestActivity = row.UserLastvisit,
             Privileges = OsuWebAccounts.ToPrivileges(groups, row.OsuSubscriber),
             IsBot = groups.Contains(OsuWebAccounts.BotGroup),
+            IsDeleted = OsuWebAccounts.IsDeleted(row.UserType),
         };
     }
 
     /// <summary>Ids of every restricted or banned account (hidden from leaderboards and rankings).</summary>
     public async Task<IReadOnlyList<int>> GetRestrictedIdsAsync(CancellationToken cancellationToken = default) =>
         await _db.Users.AsNoTracking()
-            .Where(u => u.UserType == OsuWebAccounts.BannedUserType || u.UserWarnings)
+            .Where(u => u.UserWarnings)
             .Select(u => (int)u.UserId)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

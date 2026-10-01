@@ -49,5 +49,6 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Ignore(u => u.IsRestricted);
         builder.Ignore(u => u.SilenceEndUtc);
         builder.Ignore(u => u.IsBot);
+        builder.Ignore(u => u.IsDeleted);
     }
 }

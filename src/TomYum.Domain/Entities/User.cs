@@ -84,6 +84,12 @@ public sealed class User
     /// </summary>
     public bool IsBot { get; init; }
 
+    /// <summary>
+    /// Deleted from the admin panel (osu-web's banned account type): can't log in, isn't ranked, but
+    /// isn't restricted (its scores stay on leaderboards). Only known in osu-web mode.
+    /// </summary>
+    public bool IsDeleted { get; init; }
+
     // TODO: donor end, clan, preferred mode, play style.
 
     /// <summary>

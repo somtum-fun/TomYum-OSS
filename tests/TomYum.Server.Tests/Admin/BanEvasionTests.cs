@@ -81,6 +81,26 @@ public sealed class BanEvasionTests
     }
 
     [Fact]
+    public async Task DeletedAccount_IsRefused_WithTheNotice()
+    {
+        var (handler, registry, users, _) = NewLogin();
+        var hasher = new BcryptPasswordHasher();
+        var gone = await users.AddAsync(new User
+        {
+            Username = "DeletedUser_99",
+            Email = string.Empty,
+            PasswordBcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("password")),
+            IsDeleted = true,
+        });
+
+        var outcome = await LogInAsync(handler, "DeletedUser_99", AdaptersA, UninstallA, DiskA);
+
+        Assert.Null(outcome.Token);
+        Assert.Null(registry.GetByUserId(gone.Id));
+        Assert.Equal(BanchoLoginHandler.DeletedNotice, Notice(outcome.Body));
+    }
+
+    [Fact]
     public async Task NewAccount_SharingWithAnUnrestrictedPlayer_GetsIn_AndIsVerified()
     {
         var (handler, _, users, hashes) = NewLogin();

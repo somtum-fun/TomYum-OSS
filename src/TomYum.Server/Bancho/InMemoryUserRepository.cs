@@ -62,6 +62,7 @@ public sealed class InMemoryUserRepository : IUserRepository
             IsRestricted = user.IsRestricted,
             SilenceEndUtc = user.SilenceEndUtc,
             IsBot = user.IsBot,
+            IsDeleted = user.IsDeleted,
         };
 
         _byId[assigned.Id] = assigned;

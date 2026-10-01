@@ -161,6 +161,11 @@ public sealed class IrcSession : IDisposable
             await ErrorAsync("Bad authentication").ConfigureAwait(false);
             return false;
         }
+        if (user.IsDeleted)
+        {
+            await ErrorAsync("This account has been deleted.").ConfigureAwait(false);
+            return false;
+        }
         if (user.IsRestricted)
         {
             await ErrorAsync("Your account is restricted; IRC isn't available.").ConfigureAwait(false);
