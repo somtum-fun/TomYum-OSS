@@ -153,6 +153,12 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddScoped<ScoreRecalculation>();
     builder.Services.AddScoped<BeatmapStatusChanger>();
     builder.Services.AddScoped<UserModerationSync>();
+    // BanchoBot's PM when a player is restricted or unrestricted.
+    builder.Services.AddSingleton(sp => new RestrictionNotices(
+        sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<PlayerRegistry>(),
+        $"https://osu.{(BanchoHosts.ResolveDomain(builder.Configuration) is { Length: > 0 } noticeDomain ? noticeDomain : "localhost")}",
+        sp.GetRequiredService<ILogger<RestrictionNotices>>(), sp.GetService<StackExchange.Redis.IConnectionMultiplexer>(),
+        sp.GetService<OsuWebChatBridge>()));
     // Website chat ↔ in-game chat.
     builder.Services.AddSingleton<OsuWebChatBridge>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<OsuWebChatBridge>());

@@ -25,6 +25,7 @@ public sealed class UserModerationSync
     private readonly ILogger<UserModerationSync> _logger;
     private readonly OsuWebScoreMirror? _mirror;
     private readonly OsuWebScoreIndexing? _indexing;
+    private readonly RestrictionNotices? _notices;
 
     public UserModerationSync(
         IUserRepository users,
@@ -33,7 +34,8 @@ public sealed class UserModerationSync
         TimeProvider time,
         ILogger<UserModerationSync> logger,
         OsuWebScoreMirror? mirror = null,
-        OsuWebScoreIndexing? indexing = null)
+        OsuWebScoreIndexing? indexing = null,
+        RestrictionNotices? notices = null)
     {
         _users = users;
         _players = players;
@@ -42,6 +44,7 @@ public sealed class UserModerationSync
         _logger = logger;
         _mirror = mirror;
         _indexing = indexing;
+        _notices = notices;
     }
 
     /// <summary>Reloads user <paramref name="userId"/> and applies it; null when there's no such user.</summary>
@@ -115,6 +118,10 @@ public sealed class UserModerationSync
 
         if (restrictionChanged)
             await ReindexWebsiteScoresAsync(userId, cancellationToken).ConfigureAwait(false);
+
+        // BanchoBot tells them (once per restriction, and when it's lifted).
+        if (_notices is not null)
+            await _notices.NotifyAsync(userId, user.Username, user.IsRestricted, cancellationToken).ConfigureAwait(false);
 
         return new UserRefreshResult(userId, user.IsRestricted, user.SilenceEndUtc, player is not null, reconnected);
     }
