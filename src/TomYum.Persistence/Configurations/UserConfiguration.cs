@@ -48,5 +48,6 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         // Moderation state comes from osu-web's account data (osu-web mode only).
         builder.Ignore(u => u.IsRestricted);
         builder.Ignore(u => u.SilenceEndUtc);
+        builder.Ignore(u => u.IsBot);
     }
 }
