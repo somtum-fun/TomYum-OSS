@@ -32,7 +32,7 @@ public sealed class Maintenance : BackgroundService
     /// <summary>What players are told when the admin gives no message.</summary>
     public const string DefaultMessage = "production is under maintenance. You'll be reconnected automatically when it's over.";
 
-    /// <summary>BanchoBot's message to everyone online 5 seconds before the lock.</summary>
+    /// <summary>What everyone online is told 5 seconds before the lock (stable: a notification; lazer: BanchoBot).</summary>
     public const string KeepOpenMessage = "Maintenance starts in 5 seconds. If you're submitting a score, please don't close your osu! client: you'll be reconnected shortly after the server is back, and it will be sent then.";
 
     /// <summary>The lock always starts at least this long after it's turned on, so the countdown in #osu can run.</summary>
@@ -197,16 +197,19 @@ public sealed class Maintenance : BackgroundService
         _bridge?.ForwardChannelMessage(BanchoBot.UserId, "#osu", text);
     }
 
-    /// <summary>A BanchoBot private message to everyone online, in stable and in lazer.</summary>
+    /// <summary>
+    /// Tells everyone online: stable as an in-game notification (the client's own pop-up, not a chat
+    /// message), lazer as a BanchoBot message (it has no such notification).
+    /// </summary>
     private void TellEveryone(string text)
     {
+        var writer = new BanchoPacketWriter(512);
+        writer.WriteStringPacket(ServerPacketId.Notification, text);
+        var bytes = writer.ToArray();
         foreach (var player in _players.All)
         {
-            if (player.IsIrc)
-                continue;
-            var writer = new BanchoPacketWriter(512);
-            ChatEncoder.WriteMessage(writer, new BanchoMessage(BanchoBot.Name, text, player.Presence.Username, BanchoBot.UserId));
-            player.Enqueue(writer.ToArray());
+            if (!player.IsIrc)
+                player.Enqueue(bytes);
         }
         _ = TellLazerAsync(text);
     }
