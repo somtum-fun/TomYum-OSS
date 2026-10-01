@@ -223,6 +223,7 @@ public sealed class OsuWebUserRepository : IUserRepository
             CreationTime = row.UserRegdate,
             LatestActivity = row.UserLastvisit,
             Privileges = OsuWebAccounts.ToPrivileges(groups, row.OsuSubscriber),
+            IsBot = groups.Contains(OsuWebAccounts.BotGroup),
         };
     }
 

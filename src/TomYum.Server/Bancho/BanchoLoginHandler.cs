@@ -62,6 +62,9 @@ public sealed class BanchoLoginHandler
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
 
+    /// <summary>Shown to a bot account trying the game: bots chat over IRC (port 6667) instead.</summary>
+    public const string BotNotice = "Bot accounts can't log in to the game. Connect over IRC instead.";
+
     /// <summary>
     /// The staff log action for an account that got in earlier and now logs in from the machine of a
     /// restricted account (it was restricted later, or the account was verified by hand); staff are
@@ -137,6 +140,15 @@ public sealed class BanchoLoginHandler
             _logger.LogInformation("Login failed: bad password for {Username}.", request.Username);
             await RecordLoginAsync(user.Id, "bad_password", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
+        }
+
+        // Bot accounts (the admin panel's bots) chat over IRC; the game is for players. BanchoBot
+        // never logs in here.
+        if (user.IsBot)
+        {
+            _logger.LogInformation("Login refused: {Username} (id {UserId}) is a bot account.", user.Username, user.Id);
+            await RecordLoginAsync(user.Id, "bot", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, BotNotice), null);
         }
 
         // Locked by staff (the admin panel): no logins anywhere until unlocked.

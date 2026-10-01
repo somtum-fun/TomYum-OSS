@@ -77,6 +77,13 @@ public sealed class User
     /// </summary>
     public DateTimeOffset? SilenceEndUtc { get; init; }
 
+    /// <summary>
+    /// A bot account (osu-web's <c>bot</c> group, made from the admin panel): it chats over IRC and may
+    /// use the website, but can't log in to the game (stable or lazer) or submit scores. Only known in
+    /// osu-web mode.
+    /// </summary>
+    public bool IsBot { get; init; }
+
     // TODO: donor end, clan, preferred mode, play style.
 
     /// <summary>

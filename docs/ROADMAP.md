@@ -244,19 +244,29 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
       beatmap" / "… has updated the beatmap" reach the mapper's Recent activity and Community → Activity.
       (Rank/qualify/love entries already do; disqualify, nomination reset, unlove and kudosu don't on
       osu! either.)
-- [ ] **QAT / BN Management** ([pishifat/qat](https://github.com/pishifat/qat), Node 24 + Express + Vue +
-      MongoDB) for BN applications, evaluations, reports, vetoes and qualified-map checks. Fork to
-      `example-org/private-repo`, then:
-  - [ ] Make the server address configurable (about 120 hard-coded `osu.ppy.sh` URLs: OAuth, API v1/v2,
-        profile/map/wiki links) and point it at `osu.<domain>`.
-  - [ ] ⚖️ **Map group ids before anyone logs in.** QAT reads osu!'s ids (BN 28/32, NAT 7, GMT 4, dev 11);
-        here BN = 4, NAT = 11 and 7 is everyone's default group, so unmapped it makes every player NAT
-        and NAT admins.
-  - [ ] Event feed: QAT's map events (nominate/qualify/disqualify/reset/rank) come from the Aiess bot,
-        which watches osu.ppy.sh. Feed it from here instead (a TomYum job pushing `beatmapset_events`).
-  - [ ] Deploy: `qat` + `mongodb` services, a subdomain (e.g. `bn.<domain>`), an OAuth client on
-        osu-web; optional bot account (in-game messages) and Discord webhooks.
-  - [ ] Test with throwaway BN/NAT accounts (application → evaluation → group change), then a doc page.
+- [x] **Nomination workflow verified live** (2026-10-01) with throwaway BN, probationary BN, NAT and Loved
+      accounts on an imported set: hype gate, nominate ×2 → qualified, NAT problem → disqualify (and the
+      game follows each step), unresolved problems block nominating, qualified → ranked by `modding:rank`,
+      love by Project Loved; ranked/qualified/loved entries in Community → Activity. osu-web runs osu!'s
+      own rules (modes per nominator, a probationary BN can't give the final nomination, 10 a day, genre
+      and language required; remove from Loved is admin-only, as osu-web has it).
+  - [x] Fixed: the BN panel's "Pending"/"bancho" left the old nominations current, so BNs couldn't
+        nominate again; they're reset now, as on a disqualification.
+  - [x] Fixed: NAT had no modes (`nat.has_playmodes` was 0 here; osu! gives NAT modes) and a BN could be
+        saved with none (then they can't nominate); the admin panel now asks for at least one mode.
+- [x] **QAT / BN Management** ([pishifat/qat](https://github.com/pishifat/qat)) — fork
+      `example-org/private-repo` (branch `prod`): server address configurable, our group ids mapped (7 is
+      everyone's default here), an event feed from `/api/v2/beatmapsets/events` instead of the Aiess bot,
+      deployed as `qat` + `qat-mongo` behind `bn.<domain>` (docs/qat.md). 2026-10-01
+  - [ ] DNS `bn.<domain>`, then a real sign-in and a click-through in a browser.
+  - [ ] Discord webhooks (`qat-webhooks.json`) and `enableAutomation`; a bot account + OAuth client for
+        `enableMessages` (docs/bots.md).
+
+## Bot accounts 🔒 (none) — done 2026-10-01
+- [x] Admins/developers make bots in the panel (`/panel/bots`): `bot` group, an owner, an IRC key.
+      Owners (user menu → My bots), admins and developers change the avatar, banner, me! page, name,
+      website password and IRC password. Bots chat over IRC and use the website (verification codes go
+      to the owner); stable and lazer logins and score submission are refused. docs/bots.md
 
 ## Achievements (medals) 🔒 (none) — done 2026-07-09
 _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are a later Session slice._
