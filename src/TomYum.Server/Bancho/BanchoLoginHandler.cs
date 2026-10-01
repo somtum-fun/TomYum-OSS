@@ -52,6 +52,7 @@ public sealed class BanchoLoginHandler
     private readonly TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? _privateMessages;
     private readonly TomYum.Persistence.OsuWeb.OsuWebClientVerification? _clientVerification;
     private readonly TomYum.Persistence.OsuWeb.OsuWebAccountFlags? _accountFlags;
+    private readonly TomYum.Server.Admin.RestrictionNotices? _restrictionNotices;
 
     /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
     public const int UnreadLimit = 50;
@@ -88,8 +89,10 @@ public sealed class BanchoLoginHandler
         TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? privateMessages = null,
         Microsoft.Extensions.Options.IOptions<ClientVerificationOptions>? clientVerificationOptions = null,
         TomYum.Persistence.OsuWeb.OsuWebClientVerification? clientVerification = null,
-        TomYum.Persistence.OsuWeb.OsuWebAccountFlags? accountFlags = null)
+        TomYum.Persistence.OsuWeb.OsuWebAccountFlags? accountFlags = null,
+        TomYum.Server.Admin.RestrictionNotices? restrictionNotices = null)
     {
+        _restrictionNotices = restrictionNotices;
         _accountFlags = accountFlags;
         _clientVerification = clientVerificationOptions?.Value.Enabled == true ? clientVerification : null;
         _friends = friends;
@@ -284,6 +287,11 @@ public sealed class BanchoLoginHandler
             "Login ok: {Username} (id {UserId}) on {Version}; {Online} online.",
             user.Username, user.Id, request.OsuVersion, _registry.Count);
         await RecordLoginAsync(user.Id, "ok", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+
+        // A restriction (or its end) they haven't been told about, e.g. it happened while they were
+        // away: BanchoBot's PM arrives with their first update.
+        if (_restrictionNotices is not null && !tournament)
+            await _restrictionNotices.NotifyAsync(user.Id, user.Username, user.IsRestricted, cancellationToken).ConfigureAwait(false);
 
         return new LoginOutcome(responseBody, player.Token);
     }
