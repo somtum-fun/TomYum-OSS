@@ -95,6 +95,28 @@ public static class AdminEndpoints
         admin.MapGet("/chat",async (int? userId, string? target, long? before, int? limit, IChatLogRepository chat, CancellationToken cancellationToken) =>
             Results.Ok(await chat.ListAsync(new ChatLogQuery(userId, target, before, limit ?? 100), cancellationToken).ConfigureAwait(false)));
 
+        // Live multiplayer rooms (the website's Tournament Committee panel).
+        admin.MapGet("/matches", (MatchModeration matches) => Results.Ok(matches.List()));
+        admin.MapGet("/matches/{matchId:int}", (int matchId, MatchModeration matches) =>
+            ToMatchId(matchId) is { } id && matches.Get(id) is { } match ? Results.Ok(match) : Results.NotFound());
+        admin.MapPost("/matches/{matchId:int}/abort", (int matchId, MatchModeration matches) =>
+            ToMatchId(matchId) is not { } id ? Results.NotFound() : matches.Abort(id) switch
+            {
+                null => Results.NotFound(),
+                true => Results.Ok(new { Aborted = true }),
+                false => Results.Ok(new { Aborted = false }),
+            });
+        admin.MapPost("/matches/{matchId:int}/close", (int matchId, MatchModeration matches) =>
+            ToMatchId(matchId) is { } id && matches.Close(id) ? Results.Ok(new { Closed = true }) : Results.NotFound());
+        admin.MapPost("/matches/{matchId:int}/message", (int matchId, MatchMessageRequest request, MatchModeration matches) =>
+        {
+            var text = request.Text?.Trim();
+            if (string.IsNullOrEmpty(text) || text.Length > 450)
+                return Results.BadRequest(new { Error = "A message needs 1 to 450 characters." });
+
+            return ToMatchId(matchId) is { } id && matches.Message(id, text) ? Results.Ok(new { Sent = true }) : Results.NotFound();
+        });
+
         admin.MapGet("/online", async (PlayerRegistry players, IServiceProvider services, CancellationToken cancellationToken) =>
             Results.Ok(await OnlineAsync(players, services, cancellationToken).ConfigureAwait(false)));
 
@@ -132,6 +154,9 @@ public static class AdminEndpoints
                     p.BeatmapId ?? 0, p.LastSeen, p.Client == OnlineClient.Lazer ? "lazer" : "website"))
             .ToList();
     }
+
+    /// <summary>A room id from the URL, or <c>null</c> when it can't be one (rooms are numbered 1–65535).</summary>
+    private static ushort? ToMatchId(int id) => id is > 0 and <= ushort.MaxValue ? (ushort)id : null;
 
     /// <summary>The acting staff member's osu-web user id (0 when the request didn't say).</summary>
     public static int ActorId(HttpContext context)

@@ -359,7 +359,7 @@ public sealed class BanchoBotCommands
         return sub switch
         {
             "start"     => await MpStartAsync(match, parts).ConfigureAwait(false),
-            "abort"     => MpAbort(match),
+            "abort"     => TomYum.Server.Admin.MatchModeration.Abort(match, _players) ? null : "Nothing to abort.",
             "countdown" => await MpCountdownAsync(match, parts).ConfigureAwait(false),
             "host"      => MpHost(match, parts, caller, privileges),
             "kick"      => MpKick(match, parts, privileges),
@@ -375,35 +375,6 @@ public sealed class BanchoBotCommands
         StartMatch(match);
         PostToMatch(match, "Good luck, have fun!");
         return null;
-    }
-
-    private static string? MpAbort(Match match)
-    {
-        var cts = match.CountdownCts;
-        if (cts is not null)
-        {
-            cts.Cancel();
-            match.CountdownCts = null;
-            PostToMatch(match, "Countdown aborted.");
-            return null;
-        }
-
-        if (match.InProgress)
-        {
-            lock (match.SyncRoot)
-            {
-                match.InProgress = false;
-                foreach (var s in match.Slots)
-                {
-                    if (s.Status == SlotStatus.Playing)
-                        s.Status = SlotStatus.NotReady;
-                }
-            }
-            PostToMatch(match, "Match aborted.");
-            return null;
-        }
-
-        return "Nothing to abort.";
     }
 
     private async Task<string?> MpCountdownAsync(Match match, string[] parts)

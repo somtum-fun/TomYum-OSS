@@ -62,6 +62,7 @@ if (!builder.Environment.IsDevelopment())
 builder.Services.AddSingleton<PlayerRegistry>();
 builder.Services.AddSingleton<ChannelRegistry>();
 builder.Services.AddSingleton<MatchRegistry>();
+builder.Services.AddSingleton<TomYum.Server.Admin.MatchModeration>();
 builder.Services.AddSingleton<TomYumVersion>();
 builder.Services.AddSingleton<ModerationCommands>();
 builder.Services.AddSingleton<MapCommands>();

@@ -171,6 +171,9 @@ public enum ServerPacketId : ushort
     /// <summary>The account is restricted.</summary>
     AccountRestricted = 104,
 
+    /// <summary>The match was aborted mid-play: the client leaves the map back to the room (no payload).</summary>
+    MatchAbort = 106,
+
     /// <summary>string tournament server to switch to.</summary>
     SwitchTournamentServer = 107,
 }
