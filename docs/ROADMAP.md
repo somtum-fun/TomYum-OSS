@@ -281,18 +281,36 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
       alerts by Discord DM to the admin (`watchdog.sh`, paused while `deploy.sh` runs), nightly backups
       (`backup.sh`, kept on the VM; the Proton Drive copy isn't set up), the store says "not available".
       2026-09-29
-- [ ] **Scaling out (more than one TomYum)** — today one TomYum instance holds every online player,
-      channel, match and spectator in memory (`PlayerRegistry`), so bancho can't run as several copies
-      behind a load balancer yet. Not needed at today's load (2026-10-01: 4 vCPU/8 GB VM, TomYum ~280 MB,
-      under 3% CPU). In order, when it is:
-  - [ ] Scale up first: bigger VM, MySQL/Elasticsearch tuning, slow-query and request metrics.
-  - [ ] Split what's stateless: `/web/*`, score submission, `/d/*`, assets and the admin API can run as
-        extra replicas behind Caddy (`lb_policy`) as soon as they no longer touch in-memory state.
-  - [ ] Redis cross-node online state (multi-instance) — presence, channels, matches, spectating and
-        per-player packet queues in Redis (pub/sub between nodes); sticky sessions by `osu-token` until
-        then. Needed before scaling lazer realtime too; ADR-0003.
+- [ ] **Scaling up and out** — today one TomYum instance holds every online player, channel, match and
+      spectator in memory (`PlayerRegistry`, `ChannelRegistry`, `MatchRegistry`), so bancho can't run as
+      several copies behind a load balancer yet (a second copy loops stable's logins: its `osu-token` is
+      unknown there). Not needed at today's load (2026-10-01: 4 vCPU/8 GB VM, TomYum ~280 MB, under 3%
+      CPU); a few hundred daily players fit one VM. Stages, in order — stop at the first that's enough:
+  - [ ] **Always:** monitoring (CPU/RAM/disk, slow requests, to Discord like `watchdog.sh`) to know *what*
+        to scale (usually MySQL/Elasticsearch, not bancho); off-site backups (`backup.sh` keeps them on the VM).
+  - [ ] **1. Scale up:** bigger VM (8/16, then 16/32), NVMe; more osu-web PHP workers, MySQL buffer pool,
+        Elasticsearch heap. No code changes.
+  - [ ] **2. Split the stack (config only):** MySQL + Redis on their own VM or managed (DigitalOcean
+        Managed MySQL/Valkey, AWS RDS/ElastiCache); Elasticsearch, score indexer, circleguard and
+        pp-sidecar on a workers VM; uploads/replays to object storage (below). Caveats: DigitalOcean
+        Managed MySQL requires a primary key on every table (`sql_require_primary_key`, can be turned off
+        via its API) and offers OpenSearch, not Elasticsearch (osu-web expects Elasticsearch: use Elastic
+        Cloud or a VM).
+  - [ ] **3. Replicas of what's stateless:** osu-web (sessions/cache/queues already in Redis), circleguard,
+        pp-sidecar, score indexer, job workers behind Caddy (`lb_policy`) or the provider's load balancer;
+        TomYum's `/web/*`, score submission, `/d/*`, assets and admin API once they no longer touch
+        in-memory state.
+  - [ ] **4. Bancho on many nodes:** Redis cross-node online state — presence, tokens, channels, matches,
+        spectating and per-player packet queues in Redis (pub/sub between nodes); sticky sessions by
+        `osu-token` until then. tomyum-spectator likewise for lazer realtime; IRC (raw TCP 6667) behind a
+        TCP load balancer. ADR-0003.
   - [ ] Background jobs (Discord bot, daily challenge, imports, backfills) on one node only (a Redis lock).
-  - [ ] Shared storage for `.osz`/replays/screenshots across nodes (see storage providers below).
+  - [ ] Shared storage for `.osz`/replays/screenshots across nodes (see object storage below).
+  - [ ] ⏸ **Kubernetes** (not now, 2026-10-01: one VM + Compose gives the same restarts and deploys; k8s
+        only adds work while bancho is single-instance). Worth it after stage 4, with the databases
+        managed (stage 2) so k8s runs only stateless deployments: TomYum, osu-web, spectator,
+        circleguard, pp-sidecar, workers; Helm chart or manifests from the Compose services, autoscaling,
+        an ingress for HTTP and a TCP load balancer for IRC.
 - [ ] **Object storage (S3 / R2 / Spaces / B2)** — ADR-0006. Only the design exists: `TomYum.Storage` has
       `IStorageProvider`, `StorageOptions` (R2, AWS S3, OVH S3, Azure Blob, local; multi-target write /
       single read) and nothing implements or reads them (no AWSSDK package; the csproj says "Stubs only").
