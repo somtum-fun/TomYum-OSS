@@ -3,7 +3,7 @@
 > **Docs convention.** `docs/` holds the documentation (contributors, operators): one page per
 > feature, plus this checklist.
 
-_Last updated: 2026-10-01. .NET 10; production at sundei.eu (stable, lazer and the website)._
+_Last updated: 2026-10-01 (version 0.2.0-dev)._ .NET 10; production at sundei.eu (stable, lazer and the website)._
 
 This is the living checklist for the big feature wave requested on 2026-07-07: `.osu` cache →
 plugin host → moderation/HWID → spectating → DAN/Session ports → custom beatmaps → **osu!lazer
@@ -14,6 +14,27 @@ too and is now done (Anticheat, below).
 Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decision · 🔒 blocked-by · ⚖️ decision needed.
 
 ---
+
+## Versions
+- `0.1.0-dev` (2026-07-07): the feature wave opens (Phase 0).
+- `0.2.0-dev` (2026-10-01): lazer and the website (osu-web) as accounts and scores, moderation and the
+  staff panels, anti-cheat, Discord bot, IRC, bot accounts, BN/NAT tools (QAT), maintenance mode,
+  support tickets, the store. Still `-dev`: not ready for production elsewhere or open source.
+
+## Path to 1.0 (production-ready, open source) ⚖️
+_Before `1.0.0`: TomYum should run anyone's server without this one's choices baked in._
+- [ ] Hard-coded features into plugins (the plugin host, Phase 1): server-specific behaviour (welcome
+      texts, Discord channels and wording, store/payments, maintenance texts, ticket categories and
+      wording, Relax/Autopilot pp source, custom medals) behind plugins or settings, the core generic.
+- [ ] No server-specific names or addresses in code, docs or defaults (domains, emails, branding);
+      everything from configuration, with examples.
+- [ ] Clean-up: dead code and leftovers (`TomYum.Caching/PlaceHolder.cs`, unused `Storage` stubs until
+      implemented), consistent naming, warnings in the test projects.
+- [ ] Docs for operators (install, upgrade, backup, every setting) and contributors (architecture,
+      plugin API), a changelog per version, a licence review of what's bundled.
+- [ ] Security review (admin API signing, InterOp, uploads, OAuth), and the open items above that
+      affect every server (object storage, scaling).
+- [ ] Then `1.0.0` without `-dev`; afterwards SemVer: breaking changes bump the major version.
 
 ## Phase 0 — Foundations (small, unblock everything)
 
