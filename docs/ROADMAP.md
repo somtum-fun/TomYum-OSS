@@ -258,7 +258,13 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
       `example-org/private-repo` (branch `prod`): server address configurable, our group ids mapped (7 is
       everyone's default here), an event feed from `/api/v2/beatmapsets/events` instead of the Aiess bot,
       deployed as `qat` + `qat-mongo` behind `bn.<domain>` (docs/qat.md). 2026-10-01
-  - [ ] DNS `bn.<domain>`, then a real sign-in and a click-through in a browser.
+  - [x] DNS `bn.<domain>`; signed in from a browser (2026-10-01). Fixed: default settings on a new
+        database; BN/NAT without an evaluation round.
+  - [x] BN applications: no kudosu; Discord + osu! account linked (account settings → Connections) and no
+        osu! restriction seen in 12 months (docs/qat.md). Kudosu by hand for admins/developers
+        (`/panel/kudosu`). 2026-10-01
+  - [ ] Discord application for linking Discord (`DISCORD_OAUTH_CLIENT_ID`/`SECRET`); the osu! app's
+        callback set on osu.ppy.sh.
   - [ ] Discord webhooks (`qat-webhooks.json`) and `enableAutomation`; a bot account + OAuth client for
         `enableMessages` (docs/bots.md).
 

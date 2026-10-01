@@ -39,6 +39,29 @@ QAT's activity numbers come from map events. `eventFeed` polls this server's
 `/api/v2/beatmapsets/events` every 5 minutes (nominate, qualify, disqualify, nomination reset, rank; the
 first poll goes back 30 days). Loved maps aren't part of QAT's data.
 
+## Applying for BN
+
+`applyRequirements` in `qat-config.json` sets what an application (and a rejoin) needs. Here:
+`{"kudosu": 0, "connections": true}`:
+
+- no kudosu (osu!'s 150 when `kudosu` isn't set; 0 turns it off);
+- Discord and the player's osu! account (osu.ppy.sh) linked in their account settings → Connections
+  (osu-web `App\Libraries\TomYumConnections`; QAT reads `GET /api/v2/me/tomyum-connections` with the
+  applicant's token);
+- no osu! restriction in the last 12 months.
+
+osu!'s API never shows past restrictions (only silences and tournament bans of the last 28 days, even
+to the player). What's known: restricted when they link (`is_restricted`), and restricted at a later
+check (once a day while linked; a restricted account's public profile is gone). Each is kept and counts
+for 12 months. A restriction lifted before they linked can't be seen: the NAT reviewing the
+application can still look the player up.
+
+The osu! link uses the same osu! OAuth app as TomYum (`OSU_LINK_CLIENT_ID`/`SECRET` in osu-web.env); its
+callback on osu.ppy.sh must be `https://osu.<domain>/home/account/connections/osu_bancho/callback`.
+Discord needs its own application (`DISCORD_OAUTH_CLIENT_ID`/`SECRET`, callback
+`https://osu.<domain>/home/account/connections/discord/callback`); a Discord link is also written to
+TomYum's `discord_links`, so the Discord bot knows it.
+
 ## Off by default
 
 - `enableAutomation`: QAT's scheduled jobs (evaluation reminders, report feeds, badge checks, …). Most
