@@ -183,6 +183,11 @@ accounts, chat and leaderboards with them._
       given to players; uploaded or fetched from an address, stored at normal and double size). 2026-09-30
 - [x] Last.fm scrobbling: players connect it in account settings; passed plays (stable and lazer)
       are scrobbled as the map's song, and shown as "now playing" while they play. 2026-09-30
+- [x] Community → Activity: the whole server's recent activity (#1s, top 50 ranks, medals, beatmaps,
+      supporters, name changes), by type and mode, new entries appearing by themselves. 2026-10-01
+- [x] Admin panel account page: standing and notes, lock (no logins anywhere), anti-cheat whitelist,
+      devices (wipe HWID), login history, connected profiles, content resets, score rollback, name
+      rollback; stable device verification on the website (off by default). Panels restyled. 2026-10-01
 - [x] Ranked mods: the admin panel picks lazer mods that count as ranked (pp, medals) besides osu!'s;
       TomYum's build of ppy's score processor reads them and works out old scores again. 2026-09-30
 - [x] Stable tournament client — its windows are extra sessions on the same account (they don't kick

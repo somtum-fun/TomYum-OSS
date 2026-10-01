@@ -14,9 +14,30 @@ public sealed class DailyChallengeOptions
     /// <summary>How many days are kept queued.</summary>
     public int DaysAhead { get; set; } = 7;
 
+    /// <summary>
+    /// Star ratings by weekday, as osu! does it (<see cref="WeeklyStars"/>): Thursday 3–3.5★ up to
+    /// Wednesday 6–6.5★. False: every day between <see cref="MinStars"/> and <see cref="MaxStars"/>.
+    /// </summary>
+    public bool Weekly { get; set; } = true;
+
     public double MinStars { get; set; } = 4.0;
 
     public double MaxStars { get; set; } = 6.5;
+
+    /// <summary>osu!'s weekly schedule: the week starts easy on Thursday and ends hard on Wednesday.</summary>
+    public static readonly IReadOnlyDictionary<DayOfWeek, (double Min, double Max)> WeeklyStars = new Dictionary<DayOfWeek, (double, double)>
+    {
+        [DayOfWeek.Thursday] = (3.0, 3.5),
+        [DayOfWeek.Friday] = (3.5, 4.0),
+        [DayOfWeek.Saturday] = (4.0, 4.5),
+        [DayOfWeek.Sunday] = (4.5, 5.0),
+        [DayOfWeek.Monday] = (5.0, 5.5),
+        [DayOfWeek.Tuesday] = (5.5, 6.0),
+        [DayOfWeek.Wednesday] = (6.0, 6.5),
+    };
+
+    /// <summary>The star range for <paramref name="day"/>.</summary>
+    public (double Min, double Max) StarsFor(DateOnly day) => Weekly ? WeeklyStars[day.DayOfWeek] : (MinStars, MaxStars);
 
     /// <summary>The rulesets, one per day in turn (e.g. <c>osu</c>, or <c>osu,osu,taiko,osu,osu,catch,mania</c>).</summary>
     public string Rulesets { get; set; } = "osu";
@@ -78,10 +99,11 @@ public sealed class DailyChallengeQueueJob : BackgroundService
         {
             var day = firstDay.AddDays(index);
             var ruleset = _options.RulesetFor(day);
-            if (await challenge.PickMapAsync(ruleset, _options.MinStars, _options.MaxStars, cancellationToken).ConfigureAwait(false) is not { } beatmapId)
+            var (min, max) = _options.StarsFor(day);
+            if (await challenge.PickMapAsync(ruleset, min, max, cancellationToken).ConfigureAwait(false) is not { } beatmapId)
             {
-                _logger.LogWarning("Daily challenge: no unused ranked {Ruleset} map between {Min} and {Max} stars left.",
-                    Discord.DiscordFormat.Ruleset(ruleset), _options.MinStars, _options.MaxStars);
+                _logger.LogWarning("Daily challenge: no unused ranked {Ruleset} map between {Min} and {Max} stars left for {Day}.",
+                    Discord.DiscordFormat.Ruleset(ruleset), min, max, day);
                 break;
             }
             await challenge.EnqueueAsync(beatmapId, ruleset, AllowedMods[ruleset], [], null, cancellationToken).ConfigureAwait(false);

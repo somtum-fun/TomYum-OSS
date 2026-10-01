@@ -192,29 +192,15 @@ public sealed class DiscordAnnouncer : BackgroundService
     }
 
     /// <summary>
-    /// The suspicious-play checks (skipped for whitelisted players); a play they flag is also kept in
-    /// the staff log, where the admin panel reads when anti-cheat last flagged the player.
+    /// The suspicious-play checks, skipped for players on the anti-cheat whitelist. What they flag is
+    /// reported to staff by the watch itself (the reports channel), not again in the staff log.
     /// </summary>
     private async Task WatchAsync(OsuWebCommunity community, ScoreCard score, bool first, CancellationToken cancellationToken)
     {
         using var scope = _scopes.CreateScope();
         var flags = scope.ServiceProvider.GetService<TomYum.Persistence.OsuWeb.OsuWebAccountFlags>();
         var whitelisted = flags is not null && await flags.IsWhitelistedAsync(score.UserId, cancellationToken).ConfigureAwait(false);
-        var reasons = await _watch!.OnScoreAsync(community, score, first, cancellationToken, whitelisted).ConfigureAwait(false);
-        if (reasons.Count == 0 || scope.ServiceProvider.GetService<IStaffLogRepository>() is not { } log)
-            return;
-
-        var summary = string.Create(CultureInfo.InvariantCulture,
-            $"Suspicious play (score {score.ScoreId}): {string.Join("; ", reasons).Replace("**", string.Empty, StringComparison.Ordinal)}");
-        await log.AddAsync(new StaffLogEntry
-        {
-            CreatedAt = _time.GetUtcNow().UtcDateTime,
-            ActorId = BanchoBot.UserId,
-            Action = "anticheat.suspicious",
-            TargetId = score.UserId,
-            Summary = summary.Length > 512 ? summary[..512] : summary,
-            Result = "suspicious",
-        }, cancellationToken).ConfigureAwait(false);
+        await _watch!.OnScoreAsync(community, score, first, cancellationToken, whitelisted).ConfigureAwait(false);
     }
 
     /// <summary>The announcement for a new #1 and/or big play.</summary>

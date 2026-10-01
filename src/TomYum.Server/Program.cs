@@ -120,6 +120,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddSingleton(sp => new LazerPresence(
         sp.GetRequiredService<ILogger<LazerPresence>>(), sp.GetRequiredService<StackExchange.Redis.IConnectionMultiplexer>()));
     builder.Services.AddHostedService<BanchoStatsJob>();
+    // Ranked Play: how often each pool map was played (ppy's spectator reads it but never counts it).
+    builder.Services.AddHostedService<MatchmakingSelectionCounts>();
     // The website's first places (profile "First Place Scores"), which nothing else keeps.
     builder.Services.AddHostedService<OsuWebLeadersJob>();
     // Score cards (Discord) show the star rating with the play's mods.

@@ -44,6 +44,31 @@ public sealed class OsuApiV2ClientTests
         Assert.Null(topicId);
     }
 
+    [Fact]
+    public void Beatmapset_GivesTheCreatorAndEachDifficultysMappers()
+    {
+        using var set = JsonDocument.Parse("""
+        {
+          "id": 950289,
+          "user_id": 999,
+          "creator": "Old Name",
+          "related_users": [{"id": 999, "username": "Mapper"}, {"id": 404, "username": "Guest"}],
+          "beatmaps": [
+            {"id": 1, "user_id": 999, "owners": [{"id": 999, "username": "Mapper"}, {"id": 505, "username": "Collab"}]},
+            {"id": 2, "user_id": 404},
+            {"id": 3, "user_id": 0}
+          ]
+        }
+        """);
+
+        var (creator, mappers) = OsuApiV2Client.ParseMappers(set.RootElement);
+
+        Assert.Equal(new OsuMapper(999, "Mapper"), creator); // named from related_users, not the stored name
+        Assert.Equal([new OsuMapper(999, "Mapper"), new OsuMapper(505, "Collab")], mappers[1]);
+        Assert.Equal([new OsuMapper(404, "Guest")], mappers[2]); // no owners: the difficulty's user_id
+        Assert.False(mappers.ContainsKey(3));
+    }
+
     [Theory]
     [InlineData("[notice][b]Artist:[/b] X[/notice]\n---------------\n[b]Hi![/b] Thanks for playing.\n", "[b]Hi![/b] Thanks for playing.")]
     [InlineData("[notice]header only[/notice]\n---------------\n   \n", null)]

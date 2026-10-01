@@ -56,7 +56,27 @@ public sealed class OsuWebLeaders
     public async Task<ulong> NewestScoreIdAsync(CancellationToken cancellationToken = default) =>
         await _db.Scores.AsNoTracking().MaxAsync(s => (ulong?)s.Id, cancellationToken).ConfigureAwait(false) ?? 0;
 
+    /// <summary>Tries again (a few times) when MySQL picked this as a deadlock's victim or a lock wait ran out.</summary>
+    private const int Attempts = 3;
+
     private async Task SyncCoreAsync(IReadOnlyCollection<(int BeatmapId, int Ruleset)>? maps, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await SyncOnceAsync(maps, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+            catch (MySqlConnector.MySqlException ex) when (attempt < Attempts
+                && ex.ErrorCode is MySqlConnector.MySqlErrorCode.LockDeadlock or MySqlConnector.MySqlErrorCode.LockWaitTimeout)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(200 * attempt), cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private async Task SyncOnceAsync(IReadOnlyCollection<(int BeatmapId, int Ruleset)>? maps, CancellationToken cancellationToken)
     {
         // Only numbers from the pairs are spliced in.
         var only = maps is null
@@ -66,7 +86,9 @@ public sealed class OsuWebLeaders
             ? "1 = 1"
             : "(" + string.Join(" OR ", maps.Select(m => string.Create(CultureInfo.InvariantCulture, $"(beatmap_id = {m.BeatmapId} AND ruleset_id = {m.Ruleset})"))) + ")";
 
-        await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        // READ COMMITTED: the INSERT … SELECT reads the scores without locking them, so it doesn't
+        // deadlock with ppy's score processor writing new ones (it did, now and then, at MySQL's default).
+        await using var transaction = await _db.Database.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, cancellationToken).ConfigureAwait(false);
 #pragma warning disable EF1002 // see above
         await _db.Database.ExecuteSqlRawAsync($"DELETE FROM beatmap_leaders WHERE {target}", cancellationToken).ConfigureAwait(false);
         await _db.Database.ExecuteSqlRawAsync(
