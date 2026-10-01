@@ -14,6 +14,7 @@ The bot gets:
 - the `bot` group as its main group (osu-web's `User::isBot`), so the website shows it as a bot and
   doesn't ask it for plays before posting in the forum;
 - a placeholder email `bot<id>@bots.invalid` (emails are unique; nobody reads a bot's mail);
+- its owner's country;
 - a row in `tomyum_bot_accounts` (owner, who made it, description);
 - an IRC key in `osu_user_ircauth`, which is its IRC password.
 
