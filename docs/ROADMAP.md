@@ -3,7 +3,7 @@
 > **Docs convention.** `docs/` holds the documentation (contributors, operators): one page per
 > feature, plus this checklist.
 
-_Last updated: 2026-09-30. .NET 10; production at sundei.eu (stable, lazer and the website)._
+_Last updated: 2026-10-01. .NET 10; production at sundei.eu (stable, lazer and the website)._
 
 This is the living checklist for the big feature wave requested on 2026-07-07: `.osu` cache →
 plugin host → moderation/HWID → spectating → DAN/Session ports → custom beatmaps → **osu!lazer
@@ -48,6 +48,16 @@ _ABI already exists (`TomYum.Plugins.Abstractions`); ADR-0007 already picks `.dl
       loose shapes + `docs/writing-plugins.md`). It is example code, **not required** by the server, so it
       is **not tracked** in TomYum (a local copy under `templates/` is gitignored). Human docs
       `docs/plugins.md` remain here.
+
+### Plugins in production (2026-10-01)
+_The host works (Phase 1), but the production server runs **0 plugins**: nothing is mounted at
+`/app/plugins`._
+
+- [ ] Mount `deploy/production/plugins/` into the server container and document deploying one
+      (compiled `.dll` or loose `.cs` with `Plugins:AllowLooseSource`).
+- [ ] Decide which to run: the Session plugin (`plugins/tomyum-session`), DAN mode (⏸ above), custom ones.
+- [ ] Publish the remaining hot-path events (`ScoreSubmitting` veto, `SpectateFrame`, `ChatMessage`) as
+      their first consumers land.
 
 ## Phase 2 — Moderation + HWID anti-cheat 🔒 Phase 0 migrations
 _All packet IDs exist (`AccountRestricted=104`, `UserSilenced=94`, `SilenceEnd=92`, `TargetIsSilenced=101`).
@@ -225,6 +235,29 @@ uses its tables. Human doc: `docs/osu-web.md`._
       ranked score and pp match lazer and the profile); stable and lazer plays both get "achieved rank
       #N" activity entries (top 1000) and #1s in `#announce`. 2026-09-29
 
+## Beatmap Nominators & NAT 🔒 (none)
+_Ranking on this server: nominations, qualify, rank and love already work from the discussion page and
+the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
+
+- [ ] **Uploads and updates in activity** — after a stable/lazer submission succeeds, call osu-web's
+      InterOp `broadcast-new` (new set) / `broadcast-update` (new version), so "… has submitted a new
+      beatmap" / "… has updated the beatmap" reach the mapper's Recent activity and Community → Activity.
+      (Rank/qualify/love entries already do; disqualify, nomination reset, unlove and kudosu don't on
+      osu! either.)
+- [ ] **QAT / BN Management** ([pishifat/qat](https://github.com/pishifat/qat), Node 24 + Express + Vue +
+      MongoDB) for BN applications, evaluations, reports, vetoes and qualified-map checks. Fork to
+      `example-org/private-repo`, then:
+  - [ ] Make the server address configurable (about 120 hard-coded `osu.ppy.sh` URLs: OAuth, API v1/v2,
+        profile/map/wiki links) and point it at `osu.<domain>`.
+  - [ ] ⚖️ **Map group ids before anyone logs in.** QAT reads osu!'s ids (BN 28/32, NAT 7, GMT 4, dev 11);
+        here BN = 4, NAT = 11 and 7 is everyone's default group, so unmapped it makes every player NAT
+        and NAT admins.
+  - [ ] Event feed: QAT's map events (nominate/qualify/disqualify/reset/rank) come from the Aiess bot,
+        which watches osu.ppy.sh. Feed it from here instead (a TomYum job pushing `beatmapset_events`).
+  - [ ] Deploy: `qat` + `mongodb` services, a subdomain (e.g. `bn.<domain>`), an OAuth client on
+        osu-web; optional bot account (in-game messages) and Discord webhooks.
+  - [ ] Test with throwaway BN/NAT accounts (application → evaluation → group change), then a doc page.
+
 ## Achievements (medals) 🔒 (none) — done 2026-07-09
 _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are a later Session slice._
 - [x] Catalog in code (`TomYum.Server/Achievements/`): 83 vanilla medals (std combo 500–2000, 11
@@ -248,7 +281,18 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
       alerts by Discord DM to the admin (`watchdog.sh`, paused while `deploy.sh` runs), nightly backups
       (`backup.sh`, kept on the VM; the Proton Drive copy isn't set up), the store says "not available".
       2026-09-29
-- [ ] Redis cross-node online state (multi-instance) — needed before scaling lazer realtime; ADR-0003.
+- [ ] **Scaling out (more than one TomYum)** — today one TomYum instance holds every online player,
+      channel, match and spectator in memory (`PlayerRegistry`), so bancho can't run as several copies
+      behind a load balancer yet. Not needed at today's load (2026-10-01: 4 vCPU/8 GB VM, TomYum ~280 MB,
+      under 3% CPU). In order, when it is:
+  - [ ] Scale up first: bigger VM, MySQL/Elasticsearch tuning, slow-query and request metrics.
+  - [ ] Split what's stateless: `/web/*`, score submission, `/d/*`, assets and the admin API can run as
+        extra replicas behind Caddy (`lb_policy`) as soon as they no longer touch in-memory state.
+  - [ ] Redis cross-node online state (multi-instance) — presence, channels, matches, spectating and
+        per-player packet queues in Redis (pub/sub between nodes); sticky sessions by `osu-token` until
+        then. Needed before scaling lazer realtime too; ADR-0003.
+  - [ ] Background jobs (Discord bot, daily challenge, imports, backfills) on one node only (a Redis lock).
+  - [ ] Shared storage for `.osz`/replays/screenshots across nodes (see storage providers below).
 - [ ] Storage providers multi-target write / single read — needed for Phase 5 upload; ADR-0006.
 - [x] **Anticheat** — circleguard (sundeiii/lazer-circleguard, C#) checks every ranked pass, stable and
       lazer, incl. against osu!'s top replays (docs/anticheat.md). 2026-09-29
