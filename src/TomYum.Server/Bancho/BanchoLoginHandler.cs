@@ -263,6 +263,11 @@ public sealed class BanchoLoginHandler
                 if (channel.AutoJoin)
                 {
                     ChatEncoder.WriteChannelAutoJoin(w, channel.Name, channel.Topic, channel.MemberCount);
+                    // Today's client answers "auto-join" by joining (and gets JOIN_SUCCESS); an old build
+                    // (docs/old-clients.md) shows the tab but never asks, so its chat stays on
+                    // "Connecting...". It's already in the channel (above): tell it so.
+                    if (player.Build.IsLegacy && player.Channels.Contains(channel.Name))
+                        ChatEncoder.WriteChannelJoinSuccess(w, channel.Name);
                 }
                 else
                 {
