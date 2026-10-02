@@ -74,6 +74,10 @@ public static class AdminEndpoints
         admin.MapGet("/log", async (IStaffLogRepository log, string? action, long? targetId, string? jobId, long? before, int? limit, CancellationToken cancellationToken) =>
             Results.Ok(await log.ListAsync(new StaffLogQuery(action, targetId, jobId, before, limit ?? 50), cancellationToken).ConfigureAwait(false)));
         admin.MapPost("/log", AppendLogAsync);
+        // Maintenance mode and in-game alerts (the admin panel).
+        admin.MapGet("/maintenance", (Maintenance maintenance) => Results.Ok(MaintenanceJson(maintenance)));
+        admin.MapPost("/maintenance", SetMaintenanceAsync);
+        admin.MapPost("/alert", SendAlertAsync);
 
         // Moderation (GMT/Admin panels).
         admin.MapPost("/users/{userId:int}/refresh", async (int userId, UserModerationSync sync, CancellationToken cancellationToken) =>
@@ -165,6 +169,40 @@ public static class AdminEndpoints
         return int.TryParse(context.Items[AdminAuthFilter.ActorItemKey] as string, NumberStyles.Integer, CultureInfo.InvariantCulture, out var id)
             ? id
             : 0;
+    }
+
+    private static object MaintenanceJson(Maintenance maintenance) => new
+    {
+        enabled = maintenance.State.Enabled,
+        locked = maintenance.IsLocked,
+        message = maintenance.State.Message,
+        notice = maintenance.Notice,
+        startsAt = maintenance.State.StartsAt,
+        since = maintenance.State.Since,
+        byUserId = maintenance.State.ByUserId,
+    };
+
+    private static async Task<IResult> SetMaintenanceAsync(MaintenanceRequest request, Maintenance maintenance, HttpContext context, CancellationToken cancellationToken)
+    {
+        if (request.Enabled)
+        {
+            var delay = TimeSpan.FromSeconds(Math.Clamp(request.DelaySeconds ?? 0, 0, 24 * 60 * 60));
+            await maintenance.StartAsync(request.Message is { Length: > 500 } long_ ? long_[..500] : request.Message, delay, ActorId(context), cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await maintenance.StopAsync(ActorId(context)).ConfigureAwait(false);
+        }
+        return Results.Ok(MaintenanceJson(maintenance));
+    }
+
+    private static async Task<IResult> SendAlertAsync(AlertRequest request, Maintenance maintenance, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Message))
+            return Results.BadRequest(new { error = "Write a message." });
+        var text = request.Message.Trim();
+        var reached = await maintenance.AlertAsync(text.Length > 500 ? text[..500] : text, request.Lazer ?? true, cancellationToken).ConfigureAwait(false);
+        return Results.Ok(new { reached });
     }
 
     private static async Task<IResult> AppendLogAsync(StaffLogRequest request, IStaffLogRepository log, TimeProvider time, HttpContext context, CancellationToken cancellationToken)
@@ -310,3 +348,9 @@ public static class AdminEndpoints
         return Results.Accepted($"/_admin/beatmapsets/import-jobs/{job.Id}", job);
     }
 }
+
+/// <summary>POST /maintenance: on (with a message and a countdown in seconds) or off.</summary>
+public sealed record MaintenanceRequest(bool Enabled, string? Message, int? DelaySeconds);
+
+/// <summary>POST /alert: an in-game alert (and, unless <c>Lazer</c> is false, a BanchoBot message to lazer players).</summary>
+public sealed record AlertRequest(string? Message, bool? Lazer);

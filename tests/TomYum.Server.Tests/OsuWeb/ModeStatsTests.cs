@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
@@ -66,7 +67,7 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
 
         async Task<string> List(string type, int offset = 0, int limit = 5, bool fails = false)
         {
-            var json = await Body(await AdminModeScoresEndpoints.GetAsync(1, 4, type, offset, limit, fails, NewTomYumContext(), new RestrictedUsers(), TimeProvider.System, CancellationToken.None));
+            var json = await Body(await AdminModeScoresEndpoints.GetAsync(1, 4, type, offset, limit, fails, NewTomYumContext(), new RestrictedUsers(), TimeProvider.System, new ConfigurationBuilder().Build(), CancellationToken.None));
             return json.GetProperty("total").GetInt32() + ": " + string.Join(",", json.GetProperty("scores").EnumerateArray().Select(s => s.GetProperty("beatmapId").GetInt64()));
         }
 

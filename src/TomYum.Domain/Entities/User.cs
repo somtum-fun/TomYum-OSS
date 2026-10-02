@@ -77,6 +77,19 @@ public sealed class User
     /// </summary>
     public DateTimeOffset? SilenceEndUtc { get; init; }
 
+    /// <summary>
+    /// A bot account (osu-web's <c>bot</c> group, made from the admin panel): it chats over IRC and may
+    /// use the website, but can't log in to the game (stable or lazer) or submit scores. Only known in
+    /// osu-web mode.
+    /// </summary>
+    public bool IsBot { get; init; }
+
+    /// <summary>
+    /// Deleted from the admin panel (osu-web's banned account type): can't log in, isn't ranked, but
+    /// isn't restricted (its scores stay on leaderboards). Only known in osu-web mode.
+    /// </summary>
+    public bool IsDeleted { get; init; }
+
     // TODO: donor end, clan, preferred mode, play style.
 
     /// <summary>

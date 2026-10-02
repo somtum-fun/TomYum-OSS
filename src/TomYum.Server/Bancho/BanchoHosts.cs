@@ -2,7 +2,7 @@ namespace TomYum.Server.Bancho;
 
 /// <summary>
 /// Builds the host-header patterns the osu!stable client uses, from the configured public
-/// domain. Stable splits its surface across subdomains: <c>c.</c>/<c>c4.</c>/<c>ce.</c>/
+/// domain. Stable splits its surface across subdomains: <c>c.</c>/<c>c1.</c>–<c>c6.</c>/<c>ce.</c>/
 /// <c>cho.</c> carry the bancho binary protocol, while <c>osu.</c> serves the <c>/web/*</c>
 /// surface and in-game registration. See <c>memories/protocols/bancho-stable.md</c> §1.
 /// </summary>
@@ -21,7 +21,7 @@ public static class BanchoHosts
     public const string DefaultDomain = "example.com";
 
     /// <summary>Bancho subdomain labels (binary protocol hosts).</summary>
-    private static readonly string[] BanchoLabels = ["c", "c4", "ce", "cho"];
+    private static readonly string[] BanchoLabels = ["c", "c1", "c2", "c3", "c4", "c5", "c6", "ce", "cho"];
 
     /// <summary>Host patterns that serve the bancho binary protocol for <paramref name="domain"/>.</summary>
     public static string[] Bancho(string domain) =>

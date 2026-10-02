@@ -60,6 +60,47 @@ public sealed class BanEvasionTests
     }
 
     [Fact]
+    public async Task BotAccount_IsRefused_WithTheIrcNotice()
+    {
+        var (handler, registry, users, _) = NewLogin();
+        var hasher = new BcryptPasswordHasher();
+        var bot = await users.AddAsync(new User
+        {
+            Username = "HelperBot",
+            Email = "bot@bots.invalid",
+            PasswordBcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("password")),
+            IsBot = true,
+        });
+
+        var outcome = await LogInAsync(handler, "HelperBot", AdaptersA, UninstallA, DiskA);
+
+        Assert.Null(outcome.Token);
+        Assert.Null(registry.GetByUserId(bot.Id));
+        Assert.Equal(BanchoLoginHandler.BotNotice, Notice(outcome.Body));
+        Assert.Equal(-1, UserIdPacket(outcome.Body));
+    }
+
+    [Fact]
+    public async Task DeletedAccount_IsRefused_WithTheNotice()
+    {
+        var (handler, registry, users, _) = NewLogin();
+        var hasher = new BcryptPasswordHasher();
+        var gone = await users.AddAsync(new User
+        {
+            Username = "DeletedUser_99",
+            Email = string.Empty,
+            PasswordBcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("password")),
+            IsDeleted = true,
+        });
+
+        var outcome = await LogInAsync(handler, "DeletedUser_99", AdaptersA, UninstallA, DiskA);
+
+        Assert.Null(outcome.Token);
+        Assert.Null(registry.GetByUserId(gone.Id));
+        Assert.Equal(BanchoLoginHandler.DeletedNotice, Notice(outcome.Body));
+    }
+
+    [Fact]
     public async Task NewAccount_SharingWithAnUnrestrictedPlayer_GetsIn_AndIsVerified()
     {
         var (handler, _, users, hashes) = NewLogin();

@@ -52,6 +52,8 @@ public sealed class BanchoLoginHandler
     private readonly TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? _privateMessages;
     private readonly TomYum.Persistence.OsuWeb.OsuWebClientVerification? _clientVerification;
     private readonly TomYum.Persistence.OsuWeb.OsuWebAccountFlags? _accountFlags;
+    private readonly TomYum.Server.Admin.RestrictionNotices? _restrictionNotices;
+    private readonly TomYum.Server.Admin.Maintenance? _maintenance;
 
     /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
     public const int UnreadLimit = 50;
@@ -61,6 +63,12 @@ public sealed class BanchoLoginHandler
 
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
+
+    /// <summary>Shown to a deleted account (the admin panel's Delete).</summary>
+    public const string DeletedNotice = "This account has been deleted.";
+
+    /// <summary>Shown to a bot account trying the game: bots chat over IRC (port 6667) instead.</summary>
+    public const string BotNotice = "Bot accounts can't log in to the game. Connect over IRC instead.";
 
     /// <summary>
     /// The staff log action for an account that got in earlier and now logs in from the machine of a
@@ -85,8 +93,12 @@ public sealed class BanchoLoginHandler
         TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? privateMessages = null,
         Microsoft.Extensions.Options.IOptions<ClientVerificationOptions>? clientVerificationOptions = null,
         TomYum.Persistence.OsuWeb.OsuWebClientVerification? clientVerification = null,
-        TomYum.Persistence.OsuWeb.OsuWebAccountFlags? accountFlags = null)
+        TomYum.Persistence.OsuWeb.OsuWebAccountFlags? accountFlags = null,
+        TomYum.Server.Admin.RestrictionNotices? restrictionNotices = null,
+        TomYum.Server.Admin.Maintenance? maintenance = null)
     {
+        _maintenance = maintenance;
+        _restrictionNotices = restrictionNotices;
         _accountFlags = accountFlags;
         _clientVerification = clientVerificationOptions?.Value.Enabled == true ? clientVerification : null;
         _friends = friends;
@@ -139,12 +151,37 @@ public sealed class BanchoLoginHandler
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
         }
 
+        // Deleted from the admin panel: no logins (it isn't a restriction, which still lets them play).
+        if (user.IsDeleted)
+        {
+            _logger.LogInformation("Login refused: {Username} (id {UserId}) is deleted.", user.Username, user.Id);
+            await RecordLoginAsync(user.Id, "deleted", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, DeletedNotice), null);
+        }
+
+        // Bot accounts (the admin panel's bots) chat over IRC; the game is for players. BanchoBot
+        // never logs in here.
+        if (user.IsBot)
+        {
+            _logger.LogInformation("Login refused: {Username} (id {UserId}) is a bot account.", user.Username, user.Id);
+            await RecordLoginAsync(user.Id, "bot", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, BotNotice), null);
+        }
+
         // Locked by staff (the admin panel): no logins anywhere until unlocked.
         if (_accountFlags is not null && await _accountFlags.IsLockedAsync(user.Id, cancellationToken).ConfigureAwait(false))
         {
             _logger.LogInformation("Login refused: {Username} (id {UserId}) is locked.", user.Username, user.Id);
             await RecordLoginAsync(user.Id, "locked", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, LockedNotice), null);
+        }
+
+        // Maintenance (the admin panel): only staff get in. "Server error" makes stable keep
+        // reconnecting, so players are back on their own once it's over.
+        if (_maintenance?.IsLocked == true && !ModerationCommands.IsStaff(user.Privileges))
+        {
+            _logger.LogInformation("Login held: {Username} (id {UserId}); maintenance.", user.Username, user.Id);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.ServerError, _maintenance.Notice), null);
         }
 
         // Hardware hashes: recorded for every login; an account's first login is refused when the
@@ -272,6 +309,11 @@ public sealed class BanchoLoginHandler
             "Login ok: {Username} (id {UserId}) on {Version}; {Online} online.",
             user.Username, user.Id, request.OsuVersion, _registry.Count);
         await RecordLoginAsync(user.Id, "ok", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+
+        // A restriction (or its end) they haven't been told about, e.g. it happened while they were
+        // away: BanchoBot's PM arrives with their first update.
+        if (_restrictionNotices is not null && !tournament)
+            await _restrictionNotices.NotifyAsync(user.Id, user.Username, user.IsRestricted, cancellationToken).ConfigureAwait(false);
 
         return new LoginOutcome(responseBody, player.Token);
     }

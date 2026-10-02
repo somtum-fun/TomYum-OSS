@@ -1,3 +1,5 @@
 .env
 tomyum.env
 osu-web.env
+qat-config.json
+qat-webhooks.json

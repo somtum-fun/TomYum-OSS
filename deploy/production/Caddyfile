@@ -39,7 +39,7 @@
 }
 
 # Game endpoints (bancho, beatmap assets, medal icons).
-http://c.{$DOMAIN}, http://ce.{$DOMAIN}, http://c4.{$DOMAIN}, http://cho.{$DOMAIN}, http://b.{$DOMAIN}, http://assets.{$DOMAIN} {
+http://c.{$DOMAIN}, http://c1.{$DOMAIN}, http://c2.{$DOMAIN}, http://c3.{$DOMAIN}, http://c4.{$DOMAIN}, http://c5.{$DOMAIN}, http://c6.{$DOMAIN}, http://ce.{$DOMAIN}, http://cho.{$DOMAIN}, http://b.{$DOMAIN}, http://assets.{$DOMAIN} {
 	request_body {
 		max_size 20MB
 	}

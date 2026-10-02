@@ -17,8 +17,15 @@ public static class OsuWebAccounts
     /// <summary><c>phpbb_users.user_type</c> of a banned account (osu-web <c>User::isBanned</c>).</summary>
     public const sbyte BannedUserType = 1;
 
-    /// <summary>osu-web's <c>User::isRestricted</c>: banned, or any warning.</summary>
-    public static bool IsRestricted(sbyte userType, bool userWarnings) => userType == BannedUserType || userWarnings;
+    /// <summary>
+    /// Restricted by staff (osu-web's <c>user_warnings</c>). A deleted account (the banned account type,
+    /// the admin panel's Delete) isn't restricted: its scores stay on leaderboards, it just can't log in
+    /// and isn't ranked.
+    /// </summary>
+    public static bool IsRestricted(sbyte userType, bool userWarnings) => userWarnings;
+
+    /// <summary>Deleted from the admin panel (osu-web's banned account type): no logins, not ranked.</summary>
+    public static bool IsDeleted(sbyte userType) => userType == BannedUserType;
 
     /// <summary>
     /// End of a silence that started at <paramref name="start"/> for <paramref name="periodSeconds"/>,

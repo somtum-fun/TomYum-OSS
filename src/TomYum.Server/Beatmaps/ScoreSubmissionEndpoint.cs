@@ -129,6 +129,12 @@ public static class ScoreSubmissionEndpoint
             return Results.Text("error: no", "text/plain");
         }
 
+        if (user.IsBot)
+        {
+            logger.LogWarning("Score submission rejected: '{Username}' is a bot account", usernameFromScore);
+            return Results.Text("error: no", "text/plain");
+        }
+
         var player = registry.GetByUserId(user.Id);
 
         if (!int.TryParse(parts[3], out var n300) ||
