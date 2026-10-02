@@ -106,6 +106,9 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
         Assert.Equal(2, byScore.GetProperty("userScore").GetProperty("position").GetInt32());
         Assert.True(byScore.GetProperty("scores")[1].GetProperty("score").GetProperty("hasReplay").GetBoolean());
         Assert.False(byScore.GetProperty("scores")[0].GetProperty("score").GetProperty("hasReplay").GetBoolean());
+        // The lazer play carries its website score id (its replay's id); the stable one has none.
+        Assert.Equal(77UL, byScore.GetProperty("scores")[1].GetProperty("score").GetProperty("osuWebScoreId").GetUInt64());
+        Assert.Equal(JsonValueKind.Null, byScore.GetProperty("scores")[0].GetProperty("score").GetProperty("osuWebScoreId").ValueKind);
     }
 
     [MySqlFact]
