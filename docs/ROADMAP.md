@@ -324,27 +324,30 @@ What the research found:
   from vv=4); also `osu-stat.php`/`osu-statoth.php`, `osu-checktweets.php`, `check-updates.php` (`[]`),
   and `osu-search.php` taking the password as `c`.
 
-Plan (each step committed and tested on its own; the local stack first, a 2014 build as the test client):
-- [ ] **0. Reachable on plain HTTP:** Caddy answers the old hosts on `http://` too, without redirecting;
-      Cloudflare's "Always Use HTTPS" off for them; DNS + tunnel hostnames for every host the builds use
-      (`osu.`, `c.`, `c1.`–`c6.`, `ce.`, `a.`, `b.`, `s.`, `i.`; some exist). Log which hosts and endpoints
-      an old build calls (`misses.sh`).
-- [ ] **1. Version detection:** read the build date from the login's version string (`b20140115`,
-      `…cuttingedge`), keep it on the session (`OnlinePlayer`), pick protocol 18 or 19 and send it in
-      packet 75; accept the older client-info lines. Old builds log in, see the menu and chat.
-- [ ] **2. Outgoing translation:** one place that adapts frames for an old session before they're sent
-      (`BanchoEndpoints` and the login reply): drop packets the build doesn't know, cap stats pp, cut
-      matches to 8 slots, rewrite spectator/match score frames without the newer fields.
-- [ ] **3. Incoming translation:** old match structures (8 slots) and frames from old clients, so
-      multiplayer and spectating work both ways between old and new clients.
-- [ ] **4. Old web endpoints:** `osu-submit-modular.php` onto today's score submission (same leaderboards,
-      pp, medals, anti-cheat), getscores by `vv`, replays, osu!direct, `osu-stat`, beatmap status mapping.
+Plan (each step committed and tested on its own; the local stack first, a 2014 build as the test client).
+Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what works.
+- [~] **0. Reachable on plain HTTP:** done locally (`Caddyfile.local`: the game's hosts on `http://`
+      without redirecting, `c1.`–`c6.`, `s.`) and in the production Caddyfile. On sundei.eu still:
+      Cloudflare's "Always Use HTTPS" off (or a rule for the game's hosts), DNS + tunnel hostnames for
+      `c1.`–`c3.`, `c5.`, `c6.`, `s.`.
+- [~] **1. Version detection:** the build is kept on the session (`ClientBuild`). b20140624 logs in with
+      today's client-info line and works with protocol 19 as sent today; picking 18 for older builds
+      waits until one is tested.
+- [~] **2. Outgoing translation:** not needed for b20140624 (it reads today's packets, 16-slot matches
+      included). Dropping unknown packets, capping pp and 8-slot matches wait for an older build that needs them.
+- [~] **3. Incoming translation:** frames in the older layout get today's fields (`LegacyFrames`);
+      b20140624 already sends today's layout. Multiplayer and spectating today's client: untested (needs
+      a second PC).
+- [x] **4. Old web endpoints:** `osu-submit-modular.php` (same leaderboards, pp, medals), getscores by
+      `vv`, osu!direct downloads and thumbnails passed through (no TLS 1.2), medal images on `s.`, update
+      checks. Replays (`osu-getreplay`) and `osu-stat` not seen from b20140624 yet. 2026-10-02
 - [ ] **5. Rules check for shared leaderboards:** std score v1 is unchanged; check taiko/mania/catch
       before they share boards; ScoreV2 and newer mods simply aren't available to old builds.
 - [ ] **6. Anti-cheat and verification:** old builds send the same client hashes (exe md5, adapters,
       uninstall id, disk) — keep ban-evasion; decide on device verification and circleguard for them.
-- [ ] **7. Production:** the hosts and HTTP settings on sundei.eu, a `docs/old-clients.md` page (Hook
-      setup, supported builds), then test build by build towards 2013.
+- [~] **7. Production:** `docs/old-clients.md` (player setup with `Titanic.fallback.exe`, supported
+      builds) and the production Caddyfile done; deploy and the Cloudflare settings next, then test
+      multiplayer with a second player and go build by build towards 2013.
 - [ ] Later: TCP builds (2013 and older) if a TCP port can be exposed; older eras.
 
 ## Bot accounts 🔒 (none) — done 2026-10-01
