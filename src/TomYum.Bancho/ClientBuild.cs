@@ -43,6 +43,29 @@ public sealed partial record ClientBuild(string Version, DateOnly? Date)
     /// <summary>Whether this build's spectator frame bundles end with a sequence number (today's do).</summary>
     public bool HasFrameSequence => Date is not { } date || date >= FrameSequenceFrom;
 
+    /// <summary>Multiplayer rooms have 16 slots from this build on (with protocol 19, which TomYum sends); 8 before.</summary>
+    public static readonly DateOnly SixteenSlotsFrom = new(2014, 5, 28);
+
+    /// <summary>How many slots this build's multiplayer rooms have (Lekuruu's chio, b20140528).</summary>
+    public int MatchSlots => Date is { } date && date < SixteenSlotsFrom ? 8 : 16;
+
+    /// <summary>
+    /// Whether this build knows server packet <paramref name="id"/>: ones added after 2013 (Lekuruu's
+    /// chio: b20140716, b20140731, b20141104) would be misread by older builds, so they aren't sent.
+    /// </summary>
+    public bool Knows(ServerPacketId id)
+    {
+        if (Date is not { } date)
+            return true;
+        return id switch
+        {
+            ServerPacketId.AccountRestricted => date >= new DateOnly(2014, 7, 16),
+            (ServerPacketId)105 => date >= new DateOnly(2014, 7, 31), // RTX
+            ServerPacketId.MatchAbort or ServerPacketId.SwitchTournamentServer => date >= new DateOnly(2014, 11, 4),
+            _ => true,
+        };
+    }
+
     [GeneratedRegex(@"^b(?<date>\d{8})", RegexOptions.CultureInvariant)]
     private static partial Regex DatePattern();
 }

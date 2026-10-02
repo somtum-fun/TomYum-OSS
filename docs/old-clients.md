@@ -53,6 +53,11 @@ Sign out of a real osu! account in that client first: its login is sent to this 
 - **Chat.** At login an old build is told it's in the auto-join channels (`#osu`, `#announce`):
   it shows their tabs but, unlike today's client, never asks to join them, so its chat input
   stayed on "Connecting...".
+- **Per-build packets** (`LegacyPackets`, after Lekuruu's [chio](https://github.com/Lekuruu/chio.py),
+  MIT, one file per build where the protocol changed): packets a build doesn't know are left out
+  (104 account restricted before b20140716, 105 before b20140731, 106 match abort and 107 before
+  b20141104), and builds before b20140528 get and send multiplayer rooms with 8 slots instead of 16
+  (slots past 8 are dropped for them; their rooms get the other 8 locked).
 - **Diagnostics.** The server log names each packet type the first time it goes to or comes from
   an old build's session (`LegacyPacketLog`): that's how the chat problem showed.
 - **Downloads and thumbnails.** .NET 2.0 has no TLS 1.2, so these clients can't follow the usual
