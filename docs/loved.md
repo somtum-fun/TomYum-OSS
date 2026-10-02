@@ -71,8 +71,8 @@ Set each mode's voting threshold under Manage → Settings ("default voting thre
 first round: it starts at 0%, which passes every map.
 
 Forum rules that apply: the Project Loved team and the staff can post there however much they've
-played (`tomyum.loved_forum_id`); voting in a poll needs `FORUM_POST_MINIMUM_PLAYS` plays (200 by
-default, as on osu!).
+played (`tomyum.loved_forum_id`); voting in a poll needs `FORUM_POST_MINIMUM_PLAYS` plays (5 here, in
+`osu-web.env`; 200 on osu!).
 
 ## Left out
 
