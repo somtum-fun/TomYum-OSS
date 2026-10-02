@@ -59,8 +59,15 @@ public sealed record LoginRequest(
         }
 
         // osu_version|utc_offset|display_city|client_hashes|pm_private
+        //
+        // Only osu_version and utc_offset are guaranteed on all supported eras — osu! stable's
+        // b20121030 and friends only send the first four pipe fields (no pm_private), and the
+        // very oldest supported builds (pre-b1661) send no client_hashes either. Everything
+        // after utc_offset is tolerated so old clients still log in; missing hashes become
+        // blank <see cref="ClientHashes"/>, which <see cref="Services.ClientHashMatch"/>
+        // already treats as unusable (no false multi-account matches).
         var info = lines[2].Split('|');
-        if (info.Length < 5)
+        if (info.Length < 2)
         {
             return false;
         }
@@ -70,9 +77,14 @@ public sealed record LoginRequest(
             return false;
         }
 
-        if (!ClientHashes.TryParse(info[3], out var hashes))
+        var city = info.Length > 2 ? info[2] : string.Empty;
+        var hashesRaw = info.Length > 3 ? info[3] : string.Empty;
+        var pmRaw = info.Length > 4 ? info[4] : string.Empty;
+
+        ClientHashes? hashes;
+        if (hashesRaw.Length == 0 || !ClientHashes.TryParse(hashesRaw, out hashes) || hashes is null)
         {
-            return false;
+            hashes = new ClientHashes(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty);
         }
 
         request = new LoginRequest(
@@ -80,9 +92,9 @@ public sealed record LoginRequest(
             PasswordMd5: passwordMd5,
             OsuVersion: info[0],
             UtcOffset: utcOffset,
-            DisplayCity: info[2] == "1",
-            ClientHashes: hashes!,
-            PmPrivate: info[4].StartsWith('1'));
+            DisplayCity: city == "1",
+            ClientHashes: hashes,
+            PmPrivate: pmRaw.StartsWith('1'));
         return true;
     }
 }
