@@ -222,6 +222,9 @@ public sealed class CustomBeatmapImporter
     {
         var now = _time.GetUtcNow();
         var first = package.Maps[0].File;
+        // Read before the maps are mirrored: their new status takes the set out of the graveyard.
+        var revived = existing.Count > 0 && _website is not null
+            && await _website.IsGraveyardedAsync(setId, cancellationToken).ConfigureAwait(false);
         await _store.SaveAsync(setId, archive, package.Background, package.Preview, cancellationToken).ConfigureAwait(false);
 
         var maps = ids.Select(m => (m.Map, Beatmap: ToBeatmap(m.Map.File, m.Id, setId, OsuFileText.Md5(m.Bytes), package.HasStoryboardFile, target, now), m.Bytes)).ToList();
@@ -277,7 +280,7 @@ public sealed class CustomBeatmapImporter
         }
 
         _resolver?.Remember(maps.Select(m => m.Beatmap));
-        await FinishOnWebsiteAsync(setId, ownerId, uploaderId, existing.Count > 0, difficulties.Select(d => d.BeatmapId).ToList(), archive.Length, first, guests, cancellationToken).ConfigureAwait(false);
+        await FinishOnWebsiteAsync(setId, ownerId, uploaderId, existing.Count > 0, revived, difficulties.Select(d => d.BeatmapId).ToList(), archive.Length, first, guests, cancellationToken).ConfigureAwait(false);
         return new CustomUploadResult(setId, first.Get("Metadata", "Artist") ?? string.Empty, first.Get("Metadata", "Title") ?? string.Empty,
             first.Get("Metadata", "Creator") ?? string.Empty, ownerId, existing.Count > 0, difficulties);
     }
@@ -320,7 +323,7 @@ public sealed class CustomBeatmapImporter
     }
 
     private async Task FinishOnWebsiteAsync(
-        int setId, int ownerId, int uploaderId, bool updated, IReadOnlyCollection<int> beatmapIds, long size, OsuFileText first,
+        int setId, int ownerId, int uploaderId, bool updated, bool revived, IReadOnlyCollection<int> beatmapIds, long size, OsuFileText first,
         IReadOnlyDictionary<int, int> guests, CancellationToken cancellationToken)
     {
         if (_website is not null)
@@ -341,10 +344,13 @@ public sealed class CustomBeatmapImporter
                 _logger.LogWarning(ex, "Uploaded beatmap set {SetId} but osu-web search indexing failed.", setId);
             }
 
-            // "… has submitted a new beatmap" / "… has updated the beatmap" in activity, as on osu!.
+            // "… has submitted a new beatmap" / "… has been revived from eternal slumber" / "… has updated
+            // the beatmap" in activity, as on osu!.
             try
             {
-                if (updated)
+                if (revived)
+                    await _interop.BroadcastRevivedBeatmapsetAsync(setId, cancellationToken).ConfigureAwait(false);
+                else if (updated)
                     await _interop.BroadcastUpdatedBeatmapsetAsync(setId, uploaderId, cancellationToken).ConfigureAwait(false);
                 else
                     await _interop.BroadcastNewBeatmapsetAsync(setId, cancellationToken).ConfigureAwait(false);

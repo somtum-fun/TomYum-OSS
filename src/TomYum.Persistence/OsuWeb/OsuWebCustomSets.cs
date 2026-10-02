@@ -24,6 +24,16 @@ public sealed class OsuWebCustomSets
         return owner.Count == 0 ? null : (int)owner[0];
     }
 
+    /// <summary>Whether the set is in the graveyard on the website (false when it isn't there).</summary>
+    public async Task<bool> IsGraveyardedAsync(int setId, CancellationToken cancellationToken = default)
+    {
+        var approved = await _db.Database
+            .SqlQuery<int>($"SELECT approved AS Value FROM osu_beatmapsets WHERE beatmapset_id = {setId} AND deleted_at IS NULL")
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return approved is [-2];
+    }
+
     /// <summary>
     /// Finishes an upload the mirror has written: <paramref name="ownerId"/> owns the set, the cover
     /// is marked as updated (or absent), and difficulties of the set not in <paramref name="beatmapIds"/>

@@ -111,6 +111,18 @@ public sealed class OsuWebInterop
     }
 
     /// <summary>
+    /// A graveyarded set brought back by a new version (<c>POST /_lio/beatmapsets/{set}/broadcast-revive</c>):
+    /// the mapper's followers are notified and "… has been revived from eternal slumber by …" goes into activity.
+    /// </summary>
+    public async Task BroadcastRevivedBeatmapsetAsync(int beatmapsetId, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostAsync(
+            string.Create(CultureInfo.InvariantCulture, $"/_lio/beatmapsets/{beatmapsetId}/broadcast-revive?create_event=1"), cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
     /// A new version of a set (<c>POST /_lio/beatmapsets/{set}/broadcast-update</c>): "… has updated the
     /// beatmap" in activity, by <paramref name="userId"/> (who uploaded it, not necessarily its mapper).
     /// </summary>

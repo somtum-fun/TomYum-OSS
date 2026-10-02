@@ -105,6 +105,9 @@ public class OsuWebMedalsTests
         await interop.BroadcastNewBeatmapsetAsync(10000000);
         Assert.StartsWith("/_lio/beatmapsets/10000000/broadcast-new?create_event=1&timestamp=", handler.Request!.RequestUri!.PathAndQuery, StringComparison.Ordinal);
 
+        await interop.BroadcastRevivedBeatmapsetAsync(10000000);
+        Assert.StartsWith("/_lio/beatmapsets/10000000/broadcast-revive?create_event=1&timestamp=", handler.Request!.RequestUri!.PathAndQuery, StringComparison.Ordinal);
+
         await interop.BroadcastUpdatedBeatmapsetAsync(10000000, 5);
         Assert.StartsWith("/_lio/beatmapsets/10000000/broadcast-update?user_id=5&timestamp=", handler.Request!.RequestUri!.PathAndQuery, StringComparison.Ordinal);
         Assert.Equal(HttpMethod.Post, handler.Request.Method);

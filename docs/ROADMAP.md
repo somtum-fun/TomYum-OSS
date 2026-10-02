@@ -28,8 +28,9 @@ _Before `1.0.0`: TomYum should run anyone's server without this one's choices ba
       wording, Relax/Autopilot pp source, custom medals) behind plugins or settings, the core generic.
 - [ ] No server-specific names or addresses in code, docs or defaults (domains, emails, branding);
       everything from configuration, with examples.
-- [ ] Clean-up: dead code and leftovers (`TomYum.Caching/PlaceHolder.cs`, unused `Storage` stubs until
-      implemented), consistent naming, warnings in the test projects.
+- [ ] Clean-up: dead code and leftovers (unused `Storage` stubs until implemented, the `TomYum.Lazer`
+      placeholder project), consistent naming. Done 2026-10-02: `TomYum.Caching/PlaceHolder.cs` removed,
+      the test projects build without warnings.
 - [ ] Docs for operators (install, upgrade, backup, every setting) and contributors (architecture,
       plugin API), a changelog per version, a licence review of what's bundled.
 - [ ] Security review (admin API signing, InterOp, uploads, OAuth), and the open items above that
@@ -265,8 +266,8 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
       (new version, by the uploader), so "… has submitted a new beatmap" / "… has updated the beatmap"
       reach the mapper's Recent activity and Community → Activity. (Rank/qualify/love entries already do;
       disqualify, nomination reset, unlove and kudosu don't on osu! either.) 2026-10-02
-  - [ ] Reviving a graveyarded set: osu!'s "revived from eternal slumber" entry (`broadcast-revive`)
-        instead of "updated".
+  - [x] Reviving a graveyarded set: osu!'s "… has been revived from eternal slumber by …" entry
+        (`broadcast-revive`, followers notified) instead of "updated". 2026-10-02
 - [x] **Nomination workflow verified live** (2026-10-01) with throwaway BN, probationary BN, NAT and Loved
       accounts on an imported set: hype gate, nominate ×2 → qualified, NAT problem → disqualify (and the
       game follows each step), unresolved problems block nominating, qualified → ranked by `modding:rank`,
@@ -341,7 +342,7 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
       group roles, staff user/server log channels. 2026-09-28.
 - [x] **Operations** (sundei.eu): mail through Proton (`osu@sundei.eu`, email verification on), downtime
       alerts by Discord DM to the admin (`watchdog.sh`, paused while `deploy.sh` runs), nightly backups
-      (`backup.sh`, kept on the VM; the Proton Drive copy isn't set up), the store says "not available".
+      (`backup.sh`, kept on the VM; ⏸ no off-site copy, by decision 2026-10-02), the store says "not available".
       2026-09-29
 - [ ] **Scaling up and out** — today one TomYum instance holds every online player, channel, match and
       spectator in memory (`PlayerRegistry`, `ChannelRegistry`, `MatchRegistry`), so bancho can't run as
@@ -349,7 +350,7 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
       unknown there). Not needed at today's load (2026-10-01: 4 vCPU/8 GB VM, TomYum ~280 MB, under 3%
       CPU); a few hundred daily players fit one VM. Stages, in order — stop at the first that's enough:
   - [ ] **Always:** monitoring (CPU/RAM/disk, slow requests, to Discord like `watchdog.sh`) to know *what*
-        to scale (usually MySQL/Elasticsearch, not bancho); off-site backups (`backup.sh` keeps them on the VM).
+        to scale (usually MySQL/Elasticsearch, not bancho). (Off-site backups: ⏸ skipped, 2026-10-02.)
   - [ ] **1. Scale up:** bigger VM (8/16, then 16/32), NVMe; more osu-web PHP workers, MySQL buffer pool,
         Elasticsearch heap. No code changes.
   - [ ] **2. Split the stack (config only):** MySQL + Redis on their own VM or managed (DigitalOcean
@@ -387,7 +388,7 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
   - [ ] Same bucket for the rest of the stack, which already supports S3: osu-web uploads (`S3_*`) and
         tomyum-spectator's lazer replays.
 - [x] **Config audit** (2026-10-01): every setting in TomYum's option classes is read somewhere, except
-      `Storage:*` (above). `src/TomYum.Caching/PlaceHolder.cs` is an empty leftover.
+      `Storage:*` (above). (`src/TomYum.Caching/PlaceHolder.cs`, an empty leftover, removed 2026-10-02.)
 - [x] **Anticheat** — circleguard (sundeiii/lazer-circleguard, C#) checks every ranked pass, stable and
       lazer, incl. against osu!'s top replays (docs/anticheat.md). 2026-09-29
 - [x] **IRC server** (docs/irc.md): port 6667, passwords from BanchoBot's `!irc`, the game's chat

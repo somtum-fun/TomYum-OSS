@@ -310,7 +310,7 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
         return context.Request;
     }
 
-    private static HttpContext Context(string query)
+    private static DefaultHttpContext Context(string query)
     {
         var context = new DefaultHttpContext();
         context.Request.QueryString = new QueryString("?" + query);
