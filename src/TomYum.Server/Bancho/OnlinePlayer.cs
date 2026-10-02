@@ -63,6 +63,11 @@ public sealed class OnlinePlayer
     /// <summary>The osu! build the player logged in with (old builds get older protocol and endpoints).</summary>
     public ClientBuild Build { get; set; } = ClientBuild.Parse(null);
 
+    private int _frameSequence;
+
+    /// <summary>The next sequence number for this player's spectator frames, for builds that don't send one.</summary>
+    public ushort NextFrameSequence() => unchecked((ushort)Interlocked.Increment(ref _frameSequence));
+
     /// <summary>Restricted by staff: invisible to other players and can't chat in public channels.</summary>
     public bool IsRestricted { get; set; }
 

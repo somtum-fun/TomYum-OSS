@@ -31,6 +31,18 @@ public sealed partial record ClientBuild(string Version, DateOnly? Date)
     /// <summary>A build from before <see cref="ModernFrom"/> (an unknown date counts as today's client).</summary>
     public bool IsLegacy => Date is { } date && date < ModernFrom;
 
+    /// <summary>Score frames end with a ScoreV2 flag (and its extra numbers when set) from this build on.</summary>
+    public static readonly DateOnly ScoreV2FramesFrom = new(2015, 11, 6);
+
+    /// <summary>Spectator frame bundles end with a sequence number from this build on.</summary>
+    public static readonly DateOnly FrameSequenceFrom = new(2016, 4, 4);
+
+    /// <summary>Whether this build's score frames have the ScoreV2 flag (today's do).</summary>
+    public bool HasScoreV2Frames => Date is not { } date || date >= ScoreV2FramesFrom;
+
+    /// <summary>Whether this build's spectator frame bundles end with a sequence number (today's do).</summary>
+    public bool HasFrameSequence => Date is not { } date || date >= FrameSequenceFrom;
+
     [GeneratedRegex(@"^b(?<date>\d{8})", RegexOptions.CultureInvariant)]
     private static partial Regex DatePattern();
 }

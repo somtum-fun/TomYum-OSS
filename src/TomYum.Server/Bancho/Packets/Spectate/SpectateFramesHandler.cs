@@ -22,8 +22,12 @@ public sealed class SpectateFramesHandler : IClientPacketHandler
         if (spectators.Count == 0)
             return; // no audience — the client shouldn't be sending, but be safe
 
-        var writer = new BanchoPacketWriter(context.Payload.Length + 16);
-        writer.WritePacket(ServerPacketId.SpectateFrames, w => w.WriteRaw(context.Payload.Span));
+        // An old client's bundle (docs/old-clients.md) gets the fields today's clients expect at its end.
+        var bundle = host.Build.HasFrameSequence
+            ? context.Payload.ToArray()
+            : LegacyFrames.SpectateFrames(context.Payload.Span, host.Build, host.NextFrameSequence());
+        var writer = new BanchoPacketWriter(bundle.Length + 16);
+        writer.WritePacket(ServerPacketId.SpectateFrames, w => w.WriteRaw(bundle));
         var framed = writer.ToArray();
 
         foreach (var spectatorId in spectators)
