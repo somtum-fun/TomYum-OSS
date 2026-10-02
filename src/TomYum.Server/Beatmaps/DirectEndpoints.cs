@@ -396,7 +396,32 @@ public static partial class DirectEndpoints
         // /preview/{id}.mp3, and anything else the client may request from b.*.
         // bancho.py map.py uses the same strategy: redirect f"https://b.ppy.sh{path}".
         var url = opts.Value.ThumbnailBaseUrl + request.Path;
-        return Results.Redirect(url, permanent: true);
+        if (!CameOverPlainHttp(request))
+            return Results.Redirect(url, permanent: true);
+
+        // An old client (plain HTTP, no TLS 1.2: docs/old-clients.md) can't follow that: fetched here.
+        var http = context.RequestServices.GetRequiredService<IHttpClientFactory>().CreateClient(HttpClientName);
+        using var upstream = await http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+        if (!upstream.IsSuccessStatusCode)
+            return Results.StatusCode((int)upstream.StatusCode);
+        var bytes = await upstream.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+        context.Response.Headers.CacheControl = "public, max-age=86400";
+        return Results.Bytes(bytes, upstream.Content.Headers.ContentType?.ToString() ?? "application/octet-stream");
+    }
+
+    /// <summary>
+    /// Whether the client reached the server over plain HTTP: only old builds do (today's use HTTPS).
+    /// Behind Cloudflare its <c>Cf-Visitor</c> header has the scheme the client used (the tunnel and
+    /// Caddy in between speak HTTP); otherwise the proxy's <c>X-Forwarded-Proto</c>. Without either
+    /// (no proxy in front, which TomYum always has), it counts as HTTPS: today's client.
+    /// </summary>
+    internal static bool CameOverPlainHttp(HttpRequest request)
+    {
+        var visitor = request.Headers["Cf-Visitor"].ToString();
+        if (visitor.Length > 0)
+            return visitor.Contains("\"http\"", StringComparison.OrdinalIgnoreCase);
+        var forwarded = request.Headers["X-Forwarded-Proto"].ToString();
+        return forwarded.Length > 0 && string.Equals(forwarded.Split(',')[0].Trim(), "http", StringComparison.OrdinalIgnoreCase);
     }
 
     // ── helpers ───────────────────────────────────────────────────────────────────────────
