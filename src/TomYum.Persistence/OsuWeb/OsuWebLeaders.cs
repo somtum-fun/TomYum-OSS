@@ -13,15 +13,18 @@ namespace TomYum.Persistence.OsuWeb;
 /// stable's score, keyed by the stable score id (the "legacy" view).</item>
 /// </list>
 /// Only maps with a leaderboard (ranked, approved, qualified, loved) and players who aren't
-/// restricted count, like the leaderboards themselves.
+/// restricted count, like the leaderboards themselves. Relax and Autopilot plays don't: they have
+/// their own leaderboards (TomYum's relax system), and the vanilla #1 is a play without them.
 /// </summary>
 public sealed class OsuWebLeaders
 {
     private static readonly string[] LegacyTables = ["osu_leaders", "osu_leaders_taiko", "osu_leaders_fruits", "osu_leaders_mania"];
 
+    // (A play without mods has no acronyms to extract: NULL, so it falls back to an empty list.)
     private const string Eligible = """
         s.passed = 1 AND s.preserve = 1 AND u.user_type <> 1 AND u.user_warnings = 0
           AND b.approved IN (1, 2, 3, 4) AND b.deleted_at IS NULL
+          AND NOT JSON_OVERLAPS(COALESCE(JSON_EXTRACT(s.data, '$.mods[*].acronym'), JSON_ARRAY()), JSON_ARRAY('RX', 'AP'))
         """;
 
     private readonly OsuWebDbContext _db;

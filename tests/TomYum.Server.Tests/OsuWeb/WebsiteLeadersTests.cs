@@ -51,6 +51,27 @@ public sealed class WebsiteLeadersTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task FirstPlaces_LeaveOutRelaxAndAutopilot()
+    {
+        await NewTomYumContextAsync();
+        var users = new OsuWebUserRepository(NewOsuWebContext());
+        var vanilla = (await users.AddAsync(NewUser("Vanilla"))).Id;
+        var relax = (await users.AddAsync(NewUser("Relax"))).Id;
+        var autopilot = (await users.AddAsync(NewUser("Autopilot"))).Id;
+        var mirror = new OsuWebBeatmapMirror(NewOsuWebContext());
+        await mirror.WriteAsync(new Beatmap { Id = 200, SetId = 20, Md5 = "c", Status = RankedStatus.Ranked, OsuApiStatus = 1, Version = "Insane", Artist = "A", Title = "T", Creator = "M" });
+
+        // No mods at all (no acronyms to read) still counts.
+        var nomod = await InsertAsync(vanilla, 200, total: 800_000, legacyTotal: 0, stable: false, data: """{"mods":[],"statistics":{"great":300}}""");
+        await InsertAsync(relax, 200, total: 990_000, legacyTotal: 0, stable: false, data: """{"mods":[{"acronym":"DT"},{"acronym":"RX"}],"statistics":{"great":300}}""");
+        await InsertAsync(autopilot, 200, total: 970_000, legacyTotal: 0, stable: false, data: """{"mods":[{"acronym":"AP"}],"statistics":{"great":300}}""");
+
+        await new OsuWebLeaders(NewOsuWebContext()).RebuildAsync();
+
+        Assert.Equal(nomod, await ScalarAsync<ulong>("SELECT score_id FROM beatmap_leaders WHERE beatmap_id = 200 AND ruleset_id = 0"));
+    }
+
+    [MySqlFact]
     public async Task MedalActivity_ForMedalsAPlayerDoesntHave_IsRemoved()
     {
         await NewTomYumContextAsync();
@@ -67,12 +88,12 @@ public sealed class WebsiteLeadersTests : OsuWebDatabaseTest
         Assert.Equal(0L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_events WHERE text LIKE '%Totality%'"));
     }
 
-    private async Task<ulong> InsertAsync(int userId, int beatmapId, uint total, uint legacyTotal, bool stable)
+    private async Task<ulong> InsertAsync(int userId, int beatmapId, uint total, uint legacyTotal, bool stable, string data = Data)
     {
         var legacy = stable ? "(SELECT COALESCE(MAX(x.id), 0) + 1000 FROM scores x)" : "NULL";
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $$"""
             INSERT INTO scores (user_id, ruleset_id, beatmap_id, preserve, ranked, `rank`, passed, accuracy, max_combo, total_score, data, pp, legacy_score_id, legacy_total_score, ended_at)
-            SELECT {{userId}}, 0, {{beatmapId}}, 1, 1, 'S', 1, 0.97, 400, {{total}}, '{{Data}}', 100, {{legacy}}, {{legacyTotal}}, UTC_TIMESTAMP()
+            SELECT {{userId}}, 0, {{beatmapId}}, 1, 1, 'S', 1, 0.97, 400, {{total}}, '{{data}}', 100, {{legacy}}, {{legacyTotal}}, UTC_TIMESTAMP()
             """));
         return await ScalarAsync<ulong>("SELECT MAX(id) FROM scores");
     }
