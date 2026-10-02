@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using SkiaSharp;
 
 namespace TomYum.Server.Beatmaps;
 
@@ -63,14 +64,67 @@ public static partial class AssetsEndpoints
     /// <summary>
     /// osu!'s old static host (<c>s.&lt;domain&gt;</c>): old clients (docs/old-clients.md) load medal images
     /// from <c>/images/achievements/{name}</c>, without an extension. They get today's medal icons (osu!
-    /// no longer has the old images, and the skill medals never had any).
+    /// no longer has the old images, and the skill medals never had any), at the old images' size.
     /// </summary>
     public static void MapStaticAssets(this IEndpointRouteBuilder app, params string[] hosts)
     {
         ArgumentNullException.ThrowIfNull(app);
-        app.MapGet("/images/achievements/{file}", (string file, IHttpClientFactory http, IConfiguration configuration, ILoggerFactory logs, CancellationToken cancellationToken) =>
-            HandleCachedAssetAsync("medals/client", file.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? file : file + ".png", http, configuration, logs, cancellationToken))
-            .RequireHost(hosts);
+        app.MapGet("/images/achievements/{file}", HandleLegacyMedalAsync).RequireHost(hosts);
+    }
+
+    /// <summary>The old medal images' size: old clients draw them as they are, so today's (193×210) came out twice as big.</summary>
+    internal const int LegacyMedalWidth = 133, LegacyMedalHeight = 103;
+
+    private static async Task<IResult> HandleLegacyMedalAsync(
+        string file, IHttpClientFactory http, IConfiguration configuration, ILoggerFactory logs, CancellationToken cancellationToken)
+    {
+        file = file.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? file : file + ".png";
+        if (!IsSafeMedalFile(file))
+            return Results.NotFound();
+
+        var legacyPath = Path.Combine(CacheDirectory(configuration, "medals/legacy"), file);
+        if (File.Exists(legacyPath))
+            return Results.File(legacyPath, "image/png");
+
+        // Today's icon first (fetched and cached as for today's clients), then a smaller copy of it.
+        var result = await HandleCachedAssetAsync("medals/client", file, http, configuration, logs, cancellationToken).ConfigureAwait(false);
+        var iconPath = Path.Combine(CacheDirectory(configuration, "medals/client"), file);
+        if (!File.Exists(iconPath))
+            return result;
+
+        var smaller = LegacyMedal(await File.ReadAllBytesAsync(iconPath, cancellationToken).ConfigureAwait(false));
+        if (smaller is null)
+            return result;
+        Directory.CreateDirectory(Path.GetDirectoryName(legacyPath)!);
+        var tempPath = legacyPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        await File.WriteAllBytesAsync(tempPath, smaller, cancellationToken).ConfigureAwait(false);
+        File.Move(tempPath, legacyPath, overwrite: true);
+        return Results.File(smaller, "image/png");
+    }
+
+    /// <summary>A medal icon fitted into the old images' size (centred, transparent around it); null if it isn't an image.</summary>
+    internal static byte[]? LegacyMedal(byte[] png)
+    {
+        // SKBitmap.Decode throws (rather than returning null) when nothing can read the data.
+        using var data = SKData.CreateCopy(png);
+        using var codec = SKCodec.Create(data);
+        if (codec is null)
+            return null;
+        using var icon = SKBitmap.Decode(codec);
+        if (icon is null)
+            return null;
+        var scale = Math.Min((float)LegacyMedalWidth / icon.Width, (float)LegacyMedalHeight / icon.Height);
+        var width = icon.Width * scale;
+        var height = icon.Height * scale;
+        using var surface = SKSurface.Create(new SKImageInfo(LegacyMedalWidth, LegacyMedalHeight, SKColorType.Rgba8888, SKAlphaType.Premul));
+        surface.Canvas.Clear(SKColors.Transparent);
+        using var image = SKImage.FromBitmap(icon);
+        var left = (LegacyMedalWidth - width) / 2;
+        var top = (LegacyMedalHeight - height) / 2;
+        surface.Canvas.DrawImage(image, new SKRect(left, top, left + width, top + height), new SKSamplingOptions(SKCubicResampler.Mitchell));
+        using var snapshot = surface.Snapshot();
+        using var encoded = snapshot.Encode(SKEncodedImageFormat.Png, 100);
+        return encoded.ToArray();
     }
 
     /// <summary>A file under a managed folder, at any depth (<see cref="AssetStore.IsImagePath"/> keeps the path plain).</summary>

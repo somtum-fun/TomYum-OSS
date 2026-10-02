@@ -8,6 +8,9 @@ namespace TomYum.Bancho;
 /// without the ScoreV2 flag, and builds before b20160404 send frame bundles without the trailing
 /// sequence number. Today's frames reach old clients as they are: those read what they know and
 /// ignore what follows. Anything not in the expected old layout is returned unchanged.
+/// Those dates are from Lekuruu's protocol notes and too late for some builds: b20140624 already sends
+/// bundles in today's layout (seen 2026-10-02: 38 bytes in, 38 out), which pass through untouched.
+/// The spectator frame handler logs, once per session, what an old build sends and what went out.
 /// </summary>
 public static class LegacyFrames
 {
