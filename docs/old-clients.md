@@ -24,8 +24,12 @@ without changing any game files. Plan and status: [ROADMAP.md](ROADMAP.md) ("Old
    ```
    Version=2
    ServerName=<your domain>
+   HookTcpConnections=False
    ```
    Hook fills in the rest. `EnableConsole=True` and `LogToFile=True` show what it does.
+   `HookTcpConnections=False` because otherwise Hook looks up `server.<your domain>` at startup (the
+   address TCP-era builds connect to) and stops with "No such host is known" when there's no such
+   record; the supported builds speak HTTP and don't need it.
 5. Start the game with `Titanic.fallback.exe` and log in with your normal account.
 
 Sign out of a real osu! account in that client first: its login is sent to this server instead.
