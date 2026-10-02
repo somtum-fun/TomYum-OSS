@@ -39,6 +39,11 @@ public sealed class InMemoryScoreRepository : IScoreRepository
             Passed = score.Passed,
             Status = score.Status,
             SubmittedAt = score.SubmittedAt,
+            FromLazer = score.FromLazer,
+            OsuWebScoreId = score.OsuWebScoreId,
+            PpHeld = score.PpHeld,
+            LargeTickHits = score.LargeTickHits,
+            SliderEndHits = score.SliderEndHits,
         };
         _scores[id] = stored;
         return Task.FromResult(stored);
@@ -52,6 +57,12 @@ public sealed class InMemoryScoreRepository : IScoreRepository
         return Task.FromResult(best);
     }
 
+    public async Task<Score?> GetStablePersonalBestAsync(int userId, string beatmapMd5, int mode, CancellationToken cancellationToken = default)
+    {
+        var best = await GetLeaderboardAsync(beatmapMd5, mode, int.MaxValue, userId, new LeaderboardFilter(UserIds: [userId], StableOnly: true), cancellationToken).ConfigureAwait(false);
+        return best.Count > 0 ? best[0] : null;
+    }
+
     public Task<IReadOnlyList<Score>> GetLeaderboardAsync(string beatmapMd5, int mode, int count, int? viewerId = null, CancellationToken cancellationToken = default) =>
         GetLeaderboardAsync(beatmapMd5, mode, count, viewerId, new LeaderboardFilter(), cancellationToken);
 
@@ -59,7 +70,10 @@ public sealed class InMemoryScoreRepository : IScoreRepository
     {
         ArgumentNullException.ThrowIfNull(filter);
         var filtered = _scores.Values
-            .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)
+            .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode)
+            .Where(s => filter.StableOnly
+                ? s.Passed && !s.FromLazer && (s.Status == ScoreStatus.Best || s.Status == ScoreStatus.Submitted)
+                : s.Status == ScoreStatus.Best)
             .Where(s => filter.Mods is not { } mods || s.Mods == mods)
             .Where(s => filter.UserIds is not { } ids || ids.Contains(s.UserId))
             .Where(s => _restricted is null || s.UserId == viewerId || !_restricted.Contains(s.UserId));
@@ -69,7 +83,8 @@ public sealed class InMemoryScoreRepository : IScoreRepository
             ? filtered.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue)
             : filtered.OrderByDescending(s => s.ScoreValue);
 
-        IReadOnlyList<Score> board = ordered.Take(count).ToList();
+        // Stable's board: each player's best stable play (one per player).
+        IReadOnlyList<Score> board = (filter.StableOnly ? ordered.ThenBy(s => s.Id).DistinctBy(s => s.UserId) : ordered).Take(count).ToList();
         return Task.FromResult(board);
     }
 

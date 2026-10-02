@@ -1,0 +1,18 @@
+# TomYum's pp library updater (deploy/pp-updater/updater.py): checks for newer pp libraries and, when
+# the admin panel asks, rebuilds the containers using one and starts a pp rework. Runs on the host,
+# as root (it drives Docker), so no container needs Docker's socket.
+# Set ExecStart to your checkout's updater.py (the checkout and its owner are found from there), then:
+#   sudo cp tomyum-pp-updater.service /etc/systemd/system/ && sudo systemctl enable --now tomyum-pp-updater
+[Unit]
+Description=TomYum pp library updater
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+ExecStart=/usr/bin/python3 /home/YOUR_USER/TomYum/deploy/pp-updater/updater.py
+Restart=always
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target

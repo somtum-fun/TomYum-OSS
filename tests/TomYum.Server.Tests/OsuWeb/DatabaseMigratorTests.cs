@@ -39,12 +39,15 @@ public sealed class DatabaseMigratorTests : OsuWebDatabaseTest
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE mode_rank_history");
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE lastfm_links");
             await legacy.Database.ExecuteSqlRawAsync("DROP TABLE lastfm_scrobbles");
+            await legacy.Database.ExecuteSqlRawAsync("DROP TABLE pp_reworks");
+            await legacy.Database.ExecuteSqlRawAsync("DROP TABLE pp_rework_scores");
             legacy.UserStats.Add(new UserStats { UserId = 2, Mode = 0, Pp = 338.5 });
             legacy.Scores.Add(new Score { UserId = 2, BeatmapMd5 = "abc", Grade = "A", Passed = true, SubmittedAt = DateTimeOffset.UtcNow });
             await legacy.SaveChangesAsync();
             // A column added by a later migration (after saving: the model still has it).
             await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE scores DROP COLUMN FromLazer");
             await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE staff_log DROP COLUMN Via");
+            await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE scores DROP INDEX IX_scores_OsuWebScoreId, DROP COLUMN OsuWebScoreId, DROP COLUMN PpHeld, DROP COLUMN LargeTickHits, DROP COLUMN SliderEndHits");
         }
 
         await using var db = NewTomYumContext();

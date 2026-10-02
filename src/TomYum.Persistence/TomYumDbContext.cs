@@ -63,6 +63,12 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>osu!stable's in-game comments.</summary>
     public DbSet<BeatmapComment> BeatmapComments => Set<BeatmapComment>();
 
+    /// <summary>pp reworks (every score in some modes worked out again) and their progress.</summary>
+    public DbSet<PpRework> PpReworks => Set<PpRework>();
+
+    /// <summary>A running pp rework's new pp per score, kept aside until it switches over.</summary>
+    public DbSet<PpReworkScore> PpReworkScores => Set<PpReworkScore>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

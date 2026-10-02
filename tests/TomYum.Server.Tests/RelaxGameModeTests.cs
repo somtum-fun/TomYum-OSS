@@ -65,8 +65,34 @@ public class RelaxGameModeTests
         Assert.Equal(3, relax[0].UserId);
     }
 
-    private static Score Score(int userId, int mode, string md5, long scoreValue, double pp) => new()
+    [Fact]
+    public async Task StableBoard_leaves_lazer_plays_out_and_shows_each_players_best_stable_play()
     {
+        var repo = new InMemoryScoreRepository();
+        const string md5 = "abc";
+
+        // Player 1's best overall is a lazer play; their best stable play is the one stable shows.
+        var stable = Score(userId: 1, mode: 4, md5: md5, scoreValue: 1, pp: 40);
+        stable.Status = ScoreStatus.Submitted;
+        await repo.AddAsync(stable);
+        await repo.AddAsync(Score(userId: 1, mode: 4, md5: md5, scoreValue: 1, pp: 90, fromLazer: true));
+        // Player 2 only played on lazer: not on stable's board.
+        await repo.AddAsync(Score(userId: 2, mode: 4, md5: md5, scoreValue: 1, pp: 70, fromLazer: true));
+        await repo.AddAsync(Score(userId: 3, mode: 4, md5: md5, scoreValue: 1, pp: 50));
+
+        var board = await repo.GetLeaderboardAsync(md5, 4, 50, null, new TomYum.Domain.Repositories.LeaderboardFilter(StableOnly: true));
+        Assert.Equal([3, 1], board.Select(s => s.UserId));
+        Assert.Equal(40, board[1].Pp);
+        Assert.Equal(40, (await repo.GetStablePersonalBestAsync(1, md5, 4))!.Pp);
+        Assert.Null(await repo.GetStablePersonalBestAsync(2, md5, 4));
+
+        // The website's board (all plays) still has everyone's best.
+        Assert.Equal([1, 2, 3], (await repo.GetLeaderboardAsync(md5, 4, 50)).Select(s => s.UserId));
+    }
+
+    private static Score Score(int userId, int mode, string md5, long scoreValue, double pp, bool fromLazer = false) => new()
+    {
+        FromLazer = fromLazer,
         UserId = userId,
         BeatmapId = 1,
         BeatmapMd5 = md5,

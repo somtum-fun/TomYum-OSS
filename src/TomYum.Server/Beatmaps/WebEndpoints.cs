@@ -97,7 +97,7 @@ public static class WebEndpoints
         var board = await BoardAsync(context, scores, users, md5, gameMode, boardType, modsArg, requesterId, cancellationToken).ConfigureAwait(false);
         if (requesterId is { } viewer)
         {
-            personalBest = await scores.GetPersonalBestAsync(viewer, md5, gameMode, cancellationToken).ConfigureAwait(false);
+            personalBest = await scores.GetStablePersonalBestAsync(viewer, md5, gameMode, cancellationToken).ConfigureAwait(false);
             // On the selected mods tab, a best with other mods isn't this board's.
             if (boardType == SelectedModsBoard && personalBest is not null && personalBest.Mods != modsArg)
                 personalBest = null;
@@ -217,15 +217,15 @@ public static class WebEndpoints
         switch (boardType)
         {
             case SelectedModsBoard:
-                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, new LeaderboardFilter(Mods: mods), cancellationToken).ConfigureAwait(false);
+                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, new LeaderboardFilter(Mods: mods, StableOnly: true), cancellationToken).ConfigureAwait(false);
             case FriendsBoard when viewerId is { } friendsOf:
                 var friends = await context.RequestServices.GetRequiredService<IFriendRepository>().GetFriendIdsAsync(friendsOf, cancellationToken).ConfigureAwait(false);
-                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, new LeaderboardFilter(UserIds: [.. friends, friendsOf]), cancellationToken).ConfigureAwait(false);
+                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, new LeaderboardFilter(UserIds: [.. friends, friendsOf], StableOnly: true), cancellationToken).ConfigureAwait(false);
             case CountryBoard when viewerId is { } countryOf
                 && await users.GetByIdAsync(countryOf, cancellationToken).ConfigureAwait(false) is { Country: { Length: > 0 } country } && country != "xx":
                 // Scores don't carry a country: take a deep board and keep the viewer's countrymen.
                 var countrymen = new List<Score>();
-                foreach (var score in await scores.GetLeaderboardAsync(md5, gameMode, 1000, viewerId, cancellationToken).ConfigureAwait(false))
+                foreach (var score in await scores.GetLeaderboardAsync(md5, gameMode, 1000, viewerId, new LeaderboardFilter(StableOnly: true), cancellationToken).ConfigureAwait(false))
                 {
                     if (await users.GetByIdAsync(score.UserId, cancellationToken).ConfigureAwait(false) is { } player
                         && string.Equals(player.Country, country, StringComparison.OrdinalIgnoreCase))
@@ -237,7 +237,7 @@ public static class WebEndpoints
                 }
                 return countrymen;
             default:
-                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, cancellationToken).ConfigureAwait(false);
+                return await scores.GetLeaderboardAsync(md5, gameMode, 50, viewerId, new LeaderboardFilter(StableOnly: true), cancellationToken).ConfigureAwait(false);
         }
     }
 

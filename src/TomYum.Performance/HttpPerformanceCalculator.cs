@@ -48,7 +48,7 @@ public sealed class HttpPerformanceCalculator : IPerformanceCalculator
             request.Mods,
             request.Count300, request.Count100, request.Count50,
             request.CountGeki, request.CountKatu, request.CountMiss,
-            request.MaxCombo, request.Passed);
+            request.MaxCombo, request.Passed, request.Lazer, request.LargeTickHits, request.SliderEndHits);
 
         try
         {
@@ -95,7 +95,10 @@ public sealed record PpSidecarRequest(
     [property: JsonPropertyName("nKatu")] int NKatu,
     [property: JsonPropertyName("nMiss")] int NMiss,
     [property: JsonPropertyName("maxCombo")] int MaxCombo,
-    [property: JsonPropertyName("passed")] bool Passed);
+    [property: JsonPropertyName("passed")] bool Passed,
+    [property: JsonPropertyName("lazer")] bool Lazer,
+    [property: JsonPropertyName("largeTickHits")] int? LargeTickHits,
+    [property: JsonPropertyName("sliderEndHits")] int? SliderEndHits);
 
 /// <summary>The response a pp sidecar returns. <c>StarRating</c> is optional.</summary>
 public sealed record PpSidecarResponse(

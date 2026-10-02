@@ -291,6 +291,10 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
         callback set on osu.ppy.sh.
   - [ ] Discord webhooks (`qat-webhooks.json`) and `enableAutomation`; a bot account + OAuth client for
         `enableMessages` (docs/bots.md).
+- [x] **Project Loved** on the website (Community → Project Loved; `loved.<domain>` redirects there),
+      docs/loved.md: players ask for maps (mode + why) and review requests (for/against); the Project
+      Loved group loves (Loved at once), rejects, removes or blacklists, with reasons. Built on sundei's
+      in-website Loved pages without rounds or polls; the separate Loved sites are retired. 2026-10-03
 
 ## Old clients (2013–2015 first) — requested 2026-10-01, planned 2026-10-02
 _Decided 2026-10-02: builds from **late 2013 to 2015** first; their plays go on the **same leaderboards

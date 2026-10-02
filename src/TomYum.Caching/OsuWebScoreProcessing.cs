@@ -23,6 +23,10 @@ public sealed class OsuWebScoreProcessing
         _queue = queue;
     }
 
+    /// <summary>How many scores the processor still has queued.</summary>
+    public async Task<long> LengthAsync() =>
+        await _redis.GetDatabase().ListLengthAsync(_queue).ConfigureAwait(false);
+
     /// <summary>Queues <paramref name="items"/>: each a JSON queue item (<c>{"Score": …}</c>).</summary>
     public async Task QueueAsync(IReadOnlyCollection<string> items)
     {

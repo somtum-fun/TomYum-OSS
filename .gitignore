@@ -69,3 +69,6 @@ memories/
 ## Plugin template — example code only; it lives in its own repo
 ## (github.com/somtum-fun/tomyum-plugin-template). Kept locally for reference, not tracked here.
 /templates/
+
+# Python bytecode (deploy/pp-updater)
+__pycache__/

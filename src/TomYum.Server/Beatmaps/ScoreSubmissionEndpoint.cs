@@ -256,10 +256,14 @@ public static class ScoreSubmissionEndpoint
             }
         }
 
+        // A pp rework in this mode: the play's pp waits (not a best, not in the totals) until it's
+        // done, when it's worked out with everything else.
+        var held = passed && TomYum.Persistence.RankingPause.IsPaused(gameMode);
+
         // A passed score is Best only if the player has no prior best or this score beats it by pp.
         // Old best scores remain in the DB as Submitted (not shown on leaderboard) for history.
         var scoreStatus = passed
-            ? (prevBest is null || ppValue > prevBest.Pp ? ScoreStatus.Best : ScoreStatus.Submitted)
+            ? (!held && (prevBest is null || ppValue > prevBest.Pp) ? ScoreStatus.Best : ScoreStatus.Submitted)
             : ScoreStatus.Failed;
 
         // Plugins may reject the score before anything is stored (e.g. a mode's own rules).
@@ -297,6 +301,7 @@ public static class ScoreSubmissionEndpoint
             Pp = ppValue,
             Status = scoreStatus,
             SubmittedAt = DateTimeOffset.UtcNow,
+            PpHeld = held,
         }, cancellationToken).ConfigureAwait(false);
 
         // Persist replay file: data/replays/{scoreId}.osr (configurable via Replays:Path).
