@@ -25,7 +25,17 @@ public static class ScoreSubmissionEndpoint
         app.MapPost("/web/osu-submit-modular-selector.php", HandleAsync)
             .RequireHost(hosts)
             .DisableAntiforgery();
+        // What old clients (2013–2015, docs/old-clients.md) submit to: the same score, an older key and reply.
+        app.MapPost(LegacyPath, HandleAsync)
+            .RequireHost(hosts)
+            .DisableAntiforgery();
     }
+
+    /// <summary>The submission endpoint of old clients (before the selector, which came after 2015).</summary>
+    internal const string LegacyPath = "/web/osu-submit-modular.php";
+
+    /// <summary>The key old clients encrypt their score with when they send no <c>osuver</c>.</summary>
+    internal const string LegacyKey = "h89f2-890h2h89b34g-h80g134n90133";
 
     private const int MinReplaySize = 24;
 
@@ -57,12 +67,15 @@ public static class ScoreSubmissionEndpoint
 
         var form = context.Request.Form;
 
+        // Old clients post to osu-submit-modular.php: no osuver (an older key) and no bmk (the map's
+        // checksum is the score's first field), and they expect the older reply below.
+        var legacy = string.Equals(context.Request.Path.Value, LegacyPath, StringComparison.OrdinalIgnoreCase);
         var osuver = form["osuver"].ToString();
         var bmk = form["bmk"].ToString();
         var ivBase64 = form["iv"].ToString();
         var scoreParams = form["score"];
 
-        if (string.IsNullOrEmpty(osuver) || string.IsNullOrEmpty(bmk) || string.IsNullOrEmpty(ivBase64) || scoreParams.Count == 0)
+        if ((!legacy && (string.IsNullOrEmpty(osuver) || string.IsNullOrEmpty(bmk))) || string.IsNullOrEmpty(ivBase64) || scoreParams.Count == 0)
         {
             logger.LogWarning("Score submission rejected: missing form fields (osuver/bmk/iv/score)");
             return Results.Text("error: no", "text/plain");
@@ -85,7 +98,7 @@ public static class ScoreSubmissionEndpoint
         string decrypted;
         try
         {
-            var keyRaw = Encoding.UTF8.GetBytes($"osu!-scoreburgr---------{osuver}");
+            var keyRaw = Encoding.UTF8.GetBytes(string.IsNullOrEmpty(osuver) ? LegacyKey : $"osu!-scoreburgr---------{osuver}");
             var keyBytes = new byte[32];
             Buffer.BlockCopy(keyRaw, 0, keyBytes, 0, Math.Min(keyRaw.Length, 32));
             var ivBytes = Convert.FromBase64String(ivBase64);
@@ -111,6 +124,8 @@ public static class ScoreSubmissionEndpoint
             logger.LogWarning("Score submission rejected: too few fields ({Count}) in decrypted payload", parts.Length);
             return Results.Text("error: no", "text/plain");
         }
+        if (string.IsNullOrEmpty(bmk))
+            bmk = parts[0];
 
         // Authenticate using username from payload + pass form field.
         // The Token header on /web/ is a client-generated hash, not the cho-token.
@@ -415,6 +430,24 @@ public static class ScoreSubmissionEndpoint
             }
         }
         var achievementsNew = MedalService.FormatAchievementsNew(newMedals);
+
+        if (legacy)
+        {
+            // The older reply: the map line and the overall chart only (the player's beatmap rank in it),
+            // accuracy as a fraction, medals by their icon's file name (osuTitanic's deck answers alike).
+            // Old clients parse these values: no empty fields (a first play has no rank before: 0), and
+            // approvedDate is a date (the map's last update stands in for its ranked date).
+            var prevPlayCount = stats.PlayCount - 1;
+            var approvedDate = beatmap.LastUpdate.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+            var legacyResponse = string.Create(CultureInfo.InvariantCulture,
+                $"beatmapId:{beatmap.Id}|beatmapSetId:{beatmap.SetId}|beatmapPlaycount:1|beatmapPasscount:1|approvedDate:{approvedDate}\n" +
+                $"chartId:overall|chartName:Overall Ranking|chartUrl:https://osu.ppy.sh/u/{user.Id}|chartEndDate:|achievements:{string.Join(' ', newMedals.Select(m => m.File))}|achievements-new:|" +
+                $"rankBefore:{prevGlobalRank}|rankAfter:{globalRank}|rankedScoreBefore:{prevRankedScore}|rankedScoreAfter:{stats.RankedScore}|totalScoreBefore:{prevTotalScore}|totalScoreAfter:{stats.TotalScore}|" +
+                $"playCountBefore:{prevPlayCount}|playCountAfter:{stats.PlayCount}|ppBefore:{prevPp:F0}|ppAfter:{stats.Pp:F0}|accuracyBefore:{prevAccuracy:0.####}|accuracyAfter:{stats.Accuracy:0.####}|" +
+                $"onlineScoreId:{score.Id}|toNextRankUser:|toNextRank:0|beatmapRankingBefore:{prevBeatmapRank ?? 0}|beatmapRankingAfter:{scoreRank}");
+            logger.LogInformation("Old-client score reply for {User} ({Version}): {Reply}", user.Username, player?.Build.Version, legacyResponse);
+            return Results.Text(legacyResponse, "text/plain");
+        }
 
         var response = string.Create(CultureInfo.InvariantCulture,
             $"beatmapId:{beatmap.Id}|beatmapSetId:{beatmap.SetId}|beatmapPlaycount:1|beatmapPasscount:1|approvedDate:\n\n" +

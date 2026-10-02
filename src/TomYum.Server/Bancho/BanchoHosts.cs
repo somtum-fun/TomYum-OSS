@@ -43,6 +43,10 @@ public static class BanchoHosts
     public static string[] Assets(string domain) =>
         [$"assets.{domain}", "localhost", "127.0.0.1"];
 
+    /// <summary>osu!'s old static host, <c>s.&lt;domain&gt;</c>: old clients' medal images (docs/old-clients.md).</summary>
+    public static string[] Static(string domain) =>
+        [$"s.{domain}"];
+
     /// <summary>Reads the public domain from configuration, falling back to <see cref="DefaultDomain"/>.</summary>
     public static string ResolveDomain(IConfiguration configuration)
     {

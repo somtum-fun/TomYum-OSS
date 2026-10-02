@@ -612,6 +612,7 @@ app.MapBeatmapAssets(BanchoHosts.Beatmap(domain));
 
 // Static assets (assets. subdomain): medal icons for achievement-unlock popups.
 app.MapAssets(BanchoHosts.Assets(domain));
+app.MapStaticAssets(BanchoHosts.Static(domain));
 
 // Admin API for osu-web's staff panels: internal host names only (Admin:Hosts).
 if (databaseOptions.UseOsuWebAccounts)

@@ -60,6 +60,19 @@ public static partial class AssetsEndpoints
             HandleNestedAssetAsync(AssetStore.BannerFolder + "/" + path, http, configuration, logs, cancellationToken)).RequireHost(hosts);
     }
 
+    /// <summary>
+    /// osu!'s old static host (<c>s.&lt;domain&gt;</c>): old clients (docs/old-clients.md) load medal images
+    /// from <c>/images/achievements/{name}</c>, without an extension. They get today's medal icons (osu!
+    /// no longer has the old images, and the skill medals never had any).
+    /// </summary>
+    public static void MapStaticAssets(this IEndpointRouteBuilder app, params string[] hosts)
+    {
+        ArgumentNullException.ThrowIfNull(app);
+        app.MapGet("/images/achievements/{file}", (string file, IHttpClientFactory http, IConfiguration configuration, ILoggerFactory logs, CancellationToken cancellationToken) =>
+            HandleCachedAssetAsync("medals/client", file.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? file : file + ".png", http, configuration, logs, cancellationToken))
+            .RequireHost(hosts);
+    }
+
     /// <summary>A file under a managed folder, at any depth (<see cref="AssetStore.IsImagePath"/> keeps the path plain).</summary>
     private static async Task<IResult> HandleNestedAssetAsync(
         string relative, IHttpClientFactory httpClientFactory, IConfiguration configuration, ILoggerFactory loggerFactory, CancellationToken cancellationToken)

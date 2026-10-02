@@ -13,11 +13,12 @@
 	auto_https disable_redirects
 }
 
-# Game endpoints (bancho, beatmap assets, medal icons); c1.–c6. are osu!'s other bancho hosts.
+# Game endpoints (bancho, beatmap assets, medal icons); c1.–c6. are osu!'s other bancho hosts, s. its old
+# static host (old clients' medal images).
 c.localtest.me, c1.localtest.me, c2.localtest.me, c3.localtest.me, c4.localtest.me, c5.localtest.me, c6.localtest.me,
-ce.localtest.me, cho.localtest.me, b.localtest.me, assets.localtest.me,
+ce.localtest.me, cho.localtest.me, b.localtest.me, assets.localtest.me, s.localtest.me,
 http://c.localtest.me, http://c1.localtest.me, http://c2.localtest.me, http://c3.localtest.me, http://c4.localtest.me,
-http://c5.localtest.me, http://c6.localtest.me, http://ce.localtest.me, http://b.localtest.me {
+http://c5.localtest.me, http://c6.localtest.me, http://ce.localtest.me, http://b.localtest.me, http://s.localtest.me {
 	reverse_proxy localhost:8080
 }
 
