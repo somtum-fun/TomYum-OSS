@@ -260,11 +260,13 @@ uses its tables. Human doc: `docs/osu-web.md`._
 _Ranking on this server: nominations, qualify, rank and love already work from the discussion page and
 the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
 
-- [ ] **Uploads and updates in activity** — after a stable/lazer submission succeeds, call osu-web's
-      InterOp `broadcast-new` (new set) / `broadcast-update` (new version), so "… has submitted a new
-      beatmap" / "… has updated the beatmap" reach the mapper's Recent activity and Community → Activity.
-      (Rank/qualify/love entries already do; disqualify, nomination reset, unlove and kudosu don't on
-      osu! either.)
+- [x] **Uploads and updates in activity** — after a stable/lazer submission or a BN panel upload,
+      osu-web's InterOp `broadcast-new` (new set; also notifies the mapper's followers) / `broadcast-update`
+      (new version, by the uploader), so "… has submitted a new beatmap" / "… has updated the beatmap"
+      reach the mapper's Recent activity and Community → Activity. (Rank/qualify/love entries already do;
+      disqualify, nomination reset, unlove and kudosu don't on osu! either.) 2026-10-02
+  - [ ] Reviving a graveyarded set: osu!'s "revived from eternal slumber" entry (`broadcast-revive`)
+        instead of "updated".
 - [x] **Nomination workflow verified live** (2026-10-01) with throwaway BN, probationary BN, NAT and Loved
       accounts on an imported set: hype gate, nominate ×2 → qualified, NAT problem → disqualify (and the
       game follows each step), unresolved problems block nominating, qualified → ranked by `modding:rank`,

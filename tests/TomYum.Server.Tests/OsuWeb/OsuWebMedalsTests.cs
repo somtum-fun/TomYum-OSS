@@ -95,6 +95,22 @@ public class OsuWebMedalsTests
     }
 
     [Fact]
+    public async Task BeatmapsetBroadcasts_AskForTheActivityEntry()
+    {
+        var handler = new RecordingHandler(HttpStatusCode.NoContent);
+        var interop = new OsuWebInterop(
+            new HttpClient(handler),
+            new OsuWebInteropOptions { InteropUrl = "http://nginx", InteropSecret = "s" });
+
+        await interop.BroadcastNewBeatmapsetAsync(10000000);
+        Assert.StartsWith("/_lio/beatmapsets/10000000/broadcast-new?create_event=1&timestamp=", handler.Request!.RequestUri!.PathAndQuery, StringComparison.Ordinal);
+
+        await interop.BroadcastUpdatedBeatmapsetAsync(10000000, 5);
+        Assert.StartsWith("/_lio/beatmapsets/10000000/broadcast-update?user_id=5&timestamp=", handler.Request!.RequestUri!.PathAndQuery, StringComparison.Ordinal);
+        Assert.Equal(HttpMethod.Post, handler.Request.Method);
+    }
+
+    [Fact]
     public async Task UnlockMedal_OtherFailuresThrow()
     {
         var interop = new OsuWebInterop(
