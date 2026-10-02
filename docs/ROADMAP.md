@@ -292,28 +292,56 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
   - [ ] Discord webhooks (`qat-webhooks.json`) and `enableAutomation`; a bot account + OAuth client for
         `enableMessages` (docs/bots.md).
 
-## Old clients (2008–2015) 🔒 the patcher (step 1) — requested 2026-10-01
-_TomYum speaks today's stable protocol (builds from about 2023 log in fine). Clients from 2008–2015
-have no `-devserver`, older bancho protocols, older score submission and older rules. Reference:
-[osuTitanic](https://deepwiki.com/osuTitanic/titanic), a server built for 2007–2015 clients. Start with
-one era (e.g. late 2014 / 2015), then go back._
+## Old clients (2013–2015 first) — requested 2026-10-01, planned 2026-10-02
+_Decided 2026-10-02: builds from **late 2013 to 2015** first; their plays go on the **same leaderboards
+as today's stable**; players connect with **Titanic! Hook**. Research: [osuTitanic](https://github.com/osuTitanic)
+(anchor = bancho, deck = web), Lekuruu's per-build protocol notes ([chio](https://github.com/Lekuruu/chio.py),
+`chio/clients/b2013….py`) and [bancho-documentation](https://github.com/Lekuruu/bancho-documentation/wiki).
+osuTitanic's code is GPL and TomYum is MIT: behaviour only, written fresh (as with the Session plugin)._
 
-- [ ] **Patcher / launcher** (owner's idea, own repo): points an old build at `<domain>` without
-      `-devserver`. Rewrite or redirect the `ppy.sh` hosts the build uses (`osu.`, `c.`/`c1.`–`c6.`/`ce.`,
-      `a.`, `b.`, `s.`, `i.`), handle its TLS/HTTP expectations (very old builds speak plain HTTP or
-      old TLS), and keep the client's own files untouched where possible. Decide: patched exe vs.
-      in-memory hook vs. local proxy.
-- [ ] **Version detection**: map a login's build (`bYYYYMMDD`) to its bancho protocol version and keep
-      it on the session, so every packet is encoded for that client.
-- [ ] **Protocol layer for old bancho**: login reply and body format, packet ids, presence/stats and
-      chat structures per protocol version (translation at the edge, the rest of TomYum unchanged).
-- [ ] **Old web endpoints**: score submission (`osu-submit.php` / old `osu-submit-modular` and their
-      keys and formats), leaderboards (`osu-osz2-getscores` versions), replays, beatmap info, avatars.
-- [ ] **Old rules**: score v1 and old mod sets, older `.osu` versions, star rating/pp for maps those
-      clients play; leaderboards shared with or separate from today's (⚖️ decision needed).
-- [ ] **Anti-cheat and verification** for old clients (no modern client hashes or device verification;
-      decide what's required).
-- [ ] Test build by build; a `docs/old-clients.md` page listing supported builds.
+What the research found:
+- **Connecting:** [Titanic! Hook](https://github.com/osuTitanic/hook) (GPLv3, a loader dropped next to an
+  untouched `osu!.exe`) patches the client in memory: every `*.ppy.sh` host becomes `*.<ServerName>`.
+  Builds come from [Osekai Snapshots](https://osekai.net/snapshots/); we host no osu! files. Our side: its
+  `Titanic!.cfg` with `ServerName=<domain>` (or a rebranded fork later).
+- **Transport:** builds up to **b20130815** speak bancho over raw TCP (13380–13384) to hardcoded IPs; HTTP
+  bancho (`osu-token`, as today) from about **b20130915**. sundei.eu is reachable only through the
+  Cloudflare Tunnel, which can't carry raw TCP for players, so TCP builds wait (⏸ until a TCP port can be
+  exposed). Builds before late 2015 (.NET 2.0) most likely use **plain HTTP**, not HTTPS.
+- **Protocol:** packet ids and the frame header are the same as today. Mid-2013 to mid-2015 is protocol
+  **18**, b20150915 on is **19**. Differences that matter: 8 multiplayer slots before b20150915; spectator
+  and match score frames without the ScoreV2 fields before b20151106 and without the sequence number
+  before b20160404; stats pp as a signed 16-bit number (cap 32767); packets the build doesn't know yet
+  (e.g. 104 AccountRestricted b20140716, 106 MatchAbort b20141104) must not be sent; no Qualified status
+  before b20150826 and no Loved before b20161101 (sent as approved).
+- **Web:** score submission is `osu-submit-modular.php` (same score string; key `h89f2-890h2h89b34g-h80g134n90133`
+  without `osuver`, else the `osu!-scoreburgr` key; reply without the chart, accuracy 0–1);
+  `osu-osz2-getscores.php` with older `vv` formats (date string at vv=1, no Loved before vv=4, replay flag
+  from vv=4); also `osu-stat.php`/`osu-statoth.php`, `osu-checktweets.php`, `check-updates.php` (`[]`),
+  and `osu-search.php` taking the password as `c`.
+
+Plan (each step committed and tested on its own; the local stack first, a 2014 build as the test client):
+- [ ] **0. Reachable on plain HTTP:** Caddy answers the old hosts on `http://` too, without redirecting;
+      Cloudflare's "Always Use HTTPS" off for them; DNS + tunnel hostnames for every host the builds use
+      (`osu.`, `c.`, `c1.`–`c6.`, `ce.`, `a.`, `b.`, `s.`, `i.`; some exist). Log which hosts and endpoints
+      an old build calls (`misses.sh`).
+- [ ] **1. Version detection:** read the build date from the login's version string (`b20140115`,
+      `…cuttingedge`), keep it on the session (`OnlinePlayer`), pick protocol 18 or 19 and send it in
+      packet 75; accept the older client-info lines. Old builds log in, see the menu and chat.
+- [ ] **2. Outgoing translation:** one place that adapts frames for an old session before they're sent
+      (`BanchoEndpoints` and the login reply): drop packets the build doesn't know, cap stats pp, cut
+      matches to 8 slots, rewrite spectator/match score frames without the newer fields.
+- [ ] **3. Incoming translation:** old match structures (8 slots) and frames from old clients, so
+      multiplayer and spectating work both ways between old and new clients.
+- [ ] **4. Old web endpoints:** `osu-submit-modular.php` onto today's score submission (same leaderboards,
+      pp, medals, anti-cheat), getscores by `vv`, replays, osu!direct, `osu-stat`, beatmap status mapping.
+- [ ] **5. Rules check for shared leaderboards:** std score v1 is unchanged; check taiko/mania/catch
+      before they share boards; ScoreV2 and newer mods simply aren't available to old builds.
+- [ ] **6. Anti-cheat and verification:** old builds send the same client hashes (exe md5, adapters,
+      uninstall id, disk) — keep ban-evasion; decide on device verification and circleguard for them.
+- [ ] **7. Production:** the hosts and HTTP settings on sundei.eu, a `docs/old-clients.md` page (Hook
+      setup, supported builds), then test build by build towards 2013.
+- [ ] Later: TCP builds (2013 and older) if a TCP port can be exposed; older eras.
 
 ## Bot accounts 🔒 (none) — done 2026-10-01
 - [x] Admins/developers make bots in the panel (`/panel/bots`): `bot` group, an owner, an IRC key.
