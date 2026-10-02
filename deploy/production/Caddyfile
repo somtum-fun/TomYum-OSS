@@ -124,12 +124,6 @@ http://osu.{$DOMAIN} {
 		redir https://assets.ppy.sh/{re.covers.1}
 	}
 
-	# Featured artist pages are osu!'s (this server has no artist catalogue; sets link their track).
-	@artists path /beatmaps/artists /beatmaps/artists/*
-	handle @artists {
-		redir https://osu.ppy.sh{uri}
-	}
-
 	handle /uploads/avatar/* {
 		reverse_proxy osu-web:8080 {
 			header_down Content-Type image/png
