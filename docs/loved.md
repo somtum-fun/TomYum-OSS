@@ -1,83 +1,39 @@
-# Project Loved
+# Project Loved (loved requests)
 
-[mnhttn-cafe/project-loved-web](https://github.com/mnhttn-cafe/project-loved-web), the site osu!'s
-Project Loved team uses for submissions, captains' reviews, rounds, nominations and the forum polls
-that decide which maps become Loved, runs next to TomYum as `loved.<domain>`. Players sign in with
-their account on this server. Our fork is `example-org/private-repo`, branch `prod`; its
-changes are marked `production`.
+`loved.<domain>` is our own small site, [example-org/private-repo](https://github.com/example-org/private-repo)
+(Node + Vue): players ask for maps to be Loved and the Project Loved team decides. No rounds, polls
+or seasons. (It replaced a port of osu!'s Project Loved site, example-org/private-repo, which
+was too much for a private server; that repo is kept but not deployed.)
+
+## What players and the team do
+
+- **Sign in** with their account here.
+- **Ask for a map:** set link or id, mode, why. Graveyard/WIP/pending only; one request per map and
+  mode (a second asker is sent to review the first request). Missing osu! maps are imported.
+- **Review:** for or against, with why. Open requests are listed by score (the submitter counts as
+  one "for").
+- **The team** decides, with a reason players see: **Love it** (the map's difficulties in that mode
+  become Loved on TomYum straight away, as from the BN panel, with the "has just been loved!"
+  activity entry), **Reject**, **Remove** (off the list; it can be asked for again) or **Blacklist**
+  the map (its open requests are removed and nobody can ask for it). Rejected and removed requests
+  can be opened again.
+
+The team is the website's **Project Loved** group: members decide for the modes they have in the
+group; its leaders, Administrators and osu! Developers decide for every mode. Changes on the website
+show within a minute.
 
 ## How it's deployed
 
 | Piece | Where |
 |---|---|
-| `loved-api` | The API server, built from `../../../project-loved-web` (`docker/Dockerfile-production`, target `api`); runs pending SQL migrations at start |
-| `loved-web` | nginx with the built site, port `127.0.0.1:3102`; passes `/api` to `loved-api` |
-| Database | `project_loved` on `db` (user `project_loved`), sessions included; uploads in volume `tomyum_loved-storage` |
-| Settings | `deploy/production/loved.env` (secrets, untracked) |
-| Sign-in | OAuth client "Project Loved" on osu-web (`oauth_clients`, owner blueskychan_), redirect `https://loved.<domain>/api/auth/callback` |
+| `loved-requests` | Built from `../../../project-loved-request` (`docker-compose.override.yml`), port `127.0.0.1:3102` |
+| Database | `loved_requests` on `db` (user `loved_requests`); tables made at start, sessions included |
+| Settings | `deploy/production/loved-requests.env` (secrets, untracked) |
+| Sign-in | OAuth client "Project Loved" (id 7) on osu-web, redirect `https://loved.<domain>/auth/callback` |
 | HTTPS | Host Caddy site `loved.<domain>` → `127.0.0.1:3102` |
+| Website side | InterOp `tomyum/loved-team`, `tomyum/import-beatmapset/{id}`, `tomyum/loved-beatmapsets` (TomYumInterOpController) |
 
-Rebuild after changing the fork:
+Rebuild after changing it: `sudo docker compose build loved-requests && sudo docker compose up -d loved-requests`.
 
-```sh
-G=../../../project-loved-web
-sudo docker compose build --build-arg GIT_COMMIT=$(git -C $G rev-parse HEAD) \
-  --build-arg GIT_COMMIT_TIMESTAMP=$(git -C $G log -1 --format=%at) loved-api loved-web
-sudo docker compose up -d loved-api loved-web
-```
-
-## The team comes from the website
-
-Every 10 minutes, at start and whenever someone signs in, the site reads the website's groups
-(`/_lio/tomyum/loved-team`):
-
-| Site role | From |
-|---|---|
-| Captain, per mode | The **Project Loved** group (`loved`), with the modes the member has there |
-| Admin | The Project Loved group's leaders, Administrators (`admin`) and osu! Developers (`dev`) |
-
-So give someone Project Loved with their modes in the admin panel; make them group leader to make them
-a site admin. Admin and captain are set only this way (changes made on the site are undone at the next
-sync). The other roles (metadata, moderator, news editor and so on) are still given on the site,
-under Manage → Roles.
-
-## Maps from osu!
-
-Nominations are usually osu! maps the server doesn't have yet: the site asks the website to import
-them (`/_lio/tomyum/import-beatmapset/{id}`, TomYum's import). Their osu! mappers have no account
-here (osu! user ids are other people on this server), so the site keeps them as name-only users,
-shown as "name (osu!)" and linked to their osu! profile.
-
-`LOVED_MIN_OSU_FAVORITES` (0 here; 30 on osu!) is how many favourites an osu!standard nomination
-needs. Favourites are this server's own.
-
-## Running a round
-
-osu!'s team posts the polls with a separate management program. Here it's done from the round's page
-(Picks → the round), by an admin:
-
-1. Set the round's name and **news author** (Edit). Captains review maps, nominate them and write
-   each nomination's description.
-2. The news author (and any captain who wants to post their own nominations' topics) allows the site
-   to post on the forum: Manage → Forum opt-in.
-3. Moderators check each nomination's content (Edit moderation). **Open polls** refuses while any
-   nomination is marked **Not allowed**: remove it from the round first.
-4. **Open polls**: a topic with a Yes/No poll (10 days) for each nomination and a main topic per mode
-   in the **Project Loved** forum (#120 under Beatmaps).
-5. When the polls have ended, **Post results and Love the maps**: the votes are read, the results are
-   posted in the topics, and every map that reached the mode's threshold becomes **Loved** on the
-   server (its difficulties in that mode, without the excluded ones), as the BN panel does it, with
-   the "has just been loved!" activity entry.
-
-Set each mode's voting threshold under Manage → Settings ("default voting threshold") before the
-first round: it starts at 0%, which passes every map.
-
-Forum rules that apply: the Project Loved team and the staff can post there however much they've
-played (`tomyum.loved_forum_id`); voting in a poll needs `FORUM_POST_MINIMUM_PLAYS` plays (5 here, in
-`osu-web.env`; 200 on osu!).
-
-## Left out
-
-- The compliance checks (omc-api, osu!'s licensing checker) and the Google survey: not set up.
-- osu!'s Project Loved history (archive.loved.sh): its user ids are osu!'s, so the site started empty.
-- News posts for osu!'s wiki: not used.
+The Project Loved forum (#120) and its posting rule (`tomyum.loved_forum_id`) came with the old site
+and aren't used by this one.
