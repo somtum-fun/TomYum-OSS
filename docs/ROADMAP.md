@@ -303,7 +303,11 @@ What the research found:
 - **Connecting:** [Titanic! Hook](https://github.com/osuTitanic/hook) (GPLv3, a loader dropped next to an
   untouched `osu!.exe`) patches the client in memory: every `*.ppy.sh` host becomes `*.<ServerName>`.
   Builds come from [Osekai Snapshots](https://osekai.net/snapshots/); we host no osu! files. Our side: its
-  `Titanic!.cfg` with `ServerName=<domain>` (or a rebranded fork later).
+  `Titanic!.cfg` with `ServerName=<domain>` (or a rebranded fork later). Found testing b20140624
+  (2026-10-02): builds on .NET 2.0 (before late 2015) need **`Titanic.fallback.exe`** (the .NET 2.0
+  loader); under `Titanic.exe` (.NET 4) the game runs but its importer fails every `.osz` (all go to
+  `Songs\Failed`). Downloaded files need Windows' "from the internet" mark removed (`Unblock-File`),
+  or .NET refuses to load `osu!.exe`.
 - **Transport:** builds up to **b20130815** speak bancho over raw TCP (13380–13384) to hardcoded IPs; HTTP
   bancho (`osu-token`, as today) from about **b20130915**. sundei.eu is reachable only through the
   Cloudflare Tunnel, which can't carry raw TCP for players, so TCP builds wait (⏸ until a TCP port can be
