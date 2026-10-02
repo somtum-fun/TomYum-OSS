@@ -345,8 +345,10 @@ Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what wor
 - [x] **4. Old web endpoints:** `osu-submit-modular.php` (same leaderboards, pp, medals), getscores by
       `vv`, osu!direct downloads and thumbnails passed through (no TLS 1.2), medal images on `s.`, update
       checks. Replays (`osu-getreplay`) and `osu-stat` not seen from b20140624 yet. 2026-10-02
-- [ ] **5. Rules check for shared leaderboards:** std score v1 is unchanged; check taiko/mania/catch
-      before they share boards; ScoreV2 and newer mods simply aren't available to old builds.
+- [x] **5. Rules check for shared leaderboards:** score v1 and mod multipliers unchanged since 2013 in
+      every mode (osuTitanic shares boards without converting); safeguards: NoVideo isn't TouchDevice
+      before 2014, Co-op refused, taiko/catch plays whose judgements don't cover the map kept off the
+      board (`LegacyScoreRules`). 2026-10-02
 - [ ] **6. Anti-cheat and verification:** old builds send the same client hashes (exe md5, adapters,
       uninstall id, disk) — keep ban-evasion; decide on device verification and circleguard for them.
 - [~] **7. Production:** `docs/old-clients.md` (player setup with `Titanic.fallback.exe`, supported

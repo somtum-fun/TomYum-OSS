@@ -55,6 +55,14 @@ Sign out of a real osu! account in that client first: its login is sent to this 
 - **Score submission** (`osu-submit-modular.php`): today's submission with the old key (no
   `osuver`), the map's checksum from the score, and the old reply (map line and overall chart,
   accuracy as a fraction, medal file names, no empty fields).
+- **Fair shared leaderboards.** Score v1 and the mod multipliers haven't changed since 2013 in any
+  mode, so old clients' scores count as they are (osuTitanic does the same), with three exceptions
+  (`LegacyScoreRules`, by the build in the score's version field): mod bit 4 was NoVideo before
+  2014 and isn't taken as TouchDevice (which lowers pp); Co-op is refused (unranked since April
+  2015); and a passed taiko or catch play whose 300s, 100s and misses don't add up to the map's max
+  combo in that mode (the old client converted it differently) is kept but off the leaderboard, with
+  no pp. Not checked: osu!mania long notes before b20150727 were judged a little harsher (only
+  against the old-client player).
 - **Medal images** at `s.<domain>/images/achievements/<name>`: today's icons fitted to the old
   images' 133×103 (osu! no longer has the old art; it isn't used).
 - **Update checks** (`/release/update.php` and the like) answer "no update", or the client waits on

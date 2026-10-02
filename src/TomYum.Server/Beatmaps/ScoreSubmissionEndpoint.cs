@@ -171,6 +171,15 @@ public static class ScoreSubmissionEndpoint
         var passed = parts[14].Equals("True", StringComparison.OrdinalIgnoreCase);
         var grade = parts[12];
 
+        // Old clients (docs/old-clients.md): their mods in today's numbering, and Co-op refused.
+        var build = LegacyScoreRules.BuildOf(parts);
+        mods = LegacyScoreRules.Mods(mods, build);
+        if (LegacyScoreRules.IsRefused(mods, build))
+        {
+            logger.LogWarning("Score submission rejected: Co-op from an old client ({Build})", LegacyScoreRules.Describe(build));
+            return Results.Text("error: no", "text/plain");
+        }
+
         // Fold Relax/Autopilot into the combined gamemode used for stats + leaderboards so those
         // scores stay off the vanilla boards. The vanilla ruleset (`mode`) still drives pp and
         // accuracy. See TomYum.Domain.Enums.GameMode.
@@ -260,10 +269,32 @@ public static class ScoreSubmissionEndpoint
         // done, when it's worked out with everything else.
         var held = passed && TomYum.Persistence.RankingPause.IsPaused(gameMode);
 
+        // An old client's passed play in taiko or catch whose judgements don't cover the map as today's
+        // client converts it (docs/old-clients.md): kept, but off the leaderboard and out of the totals.
+        var offBoard = false;
+        if (passed && build.IsLegacy && mode is 1 or 2 && pp is IBeatmapDifficulty converted)
+        {
+            try
+            {
+                var expected = (await converted.DifficultyAsync(beatmap.Id, mode, cancellationToken).ConfigureAwait(false))?.MaxCombo;
+                if (!LegacyScoreRules.JudgementsMatch(mode, n300, n100, nmiss, expected))
+                {
+                    offBoard = true;
+                    ppValue = 0;
+                    logger.LogWarning("Score from an old client ({Build}) kept off the leaderboard: {Hits} judgements on beatmap {BeatmapId} mode {Mode}, today's client has {Expected}.",
+                        LegacyScoreRules.Describe(build), n300 + n100 + nmiss, beatmap.Id, mode, expected);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Couldn't check an old client's judgements on beatmap {BeatmapId}; the score counts", beatmap.Id);
+            }
+        }
+
         // A passed score is Best only if the player has no prior best or this score beats it by pp.
         // Old best scores remain in the DB as Submitted (not shown on leaderboard) for history.
         var scoreStatus = passed
-            ? (!held && (prevBest is null || ppValue > prevBest.Pp) ? ScoreStatus.Best : ScoreStatus.Submitted)
+            ? (!held && !offBoard && (prevBest is null || ppValue > prevBest.Pp) ? ScoreStatus.Best : ScoreStatus.Submitted)
             : ScoreStatus.Failed;
 
         // Plugins may reject the score before anything is stored (e.g. a mode's own rules).
