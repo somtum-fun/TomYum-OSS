@@ -60,6 +60,9 @@ public sealed class OnlinePlayer
     /// <summary>Whether this player currently has the multiplayer lobby open.</summary>
     public bool InLobby { get; set; }
 
+    /// <summary>The osu! build the player logged in with (old builds get older protocol and endpoints).</summary>
+    public ClientBuild Build { get; set; } = ClientBuild.Parse(null);
+
     /// <summary>Restricted by staff: invisible to other players and can't chat in public channels.</summary>
     public bool IsRestricted { get; set; }
 

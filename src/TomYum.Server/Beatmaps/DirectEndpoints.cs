@@ -2,8 +2,11 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
+using TomYum.Bancho;
 using TomYum.Domain.Entities;
+using TomYum.Server.Bancho;
 
 namespace TomYum.Server.Beatmaps;
 
@@ -30,7 +33,7 @@ public static partial class DirectEndpoints
 
         // Download redirect — no host restriction so clients that hit the osu. subdomain
         // for /d/ still get the redirect. If the deployment needs host filtering, add hosts.
-        app.MapGet("/d/{setId}", HandleDownload);
+        app.MapGet("/d/{setId}", HandleDownloadForClientAsync);
 
         // One difficulty's .osu file, like osu.ppy.sh/osu/{id}: ppy's score processor reads maps
         // from here (BEATMAP_DOWNLOAD_PATH), so custom maps (whose files are only in TomYum's
@@ -295,6 +298,49 @@ public static partial class DirectEndpoints
     }
 
     // ── /d/{setId} ────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Named HttpClient for downloads passed through to old clients (a whole .osz takes a while).</summary>
+    internal const string DownloadHttpClientName = "BeatmapMirrorDownload";
+
+    /// <summary>
+    /// A download for whoever asks (<c>?u=</c> is the player): <see cref="HandleDownload"/>, except
+    /// that an old build (before 2016, <see cref="ClientBuild.IsLegacy"/>) can't follow a redirect to the
+    /// mirror's HTTPS (no TLS 1.2 on .NET 2.0), so the file is fetched here and passed on.
+    /// </summary>
+    internal static async Task<IResult> HandleDownloadForClientAsync(
+        int setId,
+        HttpContext context,
+        IOptions<DirectOptions> opts,
+        CustomBeatmapStore store,
+        PlayerRegistry players,
+        IHttpClientFactory factory,
+        CancellationToken cancellationToken)
+    {
+        var result = HandleDownload(setId, context.Request, opts, store);
+        if (result is not RedirectHttpResult redirect
+            || context.Request.Query["u"].ToString() is not { Length: > 0 } username
+            || players.GetByUsername(username) is not { Build.IsLegacy: true })
+        {
+            return result;
+        }
+
+        var http = factory.CreateClient(DownloadHttpClientName);
+        var upstream = await http.GetAsync(redirect.Url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+        if (!upstream.IsSuccessStatusCode)
+        {
+            var status = (int)upstream.StatusCode;
+            upstream.Dispose();
+            return Results.StatusCode(status);
+        }
+
+        context.Response.RegisterForDispose(upstream);
+        context.Response.ContentLength = upstream.Content.Headers.ContentLength; // the client's progress bar
+        var name = upstream.Content.Headers.ContentDisposition?.FileNameStar?.Trim('"')
+            ?? upstream.Content.Headers.ContentDisposition?.FileName?.Trim('"')
+            ?? string.Create(CultureInfo.InvariantCulture, $"{setId}.osz");
+        var body = await upstream.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        return Results.Stream(body, "application/x-osu-beatmap-archive", name);
+    }
 
     internal static IResult HandleDownload(
         int setId,

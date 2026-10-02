@@ -227,6 +227,7 @@ public sealed class BanchoLoginHandler
         // same account: those windows are extra sessions, not the player moving to another client.
         var tournament = request.OsuVersion.EndsWith("tourney", StringComparison.OrdinalIgnoreCase);
         var player = tournament ? _registry.AddTournamentClient(presence) : _registry.Add(presence);
+        player.Build = ClientBuild.Parse(request.OsuVersion);
         player.IsRestricted = user.IsRestricted;
         player.SilenceEndUtc = user.SilenceEndUtc;
         IReadOnlyList<int> friendIds = _friends is null ? [] : await _friends.GetFriendIdsAsync(user.Id, cancellationToken).ConfigureAwait(false);
