@@ -71,6 +71,18 @@ public sealed class BanchoLoginHandler
     public const string BotNotice = "Bot accounts can't log in to the game. Connect over IRC instead.";
 
     /// <summary>
+    /// What a held-for-verification login is told: today's clients open <c>/p/verify</c> on their
+    /// own when they see the <see cref="LoginFailureReason.VerificationRequired"/> code, but older
+    /// builds (and anything going through the production hook) may just show a generic login
+    /// failure, so TomYum attaches a message with the URL. Shown as a bancho NOTIFICATION — the
+    /// client renders it in a dialog, so it is readable on every supported build.
+    /// </summary>
+    public const string VerificationNotice =
+        "This is a new device.\n"
+      + "Please sign in on https://osu.example.com and open Settings → Account Verification\n"
+      + "to confirm it, then log in to the game again.";
+
+    /// <summary>
     /// The staff log action for an account that got in earlier and now logs in from the machine of a
     /// restricted account (it was restricted later, or the account was verified by hand); staff are
     /// alerted on Discord once per pair.
@@ -199,7 +211,7 @@ public sealed class BanchoLoginHandler
                 HoldDevice(user.Id, hashes.UninstallMd5);
                 _logger.LogInformation("Login held: {Username} (id {UserId}) is on a device they haven't verified yet.", user.Username, user.Id);
                 await RecordLoginAsync(user.Id, "held", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
-                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired), null);
+                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired, VerificationNotice), null);
             }
         }
 
