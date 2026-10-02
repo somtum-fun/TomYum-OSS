@@ -109,6 +109,18 @@ public sealed class DiscordTests
     }
 
     [Fact]
+    public void ScoreData_GivesTheSpeedPlayed_LazersPickedOneToo()
+    {
+        Assert.Equal(1.5, OsuWebCommunity.ReadRate("""{"mods":[{"acronym":"HD"},{"acronym":"DT","settings":{}}]}"""));
+        Assert.Equal(1.1, OsuWebCommunity.ReadRate("""{"mods":[{"acronym":"DT","settings":{"speed_change":1.1}}]}"""));
+        Assert.Equal(0.8, OsuWebCommunity.ReadRate("""{"mods":[{"acronym":"HT","settings":{"speed_change":0.8}}]}"""));
+        Assert.Equal(0.75, OsuWebCommunity.ReadRate("""{"mods":["DC"]}"""));
+        Assert.Equal(1.0, OsuWebCommunity.ReadRate("""{"mods":[{"acronym":"CL"}]}"""));
+        Assert.Null(OsuWebCommunity.ReadRate("""{"mods":[{"acronym":"WU"}]}""")); // changes as it plays
+        Assert.Null(OsuWebCommunity.ReadRate("not json"));
+    }
+
+    [Fact]
     public void LogSink_KeepsErrors_ButNotTheBotsOwn()
     {
         var sink = new DiscordLogSink();

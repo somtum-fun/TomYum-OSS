@@ -36,7 +36,9 @@ public sealed class CircleguardOptions
 /// </summary>
 public sealed record CircleguardPlay(
     byte[] Data, bool FramesOnly, int Ruleset = 0, int Mods = 0, string Username = "", int MaxCombo = 0,
-    int Count300 = 0, int Count100 = 0, int Count50 = 0, int CountGeki = 0, int CountKatu = 0, int CountMiss = 0);
+    int Count300 = 0, int Count100 = 0, int Count50 = 0, int CountGeki = 0, int CountKatu = 0, int CountMiss = 0,
+    // The play's real speed when it isn't the mods' usual one (lazer's DT/HT at a picked speed).
+    double? Rate = null);
 
 /// <summary>
 /// A top play to compare against: an <c>.osr</c>, or bare frames (stable's, the osu! API's). Its results
@@ -107,6 +109,8 @@ public sealed class CircleguardClient
                 count_miss = play.CountMiss,
             })), "replay_meta");
         }
+        if (play.Rate is { } rate)
+            form.Add(new StringContent(rate.ToString(System.Globalization.CultureInfo.InvariantCulture)), "rate");
         if (beatmap is not null)
             form.Add(new ByteArrayContent(beatmap), "beatmap", "map.osu");
         foreach (var reference in references)

@@ -130,7 +130,8 @@ public sealed class CircleguardScanner
             || await community.GetStableScoreAsync(score.ScoreId, cancellationToken).ConfigureAwait(false) is not { } stable
             || services.GetService<TomYum.Persistence.TomYumDbContext>() is not { } db
             || await db.Scores.FindAsync([stable.StableScoreId], cancellationToken).ConfigureAwait(false) is not { } own)
-            return new CircleguardPlay(data, FramesOnly: false);
+            // lazer's .osr says only "DT"/"HT"; the speed the player picked is in the score's mods.
+            return new CircleguardPlay(data, FramesOnly: false, Rate: score.IsStable ? null : score.Rate);
 
         return new CircleguardPlay(
             data, FramesOnly: true, Ruleset: own.Mode % 4, Mods: own.Mods, Username: score.Username, MaxCombo: own.MaxCombo,

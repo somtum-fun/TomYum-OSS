@@ -102,7 +102,9 @@ public sealed class DiscordWatch
 
         // Two passes can't overlap: the second one's map takes its length to play.
         var length = await community.GetMapLengthAsync(score.BeatmapId, cancellationToken).ConfigureAwait(false);
-        var rate = score.Mods.Contains("DT") || score.Mods.Contains("NC") ? 1.5 : score.Mods.Contains("HT") || score.Mods.Contains("DC") ? 0.75 : 1.0;
+        // (lazer's DT/HT at the speed the player picked; unknown, the mods' usual speed)
+        var rate = score.Rate
+            ?? (score.Mods.Contains("DT") || score.Mods.Contains("NC") ? 1.5 : score.Mods.Contains("HT") || score.Mods.Contains("DC") ? 0.75 : 1.0);
         var needed = length / rate;
         if (_lastPass.TryGetValue(score.UserId, out var previous) && previous.BeatmapId != score.BeatmapId && needed >= 30)
         {

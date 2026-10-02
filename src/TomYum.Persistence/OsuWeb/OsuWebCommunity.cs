@@ -59,7 +59,9 @@ public sealed record ScoreCard(
     int Ok,
     int Meh,
     int Miss,
-    DateTime EndedAt)
+    DateTime EndedAt,
+    // How fast the map played (lazer's DT/HT keep the speed picked: OsuWebCommunity.ReadRate); null: unknown, or it changed during the play.
+    double? Rate = null)
 {
     /// <summary>"Artist - Title (Mapper) [Version]", as lazer shows a map.</summary>
     public string MapName => string.IsNullOrEmpty(Creator) ? $"{Artist} - {Title} [{Version}]" : $"{Artist} - {Title} ({Creator}) [{Version}]";
@@ -488,7 +490,53 @@ public sealed partial class OsuWebCommunity
             row.Artist, row.Title, row.Version, row.Creator, row.StarRating, row.BeatmapStatus, mods,
             row.Accuracy, (int)row.MaxCombo, (int)row.BeatmapMaxCombo, row.Passed ? row.Grade : "F", row.Passed, row.Pp,
             row.TotalScore, row.LegacyTotalScore, row.IsStable, great, ok, meh, miss,
-            DateTime.SpecifyKind(row.EndedAt, DateTimeKind.Utc));
+            DateTime.SpecifyKind(row.EndedAt, DateTimeKind.Utc), ReadRate(row.Data));
+    }
+
+    /// <summary>
+    /// How fast a score's map played, from its data: lazer's DT/NC and HT/DC keep the speed the
+    /// player picked (<c>settings.speed_change</c>, 1.5× and 0.75× unless changed); 1 without them.
+    /// Null when the speed changes during the play (Wind Up/Down, Adaptive Speed) or can't be read.
+    /// </summary>
+    public static double? ReadRate(string? json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return 1.0;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            if (!document.RootElement.TryGetProperty("mods", out var modList) || modList.ValueKind != JsonValueKind.Array)
+                return 1.0;
+
+            var rate = 1.0;
+            foreach (var mod in modList.EnumerateArray())
+            {
+                var acronym = mod.ValueKind == JsonValueKind.Object && mod.TryGetProperty("acronym", out var a) ? a.GetString()
+                    : mod.ValueKind == JsonValueKind.String ? mod.GetString() : null;
+                double? usual = acronym switch
+                {
+                    "DT" or "NC" => 1.5,
+                    "HT" or "DC" => 0.75,
+                    "WU" or "WD" or "AS" => double.NaN,
+                    _ => null,
+                };
+                if (usual is not { } value)
+                    continue;
+                if (double.IsNaN(value))
+                    return null;
+
+                rate = mod.ValueKind == JsonValueKind.Object
+                    && mod.TryGetProperty("settings", out var settings) && settings.ValueKind == JsonValueKind.Object
+                    && settings.TryGetProperty("speed_change", out var speed) && speed.TryGetDouble(out var chosen)
+                    ? chosen
+                    : value;
+            }
+            return rate;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>The mods (without Classic, which marks every stable score) and hit counts from a score's data.</summary>
