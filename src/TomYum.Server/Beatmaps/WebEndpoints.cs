@@ -103,9 +103,13 @@ public static class WebEndpoints
                 personalBest = null;
         }
 
+        // The reply's format version (`vv`): old clients (docs/old-clients.md) send 1–3, today's 4.
+        if (!int.TryParse(context.Request.Query["vv"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var formatVersion))
+            formatVersion = 1;
+
         var sb = new System.Text.StringBuilder();
         sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
-            $"{(int)beatmap.Status}|false|{beatmap.Id}|{beatmap.SetId}|{board.Count}|0|"));
+            $"{StatusFor((int)beatmap.Status, formatVersion)}|false|{beatmap.Id}|{beatmap.SetId}|{board.Count}|0|"));
         sb.AppendLine("0");
         sb.AppendLine(beatmap.FullName);
         // The players' average rating (the website's); 10.0 without the website.
@@ -126,7 +130,7 @@ public static class WebEndpoints
             var pbUsername = await GetUsernameAsync(personalBest.UserId, users, registry, cancellationToken).ConfigureAwait(false);
             var pbRank = board.TakeWhile(s => s.Id != personalBest.Id).Count() + 1;
             var pbHasReplay = File.Exists(Path.Combine(replayDirFull, $"{personalBest.Id}.osr"));
-            sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank, pbHasReplay, showPp));
+            sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank, pbHasReplay, showPp, formatVersion));
         }
         else
         {
@@ -138,7 +142,7 @@ public static class WebEndpoints
             var s = board[i];
             var username = await GetUsernameAsync(s.UserId, users, registry, cancellationToken).ConfigureAwait(false);
             var hasReplay = File.Exists(Path.Combine(replayDirFull, $"{s.Id}.osr"));
-            sb.AppendLine(FormatScoreLine(s, username, i + 1, hasReplay, showPp));
+            sb.AppendLine(FormatScoreLine(s, username, i + 1, hasReplay, showPp, formatVersion));
         }
 
         return Results.Text(sb.ToString(), "text/plain");
@@ -284,14 +288,32 @@ public static class WebEndpoints
         return user?.Username ?? userId.ToString(CultureInfo.InvariantCulture);
     }
 
-    private static string FormatScoreLine(Score s, string username, int rank, bool hasReplay, bool showPp)
+    internal static string FormatScoreLine(Score s, string username, int rank, bool hasReplay, bool showPp, int formatVersion = 4)
     {
         // The 3rd field is the value the client shows and ranks by: pp (rounded) on relax/autopilot
         // boards, total score on vanilla — matching the leaderboard's sort metric.
         var leaderboardValue = showPp ? (long)Math.Round(s.Pp, MidpointRounding.AwayFromZero) : s.ScoreValue;
-        return string.Create(CultureInfo.InvariantCulture,
-            $"{s.Id}|{username}|{leaderboardValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? 1 : 0)}|{s.Mods}|{s.UserId}|{rank}|{s.SubmittedAt.ToUnixTimeSeconds()}|{(hasReplay ? 1 : 0)}");
+        // Format 1 has the date as text, later ones as unix time; "has a replay" came with format 4.
+        var date = formatVersion <= 1
+            ? s.SubmittedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            : s.SubmittedAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
+        var line = string.Create(CultureInfo.InvariantCulture,
+            $"{s.Id}|{username}|{leaderboardValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? 1 : 0)}|{s.Mods}|{s.UserId}|{rank}|{date}");
+        return formatVersion >= 4 ? line + (hasReplay ? "|1" : "|0") : line;
     }
+
+    /// <summary>
+    /// A map's status in the leaderboard reply's format version <paramref name="formatVersion"/> (`vv`).
+    /// Today's (4): 2 ranked, 3 approved, 4 qualified, 5 loved. Format 3 had no loved (sent as approved);
+    /// formats 1–2 numbered ranked 4 and qualified 2 as well. An old client waits forever on a number it
+    /// doesn't know.
+    /// </summary>
+    internal static int StatusFor(int status, int formatVersion) => formatVersion switch
+    {
+        >= 4 => status,
+        3 => status == 5 ? 3 : status,
+        _ => status switch { 2 => 4, 4 => 2, 5 => 3, _ => status },
+    };
 
     private static readonly string UpdateAvailable = string.Create(CultureInfo.InvariantCulture, $"{(int)RankedStatus.UpdateAvailable}|false");
 
