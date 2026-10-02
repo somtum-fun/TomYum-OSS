@@ -60,9 +60,11 @@ osu!'s team posts the polls with a separate management program. Here it's done f
    each nomination's description.
 2. The news author (and any captain who wants to post their own nominations' topics) allows the site
    to post on the forum: Manage → Forum opt-in.
-3. **Open polls**: a topic with a Yes/No poll (10 days) for each nomination and a main topic per mode
+3. Moderators check each nomination's content (Edit moderation). **Open polls** refuses while any
+   nomination is marked **Not allowed**: remove it from the round first.
+4. **Open polls**: a topic with a Yes/No poll (10 days) for each nomination and a main topic per mode
    in the **Project Loved** forum (#120 under Beatmaps).
-4. When the polls have ended, **Post results and Love the maps**: the votes are read, the results are
+5. When the polls have ended, **Post results and Love the maps**: the votes are read, the results are
    posted in the topics, and every map that reached the mode's threshold becomes **Loved** on the
    server (its difficulties in that mode, without the excluded ones), as the BN panel does it, with
    the "has just been loved!" activity entry.
