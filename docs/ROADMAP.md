@@ -28,9 +28,9 @@ _Before `1.0.0`: TomYum should run anyone's server without this one's choices ba
       wording, Relax/Autopilot pp source, custom medals) behind plugins or settings, the core generic.
 - [ ] No server-specific names or addresses in code, docs or defaults (domains, emails, branding);
       everything from configuration, with examples.
-- [ ] Clean-up: dead code and leftovers (unused `Storage` stubs until implemented, the `TomYum.Lazer`
-      placeholder project), consistent naming. Done 2026-10-02: `TomYum.Caching/PlaceHolder.cs` removed,
-      the test projects build without warnings.
+- [ ] Clean-up: dead code and leftovers (unused `Storage` stubs until implemented), consistent naming.
+      Done 2026-10-02: `TomYum.Caching/PlaceHolder.cs` removed, the test projects build without warnings.
+      Kept for now by decision (2026-10-02): the empty `TomYum.Lazer` project and the `services/` stubs.
 - [ ] Docs for operators (install, upgrade, backup, every setting) and contributors (architecture,
       plugin API), a changelog per version, a licence review of what's bundled.
 - [ ] Security review (admin API signing, InterOp, uploads, OAuth), and the open items above that
@@ -349,8 +349,10 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
       several copies behind a load balancer yet (a second copy loops stable's logins: its `osu-token` is
       unknown there). Not needed at today's load (2026-10-01: 4 vCPU/8 GB VM, TomYum ~280 MB, under 3%
       CPU); a few hundred daily players fit one VM. Stages, in order — stop at the first that's enough:
-  - [ ] **Always:** monitoring (CPU/RAM/disk, slow requests, to Discord like `watchdog.sh`) to know *what*
-        to scale (usually MySQL/Elasticsearch, not bancho). (Off-site backups: ⏸ skipped, 2026-10-02.)
+  - [x] **Always:** monitoring to know *what* to scale (usually MySQL/Elasticsearch, not bancho):
+        `watchdog.sh` also alerts on disk, memory, CPU, stopped/unhealthy/crashed containers and slow
+        requests (docs/monitoring.md); `deploy.sh` caps Docker's build cache at 20 GB (it had reached
+        128 GB). 2026-10-02. (Off-site backups: ⏸ skipped, 2026-10-02.)
   - [ ] **1. Scale up:** bigger VM (8/16, then 16/32), NVMe; more osu-web PHP workers, MySQL buffer pool,
         Elasticsearch heap. No code changes.
   - [ ] **2. Split the stack (config only):** MySQL + Redis on their own VM or managed (DigitalOcean
