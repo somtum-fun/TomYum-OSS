@@ -45,6 +45,11 @@ struct PpRequest {
     passed: bool,
     #[serde(default)]
     lazer: bool,
+    // A lazer play without Classic: slider ticks/repeats hit and slider ends hit (none: all of them).
+    #[serde(default)]
+    large_tick_hits: Option<u32>,
+    #[serde(default)]
+    slider_end_hits: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -166,8 +171,19 @@ async fn compute(state: &AppState, req: &PpRequest) -> Result<PpResponse, String
     let diff = Difficulty::new().mods(req.mods).lazer(req.lazer).calculate(&map);
     let stars = diff.stars();
 
-    let perf = Performance::new(diff)
-        .lazer(req.lazer)
+    let mut perf = Performance::new(diff).lazer(req.lazer);
+    if req.lazer {
+        if let Performance::Osu(mut osu) = perf {
+            if let Some(n) = req.large_tick_hits {
+                osu = osu.n_large_ticks(n);
+            }
+            if let Some(n) = req.slider_end_hits {
+                osu = osu.n_slider_ends(n);
+            }
+            perf = Performance::Osu(osu);
+        }
+    }
+    let perf = perf
         .mods(req.mods)
         .combo(req.max_combo)
         .n300(req.n300)

@@ -92,6 +92,24 @@ public sealed class LazerRelaxImport : BackgroundService
         };
     }
 
+    /// <summary>
+    /// An osu! lazer play's slider ticks/repeats hit and slider ends hit, which its pp counts; null for
+    /// other rulesets and for plays with Classic (scored as stable plays, as osu! does).
+    /// </summary>
+    public static (int LargeTickHits, int SliderEndHits)? SliderHits(int ruleset, string data)
+    {
+        if (ruleset != 0)
+            return null;
+        using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(data) ? "{}" : data);
+        var root = document.RootElement;
+        if (root.TryGetProperty("mods", out var mods) && mods.ValueKind == JsonValueKind.Array
+            && mods.EnumerateArray().Any(m => m.TryGetProperty("acronym", out var acronym) && acronym.GetString() == "CL"))
+            return null;
+        int Stat(string name) => root.TryGetProperty("statistics", out var stats)
+                                 && stats.TryGetProperty(name, out var value) && value.TryGetInt32(out var count) ? count : 0;
+        return (Stat("large_tick_hit"), Stat("slider_tail_hit"));
+    }
+
     /// <summary>The play's mods as the stable bitmask (the ones stable has; Classic and lazer-only ones are left out).</summary>
     public static Mods LegacyMods(string data)
     {
@@ -124,6 +142,7 @@ public sealed class LazerRelaxImport : BackgroundService
         }
 
         var (n300, n100, n50, nmiss, ngeki, nkatu) = Counts(play.Ruleset, play.Data);
+        var sliders = SliderHits(play.Ruleset, play.Data);
         var scores = services.GetRequiredService<IScoreRepository>();
         var ppValue = 0.0;
         if (play.Passed && beatmap.Status.AwardsRankedPp())
@@ -131,7 +150,8 @@ public sealed class LazerRelaxImport : BackgroundService
             try
             {
                 ppValue = await services.GetRequiredService<IPerformanceCalculator>().CalculateAsync(
-                    new PerformanceRequest(beatmap.Id, play.Ruleset, (int)mods, (int)play.MaxCombo, n300, n100, n50, nmiss, ngeki, nkatu, Passed: true, Lazer: true),
+                    new PerformanceRequest(beatmap.Id, play.Ruleset, (int)mods, (int)play.MaxCombo, n300, n100, n50, nmiss, ngeki, nkatu, Passed: true,
+                        Lazer: sliders is not null, LargeTickHits: sliders?.LargeTickHits, SliderEndHits: sliders?.SliderEndHits),
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -173,6 +193,8 @@ public sealed class LazerRelaxImport : BackgroundService
             SubmittedAt = new DateTimeOffset(DateTime.SpecifyKind(play.EndedAt, DateTimeKind.Utc)),
             FromLazer = true,
             OsuWebScoreId = play.ScoreId,
+            LargeTickHits = sliders?.LargeTickHits,
+            SliderEndHits = sliders?.SliderEndHits,
             PpHeld = held,
         }, cancellationToken).ConfigureAwait(false);
         await services.GetRequiredService<OsuWebLazerRelax>()

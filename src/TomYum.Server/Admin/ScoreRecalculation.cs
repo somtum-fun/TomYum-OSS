@@ -121,7 +121,7 @@ public sealed class ScoreRecalculation
                     CountKatu: score.CountKatu,
                     MaxCombo: score.MaxCombo,
                     Passed: score.Passed,
-                    Lazer: score.FromLazer),
+                    Lazer: score.SliderEndHits is not null, LargeTickHits: score.LargeTickHits, SliderEndHits: score.SliderEndHits),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

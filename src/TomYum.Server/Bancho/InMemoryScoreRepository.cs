@@ -42,6 +42,8 @@ public sealed class InMemoryScoreRepository : IScoreRepository
             FromLazer = score.FromLazer,
             OsuWebScoreId = score.OsuWebScoreId,
             PpHeld = score.PpHeld,
+            LargeTickHits = score.LargeTickHits,
+            SliderEndHits = score.SliderEndHits,
         };
         _scores[id] = stored;
         return Task.FromResult(stored);

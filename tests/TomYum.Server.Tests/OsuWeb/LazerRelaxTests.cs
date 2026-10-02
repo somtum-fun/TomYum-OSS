@@ -27,6 +27,14 @@ public sealed class LazerRelaxTests : OsuWebDatabaseTest
     }
 
     [Fact]
+    public void SliderHits_AreLazersOwn_ButNotWithClassic()
+    {
+        Assert.Equal((12, 30), LazerRelaxImport.SliderHits(0, """{"mods":[{"acronym":"AP"}],"statistics":{"great":300,"large_tick_hit":12,"slider_tail_hit":30}}"""));
+        Assert.Null(LazerRelaxImport.SliderHits(0, """{"mods":[{"acronym":"RX"},{"acronym":"CL"}],"statistics":{"large_tick_hit":12}}"""));
+        Assert.Null(LazerRelaxImport.SliderHits(1, """{"mods":[{"acronym":"RX"}]}"""));
+    }
+
+    [Fact]
     public void Mods_AreTheStableOnes() =>
         Assert.Equal(Mods.Relax | Mods.Hidden, LazerRelaxImport.LegacyMods("""{"mods":[{"acronym":"RX"},{"acronym":"HD"},{"acronym":"CL"},{"acronym":"DA","settings":{"approach_rate":5}}]}"""));
 

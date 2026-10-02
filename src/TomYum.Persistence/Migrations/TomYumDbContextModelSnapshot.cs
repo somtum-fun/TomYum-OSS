@@ -508,6 +508,9 @@ namespace TomYum.Persistence.Migrations
                         .HasMaxLength(2)
                         .HasColumnType("varchar(2)");
 
+                    b.Property<int?>("LargeTickHits")
+                        .HasColumnType("int");
+
                     b.Property<int>("MaxCombo")
                         .HasColumnType("int");
 
@@ -536,6 +539,9 @@ namespace TomYum.Persistence.Migrations
 
                     b.Property<long>("ScoreValue")
                         .HasColumnType("bigint");
+
+                    b.Property<int?>("SliderEndHits")
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
                         .ValueGeneratedOnAdd()

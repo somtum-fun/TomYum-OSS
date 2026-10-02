@@ -37,6 +37,14 @@ public sealed class Score
     /// </summary>
     public bool FromLazer { get; init; }
 
+    /// <summary>
+    /// For a lazer play without Classic: its slider ticks/repeats hit and slider ends hit, which its pp
+    /// counts (null otherwise: a stable play, or a lazer one with Classic, scored as stable).
+    /// </summary>
+    public int? LargeTickHits { get; init; }
+
+    public int? SliderEndHits { get; init; }
+
     /// <summary>For a lazer play: its score on the website (the row its pp is shown on), else null.</summary>
     public ulong? OsuWebScoreId { get; set; }
 

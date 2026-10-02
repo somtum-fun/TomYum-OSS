@@ -55,7 +55,9 @@ public interface IPartialPerformance
 /// <param name="CountGeki">Geki count (taiko: LargeBonus, mania: Perfect).</param>
 /// <param name="CountKatu">Katu count (catch: SmallTickMiss, mania: Good).</param>
 /// <param name="Passed">Whether the score cleared the map.</param>
-/// <param name="Lazer">Whether the play was made on lazer (its slider judgements differ from stable's).</param>
+/// <param name="Lazer">Whether the play was made on lazer without Classic (its slider judgements differ from stable's).</param>
+/// <param name="LargeTickHits">Lazer: slider ticks and repeats hit (null: all).</param>
+/// <param name="SliderEndHits">Lazer: slider ends hit (null: all).</param>
 public sealed record PerformanceRequest(
     int BeatmapId,
     int RulesetId,
@@ -68,7 +70,9 @@ public sealed record PerformanceRequest(
     int CountGeki,
     int CountKatu,
     bool Passed,
-    bool Lazer = false);
+    bool Lazer = false,
+    int? LargeTickHits = null,
+    int? SliderEndHits = null);
 
 /// <summary>A map's own difficulty: star rating and max combo without mods.</summary>
 public sealed record BeatmapDifficulty(double StarRating, int MaxCombo);
