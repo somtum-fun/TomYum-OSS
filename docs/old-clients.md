@@ -39,7 +39,7 @@ Sign out of a real osu! account in that client first: its login is sent to this 
 
 | Build | Status |
 |---|---|
-| `b20140624` | Tested 2026-10-02 (locally): login, chat, online users, osu!direct (search, download, import, thumbnails), leaderboards, score submission (pp, medals, ranking screen), being spectated by today's client. Not yet tested: multiplayer, spectating today's client. |
+| `b20140624` | Tested 2026-10-02 (locally and on sundei.eu): login, chat, online users, osu!direct (search, download, import, thumbnails), leaderboards, score submission (pp, medals, ranking screen), being spectated by today's client. Not yet tested: multiplayer, spectating today's client. |
 | Late 2013 – 2015 | Expected to work like the above (HTTP bancho, protocol 18/19); not tested build by build yet. |
 | Up to `b20130815` | Not supported: these speak bancho over raw TCP, which a Cloudflare Tunnel can't carry. |
 
@@ -50,6 +50,11 @@ Sign out of a real osu! account in that client first: its login is sent to this 
   `c1.`–`c6.`, `ce.`, `a.`, `b.`, `s.`) on `http://` without redirecting, and Cloudflare must not
   redirect them either ("Always Use HTTPS" off, or a rule exempting those hosts).
 - **Build detection.** The login's version (`b20140624`) is kept on the session (`ClientBuild`).
+- **Chat.** At login an old build is told it's in the auto-join channels (`#osu`, `#announce`):
+  it shows their tabs but, unlike today's client, never asks to join them, so its chat input
+  stayed on "Connecting...".
+- **Diagnostics.** The server log names each packet type the first time it goes to or comes from
+  an old build's session (`LegacyPacketLog`): that's how the chat problem showed.
 - **Downloads and thumbnails.** .NET 2.0 has no TLS 1.2, so these clients can't follow the usual
   redirects to the mirror's or ppy's HTTPS. For a build before 2016 (downloads), or a request that
   came over plain HTTP (thumbnails, by Cloudflare's `Cf-Visitor` header), TomYum fetches the file and
