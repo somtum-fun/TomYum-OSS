@@ -320,15 +320,30 @@ public static partial class DirectEndpoints
 
     // ── b.{domain} catch-all ──────────────────────────────────────────────────────────────
 
-    internal static IResult HandleBeatmapAsset(HttpRequest request, IOptions<DirectOptions> opts, CustomBeatmapStore store)
+    internal static async Task<IResult> HandleBeatmapAsset(
+        HttpContext context, IOptions<DirectOptions> opts, CustomBeatmapStore store, AudioPreviews previews, CancellationToken cancellationToken)
     {
-        // Custom sets' thumbnails and previews are this server's.
+        var request = context.Request;
         var local = CustomAsset().Match(request.Path.Value ?? string.Empty);
-        if (local.Success && int.TryParse(local.Groups["id"].Value, CultureInfo.InvariantCulture, out var setId) && setId >= Beatmap.CustomIdFloor)
+        if (local.Success && int.TryParse(local.Groups["id"].Value, CultureInfo.InvariantCulture, out var setId))
         {
             var preview = local.Groups["kind"].Value == "preview";
-            var path = preview ? store.PreviewPath(setId) : store.CoverPath(setId, local.Groups["large"].Success ? "thumbl" : "thumb");
-            return path is null ? Results.NotFound() : Results.File(path, preview ? "audio/mpeg" : "image/jpeg");
+
+            // Custom sets' thumbnails and previews are this server's.
+            if (setId >= Beatmap.CustomIdFloor)
+            {
+                var path = preview ? store.PreviewPath(setId) : store.CoverPath(setId, local.Groups["large"].Success ? "thumbl" : "thumb");
+                return path is null ? Results.NotFound() : Results.File(path, preview ? "audio/mpeg" : "image/jpeg", enableRangeProcessing: preview);
+            }
+
+            // osu! sets' previews are kept here too (AudioPreviews), so players see their length.
+            if (preview)
+            {
+                if (await previews.GetAsync(setId, cancellationToken).ConfigureAwait(false) is not { } file)
+                    return Results.NotFound();
+                context.Response.Headers.CacheControl = "public, max-age=604800";
+                return Results.File(file.Path, file.Type, enableRangeProcessing: true);
+            }
         }
 
         // Forward the path verbatim to ppy's CDN — covers /thumb/{id}[l].jpg,

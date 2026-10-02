@@ -252,9 +252,11 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
         Assert.IsType<NotFound>(DirectEndpoints.HandleDownload(set.SetId + 1, new DefaultHttpContext().Request, options, store));
         Assert.IsType<RedirectHttpResult>(DirectEndpoints.HandleDownload(123, new DefaultHttpContext().Request, options, store));
 
-        Assert.Equal("image/jpeg", Assert.IsType<PhysicalFileHttpResult>(DirectEndpoints.HandleBeatmapAsset(Request(Invariant($"/thumb/{set.SetId}l.jpg")), options, store)).ContentType);
-        Assert.Equal("audio/mpeg", Assert.IsType<PhysicalFileHttpResult>(DirectEndpoints.HandleBeatmapAsset(Request(Invariant($"/preview/{set.SetId}.mp3")), options, store)).ContentType);
-        Assert.IsType<RedirectHttpResult>(DirectEndpoints.HandleBeatmapAsset(Request("/thumb/123l.jpg"), options, store));
+        using var previews = new AudioPreviews(new ConfigurationBuilder().Build(), new NoHttp(), scopes, NullLogger<AudioPreviews>.Instance);
+        Task<IResult> Asset(string path) => DirectEndpoints.HandleBeatmapAsset(Request(path).HttpContext, options, store, previews, CancellationToken.None);
+        Assert.Equal("image/jpeg", Assert.IsType<PhysicalFileHttpResult>(await Asset(Invariant($"/thumb/{set.SetId}l.jpg"))).ContentType);
+        Assert.Equal("audio/mpeg", Assert.IsType<PhysicalFileHttpResult>(await Asset(Invariant($"/preview/{set.SetId}.mp3"))).ContentType);
+        Assert.IsType<RedirectHttpResult>(await Asset("/thumb/123l.jpg"));
         Assert.IsType<PhysicalFileHttpResult>(DirectEndpoints.HandleCover(set.SetId, "card@2x.jpg", store));
         Assert.Equal("image/png", Assert.IsType<PhysicalFileHttpResult>(DirectEndpoints.HandleCover(set.SetId, "raw.jpg", store)).ContentType);
         Assert.IsType<NotFound>(DirectEndpoints.HandleCover(set.SetId, "nope.jpg", store));

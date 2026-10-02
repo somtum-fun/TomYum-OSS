@@ -255,6 +255,14 @@ builder.Services.AddHttpClient(DirectEndpoints.HttpClientName, http =>
     http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
 });
 
+// Audio previews (b.<domain>/preview/{set}.mp3), kept on disk; catboy.best wants an app that names itself.
+builder.Services.AddHttpClient(AudioPreviews.HttpClientName, http =>
+{
+    http.Timeout = TimeSpan.FromSeconds(20);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0 (osu! private server; audio previews)");
+});
+builder.Services.AddSingleton<AudioPreviews>();
+
 // --- Static assets (medal icons) ---
 // Named HttpClient used to lazily fetch medal icons from ppy's CDN for the assets.<domain> proxy.
 builder.Services.AddHttpClient(AssetsEndpoints.HttpClientName, http =>
