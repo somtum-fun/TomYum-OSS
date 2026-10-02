@@ -150,6 +150,17 @@ public sealed class PpReworks : BackgroundService
     public async Task<bool> TickAsync(CancellationToken cancellationToken = default)
     {
         using var scope = _scopes.CreateScope();
+
+        // An update the host's pp updater put live: its rework.
+        if (scope.ServiceProvider.GetService<PpLibraries>() is { } libraries
+            && await libraries.TakeReworkRequestAsync().ConfigureAwait(false) is { } fromUpdater)
+        {
+            var (_, error) = await StartAsync(new PpReworkRequest(fromUpdater.Modes, fromUpdater.Library, fromUpdater.FromVersion, fromUpdater.ToVersion, fromUpdater.Reason),
+                fromUpdater.ActorId, cancellationToken).ConfigureAwait(false);
+            if (error is not null)
+                _logger.LogWarning("pp rework after the {Library} update couldn't start: {Error}", fromUpdater.Library, error);
+        }
+
         var db = scope.ServiceProvider.GetRequiredService<TomYumDbContext>();
         var active = await db.PpReworks.Where(r => r.State == PpRework.Running || r.State == PpRework.Website)
             .OrderBy(r => r.Id).ToListAsync(cancellationToken).ConfigureAwait(false);
