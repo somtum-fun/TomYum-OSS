@@ -288,10 +288,10 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
         callback set on osu.ppy.sh.
   - [ ] Discord webhooks (`qat-webhooks.json`) and `enableAutomation`; a bot account + OAuth client for
         `enableMessages` (docs/bots.md).
-- [x] **Project Loved** at `loved.<domain>`: our own loved-request site, `example-org/private-repo`
-      (docs/loved.md). Players ask for maps (mode + why) and review requests; the Project Loved group
-      loves (Loved on the server at once), rejects, removes or blacklists, with reasons. Replaced the
-      port of osu!'s Project Loved site (rounds and forum polls were too much here). 2026-10-02
+- [x] **Project Loved** on the website (Community → Project Loved; `loved.<domain>` redirects there),
+      docs/loved.md: players ask for maps (mode + why) and review requests (for/against); the Project
+      Loved group loves (Loved at once), rejects, removes or blacklists, with reasons. Built on sundei's
+      in-website Loved pages without rounds or polls; the separate Loved sites are retired. 2026-10-03
 
 ## Old clients (2008–2015) 🔒 the patcher (step 1) — requested 2026-10-01
 _TomYum speaks today's stable protocol (builds from about 2023 log in fine). Clients from 2008–2015
