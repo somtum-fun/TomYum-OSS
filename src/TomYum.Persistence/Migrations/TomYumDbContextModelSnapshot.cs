@@ -429,6 +429,9 @@ namespace TomYum.Persistence.Migrations
                     b.Property<int>("Mods")
                         .HasColumnType("int");
 
+                    b.Property<ulong?>("OsuWebScoreId")
+                        .HasColumnType("bigint unsigned");
+
                     b.Property<bool>("Passed")
                         .HasColumnType("tinyint(1)");
 
@@ -437,6 +440,11 @@ namespace TomYum.Persistence.Migrations
 
                     b.Property<double>("Pp")
                         .HasColumnType("double");
+
+                    b.Property<bool>("PpHeld")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
 
                     b.Property<long>("ScoreValue")
                         .HasColumnType("bigint");
@@ -453,6 +461,8 @@ namespace TomYum.Persistence.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OsuWebScoreId");
 
                     b.HasIndex("BeatmapMd5", "Mode", "Status", "ScoreValue");
 

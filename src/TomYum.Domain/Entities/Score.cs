@@ -36,4 +36,13 @@ public sealed class Score
     /// submissions. The website shows stable plays with the Classic mod, like osu!.
     /// </summary>
     public bool FromLazer { get; init; }
+
+    /// <summary>For a lazer play: its score on the website (the row its pp is shown on), else null.</summary>
+    public ulong? OsuWebScoreId { get; set; }
+
+    /// <summary>
+    /// Made while its mode's pp was being reworked: its pp waits (not shown, not a best, not in the
+    /// totals) until the recalculation is done.
+    /// </summary>
+    public bool PpHeld { get; set; }
 }

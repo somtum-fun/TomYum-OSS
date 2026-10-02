@@ -120,7 +120,8 @@ public sealed class ScoreRecalculation
                     CountGeki: score.CountGeki,
                     CountKatu: score.CountKatu,
                     MaxCombo: score.MaxCombo,
-                    Passed: score.Passed),
+                    Passed: score.Passed,
+                    Lazer: score.FromLazer),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

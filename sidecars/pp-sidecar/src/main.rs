@@ -6,7 +6,10 @@
 //! pp instead of the vanilla formula.
 //!
 //! The `mode` field is the vanilla ruleset (0=osu,1=taiko,2=catch,3=mania); Relax/Autopilot are
-//! read from the `mods` legacy bitmask, which akatsuki-pp uses to select its rx/ap path.
+//! read from the `mods` legacy bitmask. As akatsuki-pp-py (what Akatsuki itself runs) does it, osu!
+//! Relax goes to Akatsuki's own relax algorithm (`osu_2019`), and everything else (Autopilot
+//! included) to the main calculator. `lazer` says whether the play was made on lazer (stable when
+//! missing). `GET /version` names the akatsuki-pp-rs build, for the admin panel.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -14,6 +17,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
+use akatsuki_pp::osu_2019::OsuPP;
 use akatsuki_pp::{Beatmap, Difficulty, Performance};
 use akatsuki_pp::model::mode::GameMode;
 use axum::http::StatusCode;
@@ -39,6 +43,8 @@ struct PpRequest {
     max_combo: u32,
     #[allow(dead_code)]
     passed: bool,
+    #[serde(default)]
+    lazer: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -134,10 +140,34 @@ async fn compute(state: &AppState, req: &PpRequest) -> Result<PpResponse, String
             .map_err(|e| format!("convert to {:?} failed: {e:?}", target))?;
     }
 
-    let diff = Difficulty::new().mods(req.mods).calculate(&map);
+    // osu! Relax: Akatsuki's relax algorithm, with its own star rating.
+    const RELAX: u32 = 1 << 7;
+    if target == GameMode::Osu && req.mods & RELAX != 0 {
+        // Unlike the main calculator, osu_2019 takes the hit counts as given: keep them within the
+        // map's objects (taking from the 300s first), and a failed play counts only what it reached.
+        let objects = map.hit_objects.len() as u32;
+        let (n100, n50) = (req.n100.min(objects), req.n50.min(objects));
+        let n_miss = req.n_miss.min(objects);
+        let n300 = req.n300.min(objects.saturating_sub(n100 + n50 + n_miss));
+        let mut calc = OsuPP::from_map(&map)
+            .mods(req.mods)
+            .combo(req.max_combo)
+            .n300(n300)
+            .n100(n100)
+            .n50(n50)
+            .misses(n_miss);
+        if !req.passed {
+            calc = calc.passed_objects((n300 + n100 + n50 + n_miss).min(objects));
+        }
+        let perf = calc.calculate();
+        return Ok(PpResponse { pp: perf.pp, star_rating: perf.difficulty.stars });
+    }
+
+    let diff = Difficulty::new().mods(req.mods).lazer(req.lazer).calculate(&map);
     let stars = diff.stars();
 
     let perf = Performance::new(diff)
+        .lazer(req.lazer)
         .mods(req.mods)
         .combo(req.max_combo)
         .n300(req.n300)
@@ -153,6 +183,15 @@ async fn compute(state: &AppState, req: &PpRequest) -> Result<PpResponse, String
 
 async fn health() -> &'static str {
     "ok"
+}
+
+/// The akatsuki-pp-rs build: its crate version and git commit (set at build time from Cargo.lock).
+async fn version() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "library": "akatsuki-pp-rs",
+        "version": option_env!("AKATSUKI_PP_VERSION").unwrap_or("unknown"),
+        "commit": option_env!("AKATSUKI_PP_COMMIT").unwrap_or("unknown"),
+    }))
 }
 
 #[tokio::main]
@@ -179,6 +218,7 @@ async fn main() {
     let app = Router::new()
         .route("/pp", post(calc))
         .route("/health", axum::routing::get(health))
+        .route("/version", axum::routing::get(version))
         .with_state(state);
 
     let port: u16 = std::env::var("PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(9000);

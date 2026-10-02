@@ -41,7 +41,7 @@ public sealed class OsuWebLazerRelax
         _db = db;
     }
 
-    /// <summary>Lazer scores with RX after <paramref name="afterId"/> in osu!, taiko or catch (relax has no mania), oldest first.</summary>
+    /// <summary>Lazer scores with RX (osu!, taiko or catch: relax has no mania) or AP (osu! only) after <paramref name="afterId"/>, oldest first.</summary>
     public async Task<IReadOnlyList<LazerRelaxPlay>> AfterAsync(ulong afterId, int limit, CancellationToken cancellationToken = default) =>
         await _db.Database.SqlQueryRaw<LazerRelaxPlay>(
             """
@@ -50,7 +50,8 @@ public sealed class OsuWebLazerRelax
               CAST(s.total_score AS SIGNED) AS TotalScore, CAST(COALESCE(s.legacy_total_score, 0) AS SIGNED) AS LegacyTotalScore, s.ended_at AS EndedAt
             FROM scores s
             WHERE s.id > {0} AND s.legacy_score_id IS NULL AND s.ruleset_id < 3
-              AND JSON_CONTAINS(JSON_EXTRACT(s.data, '$.mods[*].acronym'), '"RX"')
+              AND (JSON_CONTAINS(JSON_EXTRACT(s.data, '$.mods[*].acronym'), '"RX"')
+                   OR (s.ruleset_id = 0 AND JSON_CONTAINS(JSON_EXTRACT(s.data, '$.mods[*].acronym'), '"AP"')))
             ORDER BY s.id LIMIT {1}
             """, afterId, limit).ToListAsync(cancellationToken).ConfigureAwait(false);
 
@@ -65,4 +66,13 @@ public sealed class OsuWebLazerRelax
     public Task SetMarkAsync(ulong scoreId, CancellationToken cancellationToken = default) =>
         _db.Database.ExecuteSqlAsync(
             $"INSERT INTO osu_counts (name, count) VALUES ({MarkName}, {scoreId}) ON DUPLICATE KEY UPDATE count = {scoreId}", cancellationToken);
+
+    /// <summary>
+    /// Shows a lazer Relax/Autopilot play's Akatsuki pp on its website score (its page, the profile,
+    /// lazer's results), null for none. The score stays unranked, so the pp never counts toward
+    /// vanilla totals (ppy's processor only adds up ranked scores, and leaves unranked mods' pp alone).
+    /// </summary>
+    public Task SetPpAsync(ulong scoreId, double? pp, CancellationToken cancellationToken = default) =>
+        _db.Database.ExecuteSqlAsync(
+            $"UPDATE scores SET pp = {pp}, ranked = 0 WHERE id = {scoreId} AND legacy_score_id IS NULL", cancellationToken);
 }

@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TomYum.Bancho;
@@ -13,7 +14,7 @@ using Xunit;
 
 namespace TomYum.Server.Tests.OsuWeb;
 
-/// <summary>Lazer's Relax plays on TomYum's relax leaderboards.</summary>
+/// <summary>Lazer's Relax and Autopilot plays on TomYum's relax/autopilot leaderboards.</summary>
 public sealed class LazerRelaxTests : OsuWebDatabaseTest
 {
     [Theory]
@@ -57,7 +58,8 @@ public sealed class LazerRelaxTests : OsuWebDatabaseTest
         await InsertLazerAsync(player, """{"mods":[{"acronym":"HD"}],"statistics":{"great":300}}""", passed: true); // no RX: the website's
         await InsertLazerAsync(player, """{"mods":[{"acronym":"RX"}],"statistics":{"great":290,"ok":10}}""", passed: true);
         await InsertLazerAsync(player, """{"mods":[{"acronym":"RX"}],"statistics":{"great":50,"miss":3}}""", passed: false);
-        Assert.Equal(2, await import.TickAsync());
+        await InsertLazerAsync(player, """{"mods":[{"acronym":"AP"}],"statistics":{"great":300}}""", passed: true);
+        Assert.Equal(3, await import.TickAsync());
         Assert.Equal(0, await import.TickAsync()); // not taken twice
 
         var scores = new ScoreRepository(NewTomYumContext());
@@ -65,7 +67,16 @@ public sealed class LazerRelaxTests : OsuWebDatabaseTest
         Assert.NotNull(best);
         Assert.Equal((123.0, 290, 10, (int)Mods.Relax), (best!.Pp, best.Count300, best.Count100, best.Mods));
         Assert.True(best.FromLazer);   // shown as a lazer play (no Classic mod)
-        Assert.Equal((int)(Mods.Relax), calculator.LastMods);
+        Assert.True(calculator.LastLazer);
+
+        // The website shows the play's pp, unranked so it never counts toward vanilla totals.
+        var row = await NewOsuWebContext().Scores.AsNoTracking().SingleAsync(s => s.Id == best.OsuWebScoreId);
+        Assert.Equal((123f, false), (row.Pp, row.Ranked));
+
+        // Autopilot: its own leaderboard and stats.
+        var autopilot = await scores.GetPersonalBestAsync(player, "md5-100", GameMode.AutopilotOffset);
+        Assert.Equal(((int)Mods.Autopilot, true), (autopilot!.Mods, autopilot.FromLazer));
+        Assert.Equal(1, (await new UserStatsRepository(NewTomYumContext()).GetAsync(player, GameMode.AutopilotOffset))!.PlayCount);
 
         var stats = await new UserStatsRepository(NewTomYumContext()).GetAsync(player, GameMode.RelaxOffset);
         Assert.Equal(2, stats!.PlayCount);
@@ -80,11 +91,11 @@ public sealed class LazerRelaxTests : OsuWebDatabaseTest
 
     private sealed class FixedPp : IPerformanceCalculator
     {
-        public int LastMods { get; private set; }
+        public bool LastLazer { get; private set; }
 
         public Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
         {
-            LastMods = request.Mods;
+            LastLazer = request.Lazer;
             return Task.FromResult(123.0);
         }
     }
