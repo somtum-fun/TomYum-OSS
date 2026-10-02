@@ -262,6 +262,7 @@ builder.Services.AddHttpClient(AudioPreviews.HttpClientName, http =>
     http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0 (osu! private server; audio previews)");
 });
 builder.Services.AddSingleton<AudioPreviews>();
+builder.Services.AddSingleton<AssetStore>();
 
 // --- Static assets (medal icons) ---
 // Named HttpClient used to lazily fetch medal icons from ppy's CDN for the assets.<domain> proxy.

@@ -4,8 +4,12 @@ using TomYum.Persistence.OsuWeb;
 
 namespace TomYum.Server.Admin;
 
-/// <summary>A badge to give: an osu! badge file name or an image link, its tooltip, and an optional link.</summary>
-public sealed record BadgeRequest(string Image, string Description, string? Url);
+/// <summary>A badge to give: a badge's file name (here or osu!'s) or an image link, its tooltip, and an optional link.</summary>
+/// <param name="Image">A badge's file name (here or osu!'s), or a link to an image.</param>
+/// <param name="Description">Its tooltip.</param>
+/// <param name="Url">Where clicking it goes (optional).</param>
+/// <param name="Name">What a link's image is saved as (else the link's file name).</param>
+public sealed record BadgeRequest(string Image, string Description, string? Url, string? Name = null);
 
 /// <summary>A badge to take away, by its image name.</summary>
 public sealed record BadgeRemoveRequest(string Image);
@@ -41,7 +45,7 @@ public static class AdminBadgeEndpoints
         if (!string.IsNullOrEmpty(url) && !(Uri.TryCreate(url, UriKind.Absolute, out var link) && (link.Scheme == Uri.UriSchemeHttps || link.Scheme == Uri.UriSchemeHttp)))
             return Results.BadRequest(new { error = "The link should be a web address (https://…)." });
 
-        var (image, problem) = await services.GetRequiredService<BadgeImages>().PrepareAsync(request.Image ?? string.Empty, cancellationToken).ConfigureAwait(false);
+        var (image, problem) = await services.GetRequiredService<BadgeImages>().PrepareAsync(request.Image ?? string.Empty, request.Name, cancellationToken).ConfigureAwait(false);
         if (image is null)
             return Results.BadRequest(new { error = problem });
         if (!await badges.AddAsync(target.Id, image, description, url, cancellationToken).ConfigureAwait(false))

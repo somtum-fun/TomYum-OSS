@@ -1,7 +1,6 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
-using System.Security.Cryptography;
 using SkiaSharp;
 using TomYum.Server.Beatmaps;
 
@@ -13,7 +12,8 @@ namespace TomYum.Server.Admin;
 /// <list type="bullet">
 /// <item>an osu! badge by file name (e.g. <c>contributor.png</c>): checked on osu!'s CDN and cached;</item>
 /// <item>any image link (a Discord attachment, …): downloaded once and redrawn at badge size,
-/// 86×40 and 172×80 for <c>@2x</c>, so it looks like the others and doesn't depend on the link.</item>
+/// 86×40 and 172×80 for <c>@2x</c>, so it looks like the others and doesn't depend on the link;
+/// saved under the name staff give (else the link's file name), never a made-up one.</item>
 /// </list>
 /// </summary>
 public sealed class BadgeImages
@@ -35,28 +35,50 @@ public sealed class BadgeImages
     }
 
     /// <summary>
-    /// The badge's image name for <paramref name="text"/> (an osu! badge name or an image link),
-    /// with the file ready to be served; or the reason it can't be used.
+    /// The badge's image name for <paramref name="text"/> (a badge here or on osu! by its file name,
+    /// or an image link), with both sizes ready to be served; or the reason it can't be used. A link's
+    /// image is saved as <paramref name="name"/> (else the link's own file name), never a made-up one.
     /// </summary>
-    public async Task<(string? Image, string? Error)> PrepareAsync(string text, CancellationToken cancellationToken = default)
+    public async Task<(string? Image, string? Error)> PrepareAsync(string text, string? name = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(text);
         text = text.Trim();
         if (Uri.TryCreate(text, UriKind.Absolute, out var link) && (link.Scheme == Uri.UriSchemeHttps || link.Scheme == Uri.UriSchemeHttp))
-            return await FromLinkAsync(link, cancellationToken).ConfigureAwait(false);
+            return await FromLinkAsync(link, name, cancellationToken).ConfigureAwait(false);
 
-        var name = Path.HasExtension(text) ? text : text + ".png";
-        if (!AssetsEndpoints.IsSafeMedalFile(name))
+        var file = Path.HasExtension(text) ? text : text + ".png";
+        if (!AssetsEndpoints.IsSafeMedalFile(file))
             return (null, "That isn't an osu! badge file name (like `contributor.png`) or an image link.");
-        if (File.Exists(Path.Combine(Directory, name)))
-            return (name, null);
+        if (File.Exists(Path.Combine(Directory, file)))
+            return (file, null);
 
         using var client = _http.CreateClient(AssetsEndpoints.HttpClientName);
-        using var response = await client.GetAsync($"https://assets.ppy.sh/{AssetsEndpoints.BadgeFolder}/{name}", cancellationToken).ConfigureAwait(false);
+        using var response = await client.GetAsync($"https://assets.ppy.sh/{AssetsEndpoints.BadgeFolder}/{file}", cancellationToken).ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
-            return (null, $"osu! has no badge called `{name}`. Give the file name from a badge's image link, or a link to your own image.");
-        await SaveAsync(name, await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
-        return (name, null);
+            return (null, $"osu! has no badge called `{file}`. Give the file file from a badge's image link, or a link to your own image.");
+        await SaveAsync(file, await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+        // Its @2x too (osu!'s badges have one), so sharp screens don't ask for it later.
+        using var retina = await client.GetAsync($"https://assets.ppy.sh/{AssetsEndpoints.BadgeFolder}/{AssetStore.RetinaPath(file)}", cancellationToken).ConfigureAwait(false);
+        if (retina.IsSuccessStatusCode)
+            await SaveAsync(AssetStore.RetinaPath(file), await retina.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+        return (file, null);
+    }
+
+    /// <summary>
+    /// The file name a link's badge is saved as: the given name, else the link's own file name (both
+    /// made plain: letters, digits, - and _), as .png. Null when there's nothing usable.
+    /// </summary>
+    public static string? BadgeFileName(string? name, Uri link)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        var raw = string.IsNullOrWhiteSpace(name) ? Path.GetFileNameWithoutExtension(Uri.UnescapeDataString(link.AbsolutePath)) : name.Trim();
+        if (raw.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
+            raw = raw[..^4];
+        // A link to the double one names the pair without it.
+        if (raw.EndsWith("@2x", StringComparison.OrdinalIgnoreCase))
+            raw = raw[..^3];
+        var plain = System.Text.RegularExpressions.Regex.Replace(raw.ToLowerInvariant().Replace(' ', '-'), "[^a-z0-9_-]", string.Empty).Trim('-', '_');
+        return plain.Length is 0 or > 80 ? null : plain + ".png";
     }
 
     /// <summary>Redraws <paramref name="source"/> to fit <paramref name="width"/>×<paramref name="height"/> (centred, transparent around it).</summary>
@@ -125,8 +147,13 @@ public sealed class BadgeImages
 
     private string Directory => AssetsEndpoints.CacheDirectory(_configuration, AssetsEndpoints.BadgeFolder);
 
-    private async Task<(string? Image, string? Error)> FromLinkAsync(Uri link, CancellationToken cancellationToken)
+    private async Task<(string? Image, string? Error)> FromLinkAsync(Uri link, string? name, CancellationToken cancellationToken)
     {
+        if (BadgeFileName(name, link) is not { } file)
+            return (null, "Give the badge's image a name (letters, digits, - and _), like `ndc-2023`.");
+        if (File.Exists(Path.Combine(Directory, file)))
+            return (null, $"There's already a badge image called `{file}`: give another name, or give `{file}` itself to use that one.");
+
         byte[] data;
         try
         {
@@ -156,10 +183,9 @@ public sealed class BadgeImages
         if (Fit(data, Width, Height) is not { } normal || Fit(data, Width * 2, Height * 2) is not { } retina)
             return (null, "That link isn't an image (PNG, JPEG, GIF or WebP).");
 
-        var name = "tomyum-" + Convert.ToHexStringLower(SHA256.HashData(data))[..16];
-        await SaveAsync(name + ".png", normal, cancellationToken).ConfigureAwait(false);
-        await SaveAsync(name + "@2x.png", retina, cancellationToken).ConfigureAwait(false);
-        return (name + ".png", null);
+        await SaveAsync(file, normal, cancellationToken).ConfigureAwait(false);
+        await SaveAsync(AssetStore.RetinaPath(file), retina, cancellationToken).ConfigureAwait(false);
+        return (file, null);
     }
 
     private async Task SaveAsync(string file, byte[] data, CancellationToken cancellationToken)

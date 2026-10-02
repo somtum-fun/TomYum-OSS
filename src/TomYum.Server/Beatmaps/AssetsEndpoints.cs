@@ -54,6 +54,47 @@ public static partial class AssetsEndpoints
             HandleCachedAssetAsync("medals/client", file, http, configuration, logs, cancellationToken)).RequireHost(hosts);
         app.MapGet("/" + BadgeFolder + "/{file}", (string file, IHttpClientFactory http, IConfiguration configuration, ILoggerFactory logs, CancellationToken cancellationToken) =>
             HandleCachedAssetAsync(BadgeFolder, file, http, configuration, logs, cancellationToken)).RequireHost(hosts);
+        // Tournament banners, in folders like osu!'s (tournament-banners/official/owc2025/profile/supporter_CA.jpg):
+        // the ones staff put here (the admin panel's assets), else osu!'s, fetched once and kept.
+        app.MapGet("/" + AssetStore.BannerFolder + "/{**path}", (string path, IHttpClientFactory http, IConfiguration configuration, ILoggerFactory logs, CancellationToken cancellationToken) =>
+            HandleNestedAssetAsync(AssetStore.BannerFolder + "/" + path, http, configuration, logs, cancellationToken)).RequireHost(hosts);
+    }
+
+    /// <summary>A file under a managed folder, at any depth (<see cref="AssetStore.IsImagePath"/> keeps the path plain).</summary>
+    private static async Task<IResult> HandleNestedAssetAsync(
+        string relative, IHttpClientFactory httpClientFactory, IConfiguration configuration, ILoggerFactory loggerFactory, CancellationToken cancellationToken)
+    {
+        if (!AssetStore.IsImagePath(relative))
+            return Results.NotFound();
+        var type = Path.GetExtension(relative).ToLowerInvariant() switch
+        {
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".webp" => "image/webp",
+            _ => "image/png",
+        };
+        var localPath = Path.Combine(CacheDirectory(configuration, string.Empty), relative);
+        if (File.Exists(localPath))
+            return Results.File(localPath, type);
+
+        try
+        {
+            using var http = httpClientFactory.CreateClient(HttpClientName);
+            using var response = await http.GetAsync($"{UpstreamBaseUrl}/{relative}", cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return Results.NotFound();
+            var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
+            var tempPath = $"{localPath}.{Guid.NewGuid():N}.tmp";
+            await File.WriteAllBytesAsync(tempPath, bytes, cancellationToken).ConfigureAwait(false);
+            File.Move(tempPath, localPath, overwrite: true);
+            return Results.File(bytes, type);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
+        {
+            loggerFactory.CreateLogger("TomYum.Assets").LogWarning(ex, "Asset '{Path}' could not be fetched from upstream", relative);
+            return Results.NotFound();
+        }
     }
 
     private static async Task<IResult> HandleCachedAssetAsync(

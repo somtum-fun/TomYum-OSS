@@ -32,7 +32,7 @@ public sealed partial class DiscordCommands
             return DiscordReply.Text("The link should be a web address (https://…).", isPrivate: true);
 
         var (image, problem) = await services.GetRequiredService<BadgeImages>()
-            .PrepareAsync(options.GetValueOrDefault("image") ?? string.Empty, cancellationToken).ConfigureAwait(false);
+            .PrepareAsync(options.GetValueOrDefault("image") ?? string.Empty, options.GetValueOrDefault("name"), cancellationToken).ConfigureAwait(false);
         if (image is null)
             return DiscordReply.Text(problem!, isPrivate: true);
         if (!await badges.AddAsync(target.Id, image, description, url, cancellationToken).ConfigureAwait(false))
