@@ -81,6 +81,9 @@ builder.Services.AddSingleton(sp => new Maintenance(sp.GetRequiredService<Player
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Maintenance>());
 builder.Services.AddSingleton<ChatLog>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ChatLog>());
+// pp reworks (every score in some modes worked out again; their rankings wait), from the admin panel.
+builder.Services.AddSingleton(sp => new PpReworks(sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<ILogger<PpReworks>>(), TimeProvider.System));
+builder.Services.AddHostedService(sp => sp.GetRequiredService<PpReworks>());
 
 // User/beatmap persistence: MySQL (EF Core) when a Database section is configured and enabled,
 // otherwise the throwaway in-memory repositories so the server still runs without a database

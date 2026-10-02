@@ -79,6 +79,12 @@ public static class AdminEndpoints
         admin.MapGet("/maintenance", (Maintenance maintenance) => Results.Ok(MaintenanceJson(maintenance)));
         admin.MapPost("/maintenance", SetMaintenanceAsync);
         admin.MapPost("/alert", SendAlertAsync);
+        // pp reworks: their progress, starting one (the modes, the library and versions it's for, why), cancelling one.
+        admin.MapGet("/pp-reworks", async (PpReworks reworks, CancellationToken cancellationToken) =>
+            Results.Ok(await reworks.StatusAsync(cancellationToken).ConfigureAwait(false)));
+        admin.MapPost("/pp-reworks", StartPpReworkAsync);
+        admin.MapPost("/pp-reworks/{id:int}/cancel", async (int id, PpReworks reworks, HttpContext context, CancellationToken cancellationToken) =>
+            await reworks.CancelAsync(id, ActorId(context), cancellationToken).ConfigureAwait(false) ? Results.Ok() : Results.NotFound());
 
         // Moderation (GMT/Admin panels).
         admin.MapPost("/users/{userId:int}/refresh", async (int userId, UserModerationSync sync, CancellationToken cancellationToken) =>
@@ -255,6 +261,13 @@ public static class AdminEndpoints
 
         var result = await importer.ImportAsync(set, ActorId(context), cancellationToken: cancellationToken, via: Via(context)).ConfigureAwait(false);
         return result.Found ? Results.Ok(result) : Results.NotFound(result);
+    }
+
+    /// <summary>Starts a pp rework; 400 with why when it can't.</summary>
+    private static async Task<IResult> StartPpReworkAsync(PpReworkRequest request, PpReworks reworks, HttpContext context, CancellationToken cancellationToken)
+    {
+        var (rework, error) = await reworks.StartAsync(request, ActorId(context), cancellationToken).ConfigureAwait(false);
+        return rework is null ? Results.BadRequest(new { error }) : Results.Ok(new { rework.Id });
     }
 
     /// <summary>Recalculates the pp of every passed score, map by map, and logs it.</summary>

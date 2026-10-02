@@ -141,8 +141,10 @@ public sealed class LazerRelaxImport : BackgroundService
         }
 
         var previous = await scores.GetPersonalBestAsync((int)play.UserId, beatmap.Md5, gameMode, cancellationToken).ConfigureAwait(false);
+        // A pp rework in this mode: the play's pp waits until it's done (TomYum.Persistence.RankingPause).
+        var held = play.Passed && TomYum.Persistence.RankingPause.IsPaused(gameMode);
         var status = play.Passed
-            ? (previous is null || ppValue > previous.Pp ? ScoreStatus.Best : ScoreStatus.Submitted)
+            ? (!held && (previous is null || ppValue > previous.Pp) ? ScoreStatus.Best : ScoreStatus.Submitted)
             : ScoreStatus.Failed;
         if (status == ScoreStatus.Best && previous is not null)
             await scores.MarkPreviousBestAsync((int)play.UserId, beatmap.Md5, gameMode, cancellationToken).ConfigureAwait(false);
@@ -171,9 +173,10 @@ public sealed class LazerRelaxImport : BackgroundService
             SubmittedAt = new DateTimeOffset(DateTime.SpecifyKind(play.EndedAt, DateTimeKind.Utc)),
             FromLazer = true,
             OsuWebScoreId = play.ScoreId,
+            PpHeld = held,
         }, cancellationToken).ConfigureAwait(false);
         await services.GetRequiredService<OsuWebLazerRelax>()
-            .SetPpAsync(play.ScoreId, ppValue > 0 ? ppValue : null, cancellationToken).ConfigureAwait(false);
+            .SetPpAsync(play.ScoreId, ppValue > 0 && !held ? ppValue : null, cancellationToken).ConfigureAwait(false);
 
         var userStats = services.GetRequiredService<IUserStatsRepository>();
         var stats = await userStats.GetOrCreateAsync((int)play.UserId, gameMode, cancellationToken).ConfigureAwait(false);

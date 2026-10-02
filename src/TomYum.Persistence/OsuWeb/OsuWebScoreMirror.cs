@@ -182,7 +182,7 @@ public sealed class OsuWebScoreMirror
             // carries it), and the website's legacy score links use it.
             LegacyScoreId = (ulong)score.Id,
             Data = standardised?.DataJson ?? OsuWebScores.DataJson(score),
-            Pp = ranked && score.Pp > 0 ? (float)score.Pp : null,
+            Pp = ranked && score.Pp > 0 && !score.PpHeld ? (float)score.Pp : null,
             EndedAt = OsuWebBeatmaps.ToTimestamp(score.SubmittedAt, DateTime.UtcNow),
         };
 
@@ -516,6 +516,37 @@ public sealed class OsuWebScoreMirror
             .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Every website score in vanilla <paramref name="mode"/> (stable copies and lazer plays), for a pp rework.</summary>
+    public async Task<IReadOnlyList<ulong>> GetScoreIdsInModeAsync(int mode, CancellationToken cancellationToken = default) =>
+        await _osuWeb.Scores.AsNoTracking().Where(s => s.RulesetId == (ushort)mode).OrderBy(s => s.Id).Select(s => s.Id)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+    /// <summary>
+    /// The copy of vanilla <paramref name="mode"/>'s stats a pp rework's website ranking shows
+    /// (<c>tomyum_snapshot_osu_user_stats…</c>, same columns): osu-web's ranking page reads it while
+    /// ppy's processor redoes everyone's pp.
+    /// </summary>
+    public static string RankingSnapshotTable(int mode) => "tomyum_snapshot_" + OsuWebScores.StatsTable(mode);
+
+    /// <summary>Copies vanilla <paramref name="mode"/>'s ranking as it stands (<see cref="RankingSnapshotTable"/>), unless it's there already (a restart).</summary>
+    public async Task SnapshotRankingAsync(int mode, CancellationToken cancellationToken = default)
+    {
+        // Table names from the fixed list of osu-web's stats tables, never from input.
+        var table = OsuWebScores.StatsTable(mode);
+        var snapshot = RankingSnapshotTable(mode);
+        var create = string.Create(CultureInfo.InvariantCulture, $"CREATE TABLE IF NOT EXISTS `{snapshot}` LIKE `{table}`");
+        var copy = string.Create(CultureInfo.InvariantCulture, $"INSERT INTO `{snapshot}` SELECT * FROM `{table}` WHERE NOT EXISTS (SELECT 1 FROM `{snapshot}` LIMIT 1)");
+        await _osuWeb.Database.ExecuteSqlRawAsync(create, cancellationToken).ConfigureAwait(false);
+        await _osuWeb.Database.ExecuteSqlRawAsync(copy, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Lets go of vanilla <paramref name="mode"/>'s ranking copy (the website shows the live ranking again).</summary>
+    public Task DropRankingSnapshotAsync(int mode, CancellationToken cancellationToken = default)
+    {
+        var drop = string.Create(CultureInfo.InvariantCulture, $"DROP TABLE IF EXISTS `{RankingSnapshotTable(mode)}`");
+        return _osuWeb.Database.ExecuteSqlRawAsync(drop, cancellationToken);
+    }
+
     /// <summary>A linked stable score not yet in lazer's scoring (or without its legacy score id).</summary>
     public sealed record UnconvertedScore(long ScoreId, ulong OsuWebScoreId);
 
@@ -674,6 +705,10 @@ public sealed class OsuWebScoreMirror
     /// </summary>
     public Task RecomputeGlobalRanksAsync(int mode, CancellationToken cancellationToken = default)
     {
+        // A pp rework in the mode: ranks stay as they were until it's done (RankingPause).
+        if (RankingPause.IsPaused(mode))
+            return Task.CompletedTask;
+
         var table = OsuWebScores.StatsTable(mode);
         var sql = string.Create(CultureInfo.InvariantCulture, $"""
             UPDATE `{table}` s
@@ -951,7 +986,7 @@ public sealed class OsuWebScoreMirror
                 continue;
 
             row.Ranked = score.Passed && approved > 0;
-            row.Pp = row.Ranked && score.Pp > 0 ? (float)score.Pp : null;
+            row.Pp = row.Ranked && score.Pp > 0 && !score.PpHeld ? (float)score.Pp : null;
             written.Add(row.Id);
         }
 

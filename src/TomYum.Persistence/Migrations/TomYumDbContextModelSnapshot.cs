@@ -376,6 +376,94 @@ namespace TomYum.Persistence.Migrations
                     b.ToTable("mode_rank_history", (string)null);
                 });
 
+            modelBuilder.Entity("TomYum.Domain.Entities.PpRework", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("ActorId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Completed")
+                        .HasColumnType("int");
+
+                    b.Property<long>("Cursor")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Error")
+                        .HasMaxLength(1000)
+                        .HasColumnType("varchar(1000)");
+
+                    b.Property<DateTime?>("FinishedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("FromVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<string>("Library")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("Modes")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("varchar(32)");
+
+                    b.Property<string>("Reason")
+                        .HasMaxLength(500)
+                        .HasColumnType("varchar(500)");
+
+                    b.Property<DateTime>("StartedAt")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("varchar(16)");
+
+                    b.Property<string>("ToVersion")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("varchar(100)");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WebsiteLeft")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WebsiteTotal")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("State");
+
+                    b.ToTable("pp_reworks", (string)null);
+                });
+
+            modelBuilder.Entity("TomYum.Domain.Entities.PpReworkScore", b =>
+                {
+                    b.Property<int>("ReworkId")
+                        .HasColumnType("int");
+
+                    b.Property<long>("ScoreId")
+                        .HasColumnType("bigint");
+
+                    b.Property<double>("Pp")
+                        .HasColumnType("double");
+
+                    b.HasKey("ReworkId", "ScoreId");
+
+                    b.ToTable("pp_rework_scores", (string)null);
+                });
+
             modelBuilder.Entity("TomYum.Domain.Entities.Score", b =>
                 {
                     b.Property<long>("Id")

@@ -51,7 +51,8 @@ public sealed class OsuWebPerformanceSync
     /// </summary>
     public async Task<OsuWebPerformance?> ApplyAsync(int userId, int mode, bool recompute, CancellationToken cancellationToken = default)
     {
-        if (!Enabled || !OsuWebScores.IsMirrored(mode))
+        // A pp rework in the mode: the in-game pp stays as it was until it's done.
+        if (!Enabled || !OsuWebScores.IsMirrored(mode) || TomYum.Persistence.RankingPause.IsPaused(mode))
             return null;
 
         var performance = recompute
