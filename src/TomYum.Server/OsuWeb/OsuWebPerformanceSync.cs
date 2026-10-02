@@ -175,6 +175,12 @@ public sealed class OsuWebPerformanceWatcher : BackgroundService
             // Country rankings: the processor updates players, not their countries.
             if (services.GetService<TomYum.Persistence.OsuWeb.OsuWebPackCompletion>() is { } scores && services.GetService<OsuWebSync>() is { } sync)
                 await sync.RecalculateCountriesOfAsync(await scores.PlayersOfScoresAsync(fresh, cancellationToken).ConfigureAwait(false), cancellationToken).ConfigureAwait(false);
+            // Global ranks (profiles' "Global Ranking"): the processor changes pp but not the rank
+            // TomYum keeps beside it, so a lazer play that passes someone left both their profiles
+            // a place out (the ranking page, ordered by pp, was right).
+            var mirror = services.GetRequiredService<OsuWebScoreMirror>();
+            for (var mode = 0; mode < TomYum.Domain.Enums.GameMode.RelaxOffset; mode++)
+                await mirror.RecomputeGlobalRanksAsync(mode, cancellationToken).ConfigureAwait(false);
         }
 
         _queuedAtCursor = cursor == _processedCursor ? [.. _queuedAtCursor, .. fresh] : [.. ids];
