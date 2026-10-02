@@ -114,16 +114,42 @@ public sealed class DiscordWatch
         }
         _lastPass[score.UserId] = (score.EndedAt, score.BeatmapId);
 
-        if (tookFirst || score.Pp >= _options.BigPlayPp)
+        // A new account's #1 counts only when it took the spot from an established player (on a new
+        // server nearly every account is new, and a #1 on an empty or new players' leaderboard says
+        // little); its big plays count as before.
+        var bigPlay = score.Pp >= _options.BigPlayPp;
+        if ((tookFirst || bigPlay)
+            && await community.GetPlayerAsync(score.UserId, score.Ruleset, cancellationToken).ConfigureAwait(false) is { } player
+            && IsNew(player.JoinedAt))
         {
-            if (await community.GetPlayerAsync(score.UserId, score.Ruleset, cancellationToken).ConfigureAwait(false) is { } player
-                && _time.GetUtcNow().UtcDateTime - player.JoinedAt < NewAccount)
-                reasons.Add($"a {(tookFirst ? "#1" : "big play")} from an account made {DiscordFormat.Relative(player.JoinedAt)}");
+            if (tookFirst && await TookFirstFromEstablishedAsync(community, score, cancellationToken).ConfigureAwait(false) is { } dethroned)
+                reasons.Add($"a #1 from an account made {DiscordFormat.Relative(player.JoinedAt)}, taken from {dethroned}");
+            else if (bigPlay)
+                reasons.Add($"a big play from an account made {DiscordFormat.Relative(player.JoinedAt)}");
         }
 
         if (reasons.Count > 0)
             await _gateway.PostAsync(_options.ReportsChannel, SuspiciousPost(score, reasons), cancellationToken).ConfigureAwait(false);
         return reasons;
+    }
+
+    private bool IsNew(DateTime joinedAt) => _time.GetUtcNow().UtcDateTime - joinedAt < NewAccount;
+
+    /// <summary>
+    /// Who held the map's #1 before <paramref name="score"/>, when that was someone else whose account
+    /// isn't new; null otherwise (nobody had it, or they're new too).
+    /// </summary>
+    private async Task<string?> TookFirstFromEstablishedAsync(OsuWebCommunity community, ScoreCard score, CancellationToken cancellationToken)
+    {
+        if (await community.GetPlacementAsync(score, cancellationToken).ConfigureAwait(false) is not { PreviousLeaderId: { } previous }
+            || previous == score.UserId
+            || await community.GetPlayerAsync(previous, score.Ruleset, cancellationToken).ConfigureAwait(false) is not { } leader
+            || IsNew(leader.JoinedAt))
+        {
+            return null;
+        }
+
+        return leader.Username;
     }
 
     /// <summary>A report, with staff buttons.</summary>

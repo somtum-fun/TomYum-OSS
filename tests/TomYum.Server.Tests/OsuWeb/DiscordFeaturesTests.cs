@@ -478,6 +478,38 @@ public sealed class DiscordFeaturesTests : OsuWebDatabaseTest
     }
 
     /// <summary>Two players with stats (Alpha ahead), a restricted one, a staff member, and a ranked set with two 2-minute maps.</summary>
+    [MySqlFact]
+    public async Task ANewAccountsFirstPlace_IsSuspicious_OnlyWhenTakenFromAnEstablishedPlayer()
+    {
+        var (alpha, bravo, _, _) = await SeedAsync();
+        var gateway = new DiscordFakeGateway();
+        var watch = new DiscordWatch(DiscordFakeGateway.Options(), gateway, Format, new DiscordState(), TimeProvider.System);
+        var community = new OsuWebCommunity(NewOsuWebContext());
+        async Task TakeFirstAsync(int userId, uint total)
+        {
+            var id = await InsertScoreAsync(userId, Map, total);
+            await watch.OnScoreAsync(community, (await community.GetScoresAfterAsync(id - 1, 1)).Single(), tookFirst: true, default);
+        }
+
+        // Alpha's account is old (SeedAsync), Bravo's new. A new account's #1 on an empty leaderboard says little.
+        await TakeFirstAsync(bravo, 800_000);
+        Assert.Empty(gateway.In(DiscordFakeGateway.UserLog));
+
+        // An established player taking it isn't new; a new account taking it from them is worth a look.
+        await TakeFirstAsync(alpha, 850_000);
+        Assert.Empty(gateway.In(DiscordFakeGateway.UserLog));
+        await TakeFirstAsync(bravo, 900_000);
+        var flagged = Assert.Single(gateway.In(DiscordFakeGateway.UserLog)).Embed!;
+        Assert.Contains("a #1 from an account made", flagged.Description, StringComparison.Ordinal);
+        Assert.Contains("taken from Alpha", flagged.Description, StringComparison.Ordinal);
+        gateway.Clear();
+
+        // A new player taking it from another new player: nothing.
+        var delta = (await new OsuWebUserRepository(NewOsuWebContext()).AddAsync(new User { Username = "Delta", SafeName = "delta", Email = "d@x.dev", PasswordBcrypt = "x", Country = "nl" })).Id;
+        await TakeFirstAsync(delta, 950_000);
+        Assert.Empty(gateway.In(DiscordFakeGateway.UserLog));
+    }
+
     private async Task<(int Alpha, int Bravo, int Cheater, int Staff)> SeedAsync()
     {
         await NewTomYumContextAsync();
