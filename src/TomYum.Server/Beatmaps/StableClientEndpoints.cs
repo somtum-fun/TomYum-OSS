@@ -36,6 +36,12 @@ public static partial class StableClientEndpoints
         app.MapPost("/web/osu-error.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapGet("/web/check-updates.php", (HttpContext context) =>
             Results.Redirect("https://osu.ppy.sh/web/check-updates.php" + context.Request.QueryString.Value)).RequireHost(hosts);
+        // Old clients' update checks (docs/old-clients.md): never an update, the build stays as it is.
+        // Without an answer a 2014 build waits on "Receiving data..." for good.
+        app.MapGet("/release/update.php", () => Results.Text("0", "text/plain")).RequireHost(hosts);
+        app.MapGet("/release/update2.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        app.MapGet("/release/patches.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        app.MapGet("/release/update", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
 
         app.MapPost("/web/osu-getbeatmapinfo.php", HandleBeatmapInfoAsync).RequireHost(hosts);
         app.MapGet("/web/maps/{filename}", HandleMapFileAsync).RequireHost(hosts);

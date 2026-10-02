@@ -50,7 +50,7 @@ a.localtest.me, http://a.localtest.me {
 
 # osu.: the client's /web/* and in-game registration go to TomYum, the website to osu-web.
 osu.localtest.me {
-	@tomyum path /web/* /d/* /beatmap-submission/*
+	@tomyum path /web/* /d/* /beatmap-submission/* /release/*
 	# lazer sends the same User-Agent, but asks for JSON: its sign-up is the website's.
 	@stable_register {
 		method POST
@@ -93,7 +93,7 @@ osu.localtest.me {
 
 # osu. over plain HTTP, for old clients: the game's endpoints; anything else (the website) goes to HTTPS.
 http://osu.localtest.me {
-	@tomyum path /web/* /d/* /beatmap-submission/*
+	@tomyum path /web/* /d/* /beatmap-submission/* /release/*
 	handle @tomyum {
 		reverse_proxy localhost:8080
 	}
