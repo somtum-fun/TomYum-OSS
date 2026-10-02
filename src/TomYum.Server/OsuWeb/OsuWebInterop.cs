@@ -99,6 +99,42 @@ public sealed class OsuWebInterop
     }
 
     /// <summary>
+    /// A newly submitted set, as osu!'s submission does (<c>POST /_lio/beatmapsets/{set}/broadcast-new</c>):
+    /// the mapper's followers are notified and "… has submitted a new beatmap" goes into activity.
+    /// </summary>
+    public async Task BroadcastNewBeatmapsetAsync(int beatmapsetId, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostAsync(
+            string.Create(CultureInfo.InvariantCulture, $"/_lio/beatmapsets/{beatmapsetId}/broadcast-new?create_event=1"), cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// A graveyarded set brought back by a new version (<c>POST /_lio/beatmapsets/{set}/broadcast-revive</c>):
+    /// the mapper's followers are notified and "… has been revived from eternal slumber by …" goes into activity.
+    /// </summary>
+    public async Task BroadcastRevivedBeatmapsetAsync(int beatmapsetId, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostAsync(
+            string.Create(CultureInfo.InvariantCulture, $"/_lio/beatmapsets/{beatmapsetId}/broadcast-revive?create_event=1"), cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
+    /// A new version of a set (<c>POST /_lio/beatmapsets/{set}/broadcast-update</c>): "… has updated the
+    /// beatmap" in activity, by <paramref name="userId"/> (who uploaded it, not necessarily its mapper).
+    /// </summary>
+    public async Task BroadcastUpdatedBeatmapsetAsync(int beatmapsetId, int userId, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostAsync(
+            string.Create(CultureInfo.InvariantCulture, $"/_lio/beatmapsets/{beatmapsetId}/broadcast-update?user_id={userId}"), cancellationToken)
+            .ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+    }
+
+    /// <summary>
     /// Rebuilds a country's ranking data on osu-web (the fork's <c>/_lio/tomyum/recalculate-country/{code}</c>).
     /// On osu! a scheduled job does this; a TomYum setup has no scheduler running, so TomYum asks after
     /// stats change. A 404 (a stock osu-web without the endpoint) is ignored.

@@ -38,8 +38,10 @@
 	}
 }
 
-# Game endpoints (bancho, beatmap assets, medal icons).
-http://c.{$DOMAIN}, http://c1.{$DOMAIN}, http://c2.{$DOMAIN}, http://c3.{$DOMAIN}, http://c4.{$DOMAIN}, http://c5.{$DOMAIN}, http://c6.{$DOMAIN}, http://ce.{$DOMAIN}, http://cho.{$DOMAIN}, http://b.{$DOMAIN}, http://assets.{$DOMAIN} {
+# Game endpoints (bancho, beatmap assets, medal icons); s. is osu!'s old static host (old clients'
+# medal images, docs/old-clients.md). Old clients reach all of these over plain HTTP: Cloudflare must
+# not redirect them to HTTPS ("Always Use HTTPS" off, or a rule exempting these hosts).
+http://c.{$DOMAIN}, http://c1.{$DOMAIN}, http://c2.{$DOMAIN}, http://c3.{$DOMAIN}, http://c4.{$DOMAIN}, http://c5.{$DOMAIN}, http://c6.{$DOMAIN}, http://ce.{$DOMAIN}, http://cho.{$DOMAIN}, http://b.{$DOMAIN}, http://assets.{$DOMAIN}, http://s.{$DOMAIN} {
 	request_body {
 		max_size 20MB
 	}
@@ -91,8 +93,9 @@ http://osu.{$DOMAIN} {
 	}
 
 	# /beatmap-submission: lazer's beatmap submission (its default, under the API URL).
-	# /ss: stable's uploaded screenshots; /difficulty-rating: stable's star ratings with mods.
-	@tomyum path /web/* /d/* /beatmap-submission/* /ss/* /difficulty-rating
+	# /ss: stable's uploaded screenshots; /difficulty-rating: stable's star ratings with mods;
+	# /release: old clients' update checks (docs/old-clients.md).
+	@tomyum path /web/* /d/* /beatmap-submission/* /ss/* /difficulty-rating /release/*
 	handle @tomyum {
 		import tomyum
 	}

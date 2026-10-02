@@ -33,12 +33,42 @@ public class BanchoLoginHandlerTests
     private static string User_SafeEmail(string username) =>
         username.ToLowerInvariant().Replace(" ", string.Empty).Replace("_", string.Empty);
 
-    private static string LoginBody(string username, string plaintext)
+    private static string LoginBody(string username, string plaintext, string version = "b20231228.1")
     {
         var hasher = new BcryptPasswordHasher();
         var pwMd5 = hasher.ComputeMd5Hex(plaintext);
         // username\npassword_md5\nversion|utc|city|hashes|pm\n
-        return $"{username}\n{pwMd5}\nb20231228.1|0|0|abc:runningunderwine:def:ghi:jkl:|0\n";
+        return $"{username}\n{pwMd5}\n{version}|0|0|abc:runningunderwine:def:ghi:jkl:|0\n";
+    }
+
+    [Theory]
+    [InlineData("b20140624", true)]   // an old build never asks to join: it's joined at login
+    [InlineData("b20231228.1", false)] // today's client joins itself, after the auto-join list
+    public async Task OldBuilds_AreJoinedToTheAutoJoinChannels(string version, bool joined)
+    {
+        var (handler, registry) = NewHandler(out var users);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+
+        var outcome = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass", version), "TH", CancellationToken.None);
+
+        Assert.NotNull(outcome.Token);
+        var ids = PacketIds(outcome.Body);
+        Assert.Contains((ushort)ServerPacketId.ChannelAutoJoin, ids);
+        Assert.Equal(joined, ids.Contains((ushort)ServerPacketId.ChannelJoinSuccess));
+        // Either way the server has them in the channels already.
+        Assert.NotEmpty(registry.GetByToken(outcome.Token!)!.Channels);
+    }
+
+    private static List<ushort> PacketIds(byte[] body)
+    {
+        var ids = new List<ushort>();
+        var offset = 0;
+        while (offset + 7 <= body.Length)
+        {
+            ids.Add(BitConverter.ToUInt16(body, offset));
+            offset += 7 + (int)BitConverter.ToUInt32(body, offset + 3);
+        }
+        return ids;
     }
 
     [Fact]

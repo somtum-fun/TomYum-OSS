@@ -77,20 +77,30 @@ public static class BanchoEndpoints
         var produced = await dispatcher.DispatchAsync(player, registry, channels, matches, services, body).ConfigureAwait(false);
 
         var queued = player.DequeueAll();
+        byte[] response;
         if (produced.Length == 0)
         {
-            return Results.Bytes(queued, OctetStream);
+            response = queued;
         }
-
-        if (queued.Length == 0)
+        else if (queued.Length == 0)
         {
-            return Results.Bytes(produced, OctetStream);
+            response = produced;
+        }
+        else
+        {
+            response = new byte[queued.Length + produced.Length];
+            queued.CopyTo(response, 0);
+            produced.CopyTo(response, queued.Length);
         }
 
-        var combined = new byte[queued.Length + produced.Length];
-        queued.CopyTo(combined, 0);
-        produced.CopyTo(combined, queued.Length);
-        return Results.Bytes(combined, OctetStream);
+        if (player.Build.IsLegacy && services.GetService<ILoggerFactory>() is { } logs)
+        {
+            var log = logs.CreateLogger(typeof(LegacyPacketLog));
+            LegacyPacketLog.Note(player, body, outgoing: false, log);
+            LegacyPacketLog.Note(player, response, outgoing: true, log);
+        }
+
+        return Results.Bytes(response, OctetStream);
     }
 
     /// <summary>Reads the full request body into a byte array for packet decoding.</summary>
@@ -122,6 +132,12 @@ public static class BanchoEndpoints
             && context.RequestServices.GetService<LoginIps>() is { } ips)
         {
             await ips.RecordAsync(player.UserId, LoginIps.ClientAddress(context)).ConfigureAwait(false);
+        }
+        if (outcome.Token is { } loggedIn
+            && context.RequestServices.GetService<PlayerRegistry>()?.GetByToken(loggedIn) is { Build.IsLegacy: true } oldClient
+            && context.RequestServices.GetService<ILoggerFactory>() is { } logs)
+        {
+            LegacyPacketLog.Note(oldClient, outcome.Body, outgoing: true, logs.CreateLogger(typeof(LegacyPacketLog)));
         }
 
         // The client reads cho-token from the response header on every login attempt; on

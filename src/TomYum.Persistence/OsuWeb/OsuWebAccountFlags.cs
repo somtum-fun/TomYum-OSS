@@ -27,12 +27,17 @@ public sealed class OsuWebAccountFlags
             .AnyAsync(cancellationToken);
 
     /// <summary>Records a game login: <paramref name="result"/> is ok, held (a device to verify), locked or bad_password.</summary>
-    public Task RecordLoginAsync(int userId, string client, string result, string? ip, string? country, string? agent, CancellationToken cancellationToken = default) =>
-        _db.Database.ExecuteSqlRawAsync(
-            "INSERT INTO tomyum_login_history (user_id, client, result, ip, country, agent, created_at) VALUES ({0}, {1}, {2}, {3}, {4}, {5}, UTC_TIMESTAMP())",
-            [userId, client, result, Trim(ip, 45), Trim(country?.ToUpperInvariant(), 2), Trim(agent, 255)], cancellationToken);
+    public Task RecordLoginAsync(int userId, string client, string result, string? ip, string? country, string? agent, CancellationToken cancellationToken = default)
+    {
+        // Interpolated, so a missing value is a typed NULL parameter (a raw DBNull.Value has no type
+        // mapping: a login without a country, say, wasn't recorded).
+        string? trimmedIp = Trim(ip, 45), trimmedCountry = Trim(country?.ToUpperInvariant(), 2), trimmedAgent = Trim(agent, 255);
+        return _db.Database.ExecuteSqlInterpolatedAsync(
+            $"INSERT INTO tomyum_login_history (user_id, client, result, ip, country, agent, created_at) VALUES ({userId}, {client}, {result}, {trimmedIp}, {trimmedCountry}, {trimmedAgent}, UTC_TIMESTAMP())",
+            cancellationToken);
+    }
 
     /// <summary>At most <paramref name="length"/> characters, or NULL when empty.</summary>
-    private static object Trim(string? value, int length) =>
-        string.IsNullOrEmpty(value) ? DBNull.Value : value.Length > length ? value[..length] : value;
+    private static string? Trim(string? value, int length) =>
+        string.IsNullOrEmpty(value) ? null : value.Length > length ? value[..length] : value;
 }

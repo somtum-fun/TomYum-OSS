@@ -5,18 +5,26 @@
 #
 # TomYum.Server on localhost:8080, osu-web's nginx on localhost:8180 (NGINX_PORT=8180), lazer's
 # spectator server on localhost:8190.
+#
+# Old osu! clients (2013–2015, docs/old-clients.md) speak plain HTTP and don't follow redirects to
+# HTTPS: their hosts answer on http:// too, and nothing is redirected automatically.
 {
 	local_certs
+	auto_https disable_redirects
 }
 
-# Game endpoints (bancho, beatmap assets, medal icons).
-c.localtest.me, ce.localtest.me, c4.localtest.me, cho.localtest.me, b.localtest.me, assets.localtest.me {
+# Game endpoints (bancho, beatmap assets, medal icons); c1.–c6. are osu!'s other bancho hosts, s. its old
+# static host (old clients' medal images).
+c.localtest.me, c1.localtest.me, c2.localtest.me, c3.localtest.me, c4.localtest.me, c5.localtest.me, c6.localtest.me,
+ce.localtest.me, cho.localtest.me, b.localtest.me, assets.localtest.me, s.localtest.me,
+http://c.localtest.me, http://c1.localtest.me, http://c2.localtest.me, http://c3.localtest.me, http://c4.localtest.me,
+http://c5.localtest.me, http://c6.localtest.me, http://ce.localtest.me, http://b.localtest.me, http://s.localtest.me {
 	reverse_proxy localhost:8080
 }
 
 # Avatars (a.<domain>/<user id>, what the osu! client loads): osu-web stores uploads as
 # /uploads/avatar/<user id>. Users without one get osu-web's guest avatar.
-a.localtest.me {
+a.localtest.me, http://a.localtest.me {
 	# Always revalidate so a new avatar shows up right away.
 	header Cache-Control "no-cache"
 
@@ -42,7 +50,7 @@ a.localtest.me {
 
 # osu.: the client's /web/* and in-game registration go to TomYum, the website to osu-web.
 osu.localtest.me {
-	@tomyum path /web/* /d/* /beatmap-submission/*
+	@tomyum path /web/* /d/* /beatmap-submission/* /release/*
 	# lazer sends the same User-Agent, but asks for JSON: its sign-up is the website's.
 	@stable_register {
 		method POST
@@ -80,6 +88,17 @@ osu.localtest.me {
 	}
 	handle {
 		reverse_proxy localhost:8180
+	}
+}
+
+# osu. over plain HTTP, for old clients: the game's endpoints; anything else (the website) goes to HTTPS.
+http://osu.localtest.me {
+	@tomyum path /web/* /d/* /beatmap-submission/* /release/*
+	handle @tomyum {
+		reverse_proxy localhost:8080
+	}
+	handle {
+		redir https://{host}{uri} 308
 	}
 }
 

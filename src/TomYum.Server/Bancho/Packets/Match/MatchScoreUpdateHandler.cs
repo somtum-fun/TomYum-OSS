@@ -28,7 +28,8 @@ public sealed class MatchScoreUpdateHandler : IClientPacketHandler
         var payload = context.Payload.Span;
         if (payload.Length < 5) return Task.CompletedTask;
 
-        var frame = payload.ToArray();
+        // An old client's frame (docs/old-clients.md) gets the ScoreV2 flag today's clients read.
+        var frame = LegacyFrames.ScoreFrame(payload, context.Player.Build);
         frame[4] = (byte)slotIdx;
 
         var w = new BanchoPacketWriter(40);

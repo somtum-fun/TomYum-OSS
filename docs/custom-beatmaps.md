@@ -29,6 +29,11 @@ What happens to an upload (`CustomBeatmapImporter`):
    mirrored to the website.
 5. On the website, the mapper owns the set (the account named in the files' `Creator`, else the
    uploader). It gets the unicode artist/title and a cover, and is indexed for the listing.
+   As on osu!, a new set puts "… has submitted a new beatmap" in activity (the mapper's Recent
+   activity and Community → Activity) and notifies the mapper's followers; a new version puts
+   "… has updated the beatmap" there, by whoever uploaded it, or, for a set that was in the
+   graveyard, "… has been revived from eternal slumber by …" (followers notified). Submissions from
+   the game editors do the same (InterOp `broadcast-new` / `broadcast-update` / `broadcast-revive`).
 6. The upload is written to the staff log (`beatmapset.upload`). It shows under "Recent uploads" in
    the BN panel.
 

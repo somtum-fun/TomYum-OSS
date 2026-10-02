@@ -184,7 +184,7 @@ public sealed class CustomBeatmapImporter
 
         var rebuilt = Rebuild(osz, ids.ToDictionary(m => m.Map.EntryName, m => m.Bytes, StringComparer.Ordinal));
         var target = record?.Target ?? CustomBeatmapSet.Pending;
-        return await StoreAsync(setId, ownerId, target, record, package, ids, rebuilt, existing, cancellationToken).ConfigureAwait(false);
+        return await StoreAsync(setId, ownerId, uploaderId, target, record, package, ids, rebuilt, existing, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<CustomUploadResult> SubmitCoreAsync(byte[] osz, int setId, int userId, CancellationToken cancellationToken)
@@ -213,15 +213,18 @@ public sealed class CustomBeatmapImporter
             throw new CustomUploadException(Invariant($"The package is missing the difficulties with ids {string.Join(", ", missing)}."));
 
         await RefuseKnownAsync(package, setId, m => m.OriginalMd5, cancellationToken).ConfigureAwait(false);
-        return await StoreAsync(setId, userId, record.Target, record, package, ids, osz, existing, cancellationToken).ConfigureAwait(false);
+        return await StoreAsync(setId, userId, userId, record.Target, record, package, ids, osz, existing, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<CustomUploadResult> StoreAsync(
-        int setId, int ownerId, int target, CustomBeatmapSet? record, Package package,
+        int setId, int ownerId, int uploaderId, int target, CustomBeatmapSet? record, Package package,
         List<(PackagedMap Map, int Id, byte[] Bytes)> ids, byte[] archive, IReadOnlyList<Beatmap> existing, CancellationToken cancellationToken)
     {
         var now = _time.GetUtcNow();
         var first = package.Maps[0].File;
+        // Read before the maps are mirrored: their new status takes the set out of the graveyard.
+        var revived = existing.Count > 0 && _website is not null
+            && await _website.IsGraveyardedAsync(setId, cancellationToken).ConfigureAwait(false);
         await _store.SaveAsync(setId, archive, package.Background, package.Preview, cancellationToken).ConfigureAwait(false);
 
         var maps = ids.Select(m => (m.Map, Beatmap: ToBeatmap(m.Map.File, m.Id, setId, OsuFileText.Md5(m.Bytes), package.HasStoryboardFile, target, now), m.Bytes)).ToList();
@@ -277,7 +280,7 @@ public sealed class CustomBeatmapImporter
         }
 
         _resolver?.Remember(maps.Select(m => m.Beatmap));
-        await FinishOnWebsiteAsync(setId, ownerId, difficulties.Select(d => d.BeatmapId).ToList(), archive.Length, first, guests, cancellationToken).ConfigureAwait(false);
+        await FinishOnWebsiteAsync(setId, ownerId, uploaderId, existing.Count > 0, revived, difficulties.Select(d => d.BeatmapId).ToList(), archive.Length, first, guests, cancellationToken).ConfigureAwait(false);
         return new CustomUploadResult(setId, first.Get("Metadata", "Artist") ?? string.Empty, first.Get("Metadata", "Title") ?? string.Empty,
             first.Get("Metadata", "Creator") ?? string.Empty, ownerId, existing.Count > 0, difficulties);
     }
@@ -320,7 +323,8 @@ public sealed class CustomBeatmapImporter
     }
 
     private async Task FinishOnWebsiteAsync(
-        int setId, int ownerId, IReadOnlyCollection<int> beatmapIds, long size, OsuFileText first, IReadOnlyDictionary<int, int> guests, CancellationToken cancellationToken)
+        int setId, int ownerId, int uploaderId, bool updated, bool revived, IReadOnlyCollection<int> beatmapIds, long size, OsuFileText first,
+        IReadOnlyDictionary<int, int> guests, CancellationToken cancellationToken)
     {
         if (_website is not null)
         {
@@ -338,6 +342,22 @@ public sealed class CustomBeatmapImporter
             {
                 // The set is stored either way; only the listing lags until the next re-index.
                 _logger.LogWarning(ex, "Uploaded beatmap set {SetId} but osu-web search indexing failed.", setId);
+            }
+
+            // "… has submitted a new beatmap" / "… has been revived from eternal slumber" / "… has updated
+            // the beatmap" in activity, as on osu!.
+            try
+            {
+                if (revived)
+                    await _interop.BroadcastRevivedBeatmapsetAsync(setId, cancellationToken).ConfigureAwait(false);
+                else if (updated)
+                    await _interop.BroadcastUpdatedBeatmapsetAsync(setId, uploaderId, cancellationToken).ConfigureAwait(false);
+                else
+                    await _interop.BroadcastNewBeatmapsetAsync(setId, cancellationToken).ConfigureAwait(false);
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Uploaded beatmap set {SetId} but osu-web didn't take its activity entry.", setId);
             }
         }
     }

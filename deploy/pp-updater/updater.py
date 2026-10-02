@@ -17,8 +17,9 @@ Redis (the stack's, through `docker compose exec redis redis-cli`):
   tomyum:pp-library-requests  list  TomYum pushes {"action": "check"} or {"action": "update", "library", "actorId"}
   tomyum:pp-rework-requests   list  this pushes the rework to start once an update is live
 
-Settings (environment): TOMYUM_DIR (the TomYum checkout), COMPOSE_DIR (default TOMYUM_DIR/deploy/production),
-RUN_AS (the user owning the checkout; builds and commits run as them), CHECK_HOURS (6).
+Settings (environment): TOMYUM_DIR (the TomYum checkout; default the one this script is in), COMPOSE_DIR
+(default TOMYUM_DIR/deploy/production), RUN_AS (default the user owning the checkout; builds and commits
+run as them), CHECK_HOURS (6).
 """
 
 from __future__ import annotations
@@ -34,9 +35,10 @@ import traceback
 import urllib.request
 from pathlib import Path
 
-TOMYUM_DIR = Path(os.environ.get("TOMYUM_DIR", "/home/mindthenerdy/workspace/TomYum"))
+# Defaults: the checkout this script is in (deploy/pp-updater/updater.py), and the user who owns it.
+TOMYUM_DIR = Path(os.environ.get("TOMYUM_DIR", str(Path(__file__).resolve().parents[2])))
 COMPOSE_DIR = Path(os.environ.get("COMPOSE_DIR", str(TOMYUM_DIR / "deploy" / "production")))
-RUN_AS = os.environ.get("RUN_AS", "mindthenerdy")
+RUN_AS = os.environ.get("RUN_AS") or __import__("pwd").getpwuid(TOMYUM_DIR.stat().st_uid).pw_name
 CHECK_HOURS = float(os.environ.get("CHECK_HOURS", "6"))
 
 PERFORMANCE_CSPROJ = TOMYUM_DIR / "src" / "TomYum.Performance" / "TomYum.Performance.csproj"

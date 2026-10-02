@@ -31,6 +31,8 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
 {
     private const string PasswordMd5 = "5f4dcc3b5aa765d61d8327deb882cf99";
 
+    private static readonly string[] AllScopes = ["*"];
+
     private static readonly BcryptPasswordHasher Passwords = new();
 
     private readonly string _directory = Path.Combine(Path.GetTempPath(), "tomyum-submit-" + Guid.NewGuid().ToString("N"));
@@ -259,7 +261,7 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
 
     private ServiceProvider _services = null!;
 
-    private IBeatmapRepository Beatmaps()
+    private OsuWebMirroringBeatmapRepository Beatmaps()
     {
         var osuWeb = NewOsuWebContext();
         return new OsuWebMirroringBeatmapRepository(new BeatmapRepository(NewTomYumContext()), new OsuWebBeatmapMirror(osuWeb), osuWeb);
@@ -297,7 +299,7 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
         var token = new JsonWebTokenHandler().CreateToken(new SecurityTokenDescriptor
         {
             Audience = audience,
-            Claims = new Dictionary<string, object> { ["jti"] = id, ["sub"] = userId.ToString(CultureInfo.InvariantCulture), ["scopes"] = new[] { "*" } },
+            Claims = new Dictionary<string, object> { ["jti"] = id, ["sub"] = userId.ToString(CultureInfo.InvariantCulture), ["scopes"] = AllScopes },
             Expires = DateTime.UtcNow.AddHours(1),
             SigningCredentials = new SigningCredentials(new RsaSecurityKey(key ?? _signingKey), SecurityAlgorithms.RsaSha256),
         });
@@ -314,10 +316,10 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
 
     // ── requests ───────────────────────────────────────────────────────────────────────────
 
-    private static HttpContext Stable(ServiceProvider services, string query) =>
+    private static DefaultHttpContext Stable(ServiceProvider services, string query) =>
         new DefaultHttpContext { RequestServices = services, Request = { QueryString = new QueryString("?" + query) } };
 
-    private static HttpContext StableUpload(ServiceProvider services, byte[] osz2, string fields)
+    private static DefaultHttpContext StableUpload(ServiceProvider services, byte[] osz2, string fields)
     {
         var context = new DefaultHttpContext { RequestServices = services };
         context.Request.ContentType = "multipart/form-data; boundary=x";
@@ -326,7 +328,7 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
         return context;
     }
 
-    private static HttpContext StablePost(ServiceProvider services, string user, string set, bool complete)
+    private static DefaultHttpContext StablePost(ServiceProvider services, string user, string set, bool complete)
     {
         var context = new DefaultHttpContext { RequestServices = services };
         context.Request.ContentType = "application/x-www-form-urlencoded";
@@ -343,7 +345,7 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
         return context;
     }
 
-    private static HttpContext Lazer(ServiceProvider services, string token, (string Field, string Name, byte[] Bytes)? file = null, (string Field, string Value)? form = null)
+    private static DefaultHttpContext Lazer(ServiceProvider services, string token, (string Field, string Name, byte[] Bytes)? file = null, (string Field, string Value)? form = null)
     {
         var context = new DefaultHttpContext { RequestServices = services };
         context.Request.Headers.Authorization = "Bearer " + token;
@@ -366,7 +368,10 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
 
     private static int StatusOf(IResult result) => Assert.IsAssignableFrom<IStatusCodeHttpResult>(result).StatusCode ?? 0;
 
+    // CA5351: osu!'s checksums are MD5 (the client and the server compare them); not a security primitive.
+#pragma warning disable CA5351
     private static string Md5(byte[] bytes) => Convert.ToHexStringLower(MD5.HashData(bytes));
+#pragma warning restore CA5351
 
     private static byte[] Zip(params (string Name, byte[] Bytes)[] entries)
     {

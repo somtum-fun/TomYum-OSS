@@ -227,6 +227,7 @@ public sealed class BanchoLoginHandler
         // same account: those windows are extra sessions, not the player moving to another client.
         var tournament = request.OsuVersion.EndsWith("tourney", StringComparison.OrdinalIgnoreCase);
         var player = tournament ? _registry.AddTournamentClient(presence) : _registry.Add(presence);
+        player.Build = ClientBuild.Parse(request.OsuVersion);
         player.IsRestricted = user.IsRestricted;
         player.SilenceEndUtc = user.SilenceEndUtc;
         IReadOnlyList<int> friendIds = _friends is null ? [] : await _friends.GetFriendIdsAsync(user.Id, cancellationToken).ConfigureAwait(false);
@@ -262,6 +263,11 @@ public sealed class BanchoLoginHandler
                 if (channel.AutoJoin)
                 {
                     ChatEncoder.WriteChannelAutoJoin(w, channel.Name, channel.Topic, channel.MemberCount);
+                    // Today's client answers "auto-join" by joining (and gets JOIN_SUCCESS); an old build
+                    // (docs/old-clients.md) shows the tab but never asks, so its chat stays on
+                    // "Connecting...". It's already in the channel (above): tell it so.
+                    if (player.Build.IsLegacy && player.Channels.Contains(channel.Name))
+                        ChatEncoder.WriteChannelJoinSuccess(w, channel.Name);
                 }
                 else
                 {

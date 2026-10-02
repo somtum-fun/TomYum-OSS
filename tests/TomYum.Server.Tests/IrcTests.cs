@@ -55,7 +55,7 @@ public sealed class IrcTests
         // IRC → game: channel and PM.
         await irc.SendAsync("PRIVMSG #osu :hello from irc");
         await irc.SendAsync("PRIVMSG Game_Player :psst");
-        var toGame = await server.WaitForMessagesAsync(game, 2);
+        var toGame = await IrcHarness.WaitForMessagesAsync(game, 2);
         Assert.Contains(("Some Player", "hello from irc", "#osu"), toGame);
         Assert.Contains(("Some Player", "psst", "Game Player"), toGame);
 
@@ -99,7 +99,7 @@ public sealed class IrcTests
         }
 
         /// <summary>The test accounts' ids by name.</summary>
-        public IReadOnlyDictionary<string, int> Ids { get; private init; } = new Dictionary<string, int>();
+        public Dictionary<string, int> Ids { get; private init; } = new Dictionary<string, int>();
 
         public PlayerRegistry Players => _services.GetRequiredService<PlayerRegistry>();
 
@@ -166,7 +166,7 @@ public sealed class IrcTests
         }
 
         /// <summary>A game player's chat, as the game client would get it.</summary>
-        public async Task<List<(string Sender, string Text, string Target)>> WaitForMessagesAsync(OnlinePlayer player, int count)
+        public static async Task<List<(string Sender, string Text, string Target)>> WaitForMessagesAsync(OnlinePlayer player, int count)
         {
             var messages = new List<(string, string, string)>();
             for (var i = 0; i < 100 && messages.Count < count; i++)

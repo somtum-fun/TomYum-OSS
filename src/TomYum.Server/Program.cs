@@ -258,6 +258,12 @@ builder.Services.AddHttpClient(DirectEndpoints.HttpClientName, http =>
     http.Timeout = TimeSpan.FromSeconds(15);
     http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
 });
+// Downloads passed through to old clients (docs/old-clients.md): a whole .osz, so no short timeout.
+builder.Services.AddHttpClient(DirectEndpoints.DownloadHttpClientName, http =>
+{
+    http.Timeout = TimeSpan.FromMinutes(10);
+    http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0");
+});
 
 // Audio previews (b.<domain>/preview/{set}.mp3), kept on disk; catboy.best wants an app that names itself.
 builder.Services.AddHttpClient(AudioPreviews.HttpClientName, http =>
@@ -610,6 +616,7 @@ app.MapBeatmapAssets(BanchoHosts.Beatmap(domain));
 
 // Static assets (assets. subdomain): medal icons for achievement-unlock popups.
 app.MapAssets(BanchoHosts.Assets(domain));
+app.MapStaticAssets(BanchoHosts.Static(domain));
 
 // Admin API for osu-web's staff panels: internal host names only (Admin:Hosts).
 if (databaseOptions.UseOsuWebAccounts)

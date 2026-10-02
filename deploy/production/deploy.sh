@@ -29,8 +29,9 @@ docker compose run --rm artisan migrate --force
 docker compose up -d
 # Any search index that isn't there yet (a missing one once emptied the whole quick search).
 docker compose run --rm artisan tomyum:es-ensure || echo "deploy: checking the search indexes failed; see above"
-# Old build layers pile up with every deploy (they once filled the disk): keep a day's worth.
-docker builder prune -f --filter until=24h >/dev/null
+# Old build layers pile up with every deploy (they once filled the disk, and a day's worth reached
+# 128 GB on a day of many deploys): keep the most recently used 20 GB, enough for quick rebuilds.
+docker builder prune -af --max-used-space 20GB >/dev/null
 
 ./changelog.sh
 

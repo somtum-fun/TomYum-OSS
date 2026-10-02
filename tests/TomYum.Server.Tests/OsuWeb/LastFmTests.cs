@@ -22,7 +22,10 @@ public sealed class LastFmTests : OsuWebDatabaseTest
     {
         var parameters = new Dictionary<string, string> { ["token"] = "tok", ["method"] = "auth.getSession", ["api_key"] = "key", ["format"] = "json" };
 
+        // CA5351: Last.fm signs its calls with MD5; the test computes the expected signature the same way.
+#pragma warning disable CA5351
         var expected = Convert.ToHexStringLower(MD5.HashData(Encoding.UTF8.GetBytes("api_keykeymethodauth.getSessiontokentoksecret")));
+#pragma warning restore CA5351
         Assert.Equal(expected, LastFmClient.Sign(parameters, "secret"));
     }
 

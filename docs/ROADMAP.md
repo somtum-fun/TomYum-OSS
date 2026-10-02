@@ -28,8 +28,9 @@ _Before `1.0.0`: TomYum should run anyone's server without this one's choices ba
       wording, Relax/Autopilot pp source, custom medals) behind plugins or settings, the core generic.
 - [ ] No server-specific names or addresses in code, docs or defaults (domains, emails, branding);
       everything from configuration, with examples.
-- [ ] Clean-up: dead code and leftovers (`TomYum.Caching/PlaceHolder.cs`, unused `Storage` stubs until
-      implemented), consistent naming, warnings in the test projects.
+- [ ] Clean-up: dead code and leftovers (unused `Storage` stubs until implemented), consistent naming.
+      Done 2026-10-02: `TomYum.Caching/PlaceHolder.cs` removed, the test projects build without warnings.
+      Kept for now by decision (2026-10-02): the empty `TomYum.Lazer` project and the `services/` stubs.
 - [ ] Docs for operators (install, upgrade, backup, every setting) and contributors (architecture,
       plugin API), a changelog per version, a licence review of what's bundled.
 - [ ] Security review (admin API signing, InterOp, uploads, OAuth), and the open items above that
@@ -260,11 +261,13 @@ uses its tables. Human doc: `docs/osu-web.md`._
 _Ranking on this server: nominations, qualify, rank and love already work from the discussion page and
 the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
 
-- [ ] **Uploads and updates in activity** — after a stable/lazer submission succeeds, call osu-web's
-      InterOp `broadcast-new` (new set) / `broadcast-update` (new version), so "… has submitted a new
-      beatmap" / "… has updated the beatmap" reach the mapper's Recent activity and Community → Activity.
-      (Rank/qualify/love entries already do; disqualify, nomination reset, unlove and kudosu don't on
-      osu! either.)
+- [x] **Uploads and updates in activity** — after a stable/lazer submission or a BN panel upload,
+      osu-web's InterOp `broadcast-new` (new set; also notifies the mapper's followers) / `broadcast-update`
+      (new version, by the uploader), so "… has submitted a new beatmap" / "… has updated the beatmap"
+      reach the mapper's Recent activity and Community → Activity. (Rank/qualify/love entries already do;
+      disqualify, nomination reset, unlove and kudosu don't on osu! either.) 2026-10-02
+  - [x] Reviving a graveyarded set: osu!'s "… has been revived from eternal slumber by …" entry
+        (`broadcast-revive`, followers notified) instead of "updated". 2026-10-02
 - [x] **Nomination workflow verified live** (2026-10-01) with throwaway BN, probationary BN, NAT and Loved
       accounts on an imported set: hype gate, nominate ×2 → qualified, NAT problem → disqualify (and the
       game follows each step), unresolved problems block nominating, qualified → ranked by `modding:rank`,
@@ -293,28 +296,65 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
       Loved group loves (Loved at once), rejects, removes or blacklists, with reasons. Built on sundei's
       in-website Loved pages without rounds or polls; the separate Loved sites are retired. 2026-10-03
 
-## Old clients (2008–2015) 🔒 the patcher (step 1) — requested 2026-10-01
-_TomYum speaks today's stable protocol (builds from about 2023 log in fine). Clients from 2008–2015
-have no `-devserver`, older bancho protocols, older score submission and older rules. Reference:
-[osuTitanic](https://deepwiki.com/osuTitanic/titanic), a server built for 2007–2015 clients. Start with
-one era (e.g. late 2014 / 2015), then go back._
+## Old clients (2013–2015 first) — requested 2026-10-01, planned 2026-10-02
+_Decided 2026-10-02: builds from **late 2013 to 2015** first; their plays go on the **same leaderboards
+as today's stable**; players connect with **Titanic! Hook**. Research: [osuTitanic](https://github.com/osuTitanic)
+(anchor = bancho, deck = web), Lekuruu's per-build protocol notes ([chio](https://github.com/Lekuruu/chio.py),
+`chio/clients/b2013….py`) and [bancho-documentation](https://github.com/Lekuruu/bancho-documentation/wiki).
+osuTitanic's code is GPL and TomYum is MIT: behaviour only, written fresh (as with the Session plugin)._
 
-- [ ] **Patcher / launcher** (owner's idea, own repo): points an old build at `<domain>` without
-      `-devserver`. Rewrite or redirect the `ppy.sh` hosts the build uses (`osu.`, `c.`/`c1.`–`c6.`/`ce.`,
-      `a.`, `b.`, `s.`, `i.`), handle its TLS/HTTP expectations (very old builds speak plain HTTP or
-      old TLS), and keep the client's own files untouched where possible. Decide: patched exe vs.
-      in-memory hook vs. local proxy.
-- [ ] **Version detection**: map a login's build (`bYYYYMMDD`) to its bancho protocol version and keep
-      it on the session, so every packet is encoded for that client.
-- [ ] **Protocol layer for old bancho**: login reply and body format, packet ids, presence/stats and
-      chat structures per protocol version (translation at the edge, the rest of TomYum unchanged).
-- [ ] **Old web endpoints**: score submission (`osu-submit.php` / old `osu-submit-modular` and their
-      keys and formats), leaderboards (`osu-osz2-getscores` versions), replays, beatmap info, avatars.
-- [ ] **Old rules**: score v1 and old mod sets, older `.osu` versions, star rating/pp for maps those
-      clients play; leaderboards shared with or separate from today's (⚖️ decision needed).
-- [ ] **Anti-cheat and verification** for old clients (no modern client hashes or device verification;
-      decide what's required).
-- [ ] Test build by build; a `docs/old-clients.md` page listing supported builds.
+What the research found:
+- **Connecting:** [Titanic! Hook](https://github.com/osuTitanic/hook) (GPLv3, a loader dropped next to an
+  untouched `osu!.exe`) patches the client in memory: every `*.ppy.sh` host becomes `*.<ServerName>`.
+  Builds come from [Osekai Snapshots](https://osekai.net/snapshots/); we host no osu! files. Our side: its
+  `Titanic!.cfg` with `ServerName=<domain>` (or a rebranded fork later). Found testing b20140624
+  (2026-10-02): builds on .NET 2.0 (before late 2015) need **`Titanic.fallback.exe`** (the .NET 2.0
+  loader); under `Titanic.exe` (.NET 4) the game runs but its importer fails every `.osz` (all go to
+  `Songs\Failed`). Downloaded files need Windows' "from the internet" mark removed (`Unblock-File`),
+  or .NET refuses to load `osu!.exe`.
+- **Transport:** builds up to **b20130815** speak bancho over raw TCP (13380–13384) to hardcoded IPs; HTTP
+  bancho (`osu-token`, as today) from about **b20130915**. sundei.eu is reachable only through the
+  Cloudflare Tunnel, which can't carry raw TCP for players, so TCP builds wait (⏸ until a TCP port can be
+  exposed). Builds before late 2015 (.NET 2.0) most likely use **plain HTTP**, not HTTPS.
+- **Protocol:** packet ids and the frame header are the same as today. Mid-2013 to mid-2015 is protocol
+  **18**, b20150915 on is **19**. Differences that matter: 8 multiplayer slots before b20150915; spectator
+  and match score frames without the ScoreV2 fields before b20151106 and without the sequence number
+  before b20160404; stats pp as a signed 16-bit number (cap 32767); packets the build doesn't know yet
+  (e.g. 104 AccountRestricted b20140716, 106 MatchAbort b20141104) must not be sent; no Qualified status
+  before b20150826 and no Loved before b20161101 (sent as approved).
+- **Web:** score submission is `osu-submit-modular.php` (same score string; key `h89f2-890h2h89b34g-h80g134n90133`
+  without `osuver`, else the `osu!-scoreburgr` key; reply without the chart, accuracy 0–1);
+  `osu-osz2-getscores.php` with older `vv` formats (date string at vv=1, no Loved before vv=4, replay flag
+  from vv=4); also `osu-stat.php`/`osu-statoth.php`, `osu-checktweets.php`, `check-updates.php` (`[]`),
+  and `osu-search.php` taking the password as `c`.
+
+Plan (each step committed and tested on its own; the local stack first, a 2014 build as the test client).
+Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what works.
+- [~] **0. Reachable on plain HTTP:** done locally (`Caddyfile.local`: the game's hosts on `http://`
+      without redirecting, `c1.`–`c6.`, `s.`) and in the production Caddyfile. On sundei.eu still:
+      Cloudflare's "Always Use HTTPS" off (or a rule for the game's hosts), DNS + tunnel hostnames for
+      `c1.`–`c3.`, `c5.`, `c6.`, `s.`.
+- [~] **1. Version detection:** the build is kept on the session (`ClientBuild`). b20140624 logs in with
+      today's client-info line and works with protocol 19 as sent today; picking 18 for older builds
+      waits until one is tested.
+- [~] **2. Outgoing translation:** not needed for b20140624 (it reads today's packets, 16-slot matches
+      included). Dropping unknown packets, capping pp and 8-slot matches wait for an older build that needs them.
+- [~] **3. Incoming translation:** frames in the older layout get today's fields (`LegacyFrames`);
+      b20140624 already sends today's layout. Multiplayer and spectating today's client: untested (needs
+      a second PC).
+- [x] **4. Old web endpoints:** `osu-submit-modular.php` (same leaderboards, pp, medals), getscores by
+      `vv`, osu!direct downloads and thumbnails passed through (no TLS 1.2), medal images on `s.`, update
+      checks. Replays (`osu-getreplay`) and `osu-stat` not seen from b20140624 yet. 2026-10-02
+- [x] **5. Rules check for shared leaderboards:** score v1 and mod multipliers unchanged since 2013 in
+      every mode (osuTitanic shares boards without converting); safeguards: NoVideo isn't TouchDevice
+      before 2014, Co-op refused, taiko/catch plays whose judgements don't cover the map kept off the
+      board (`LegacyScoreRules`). 2026-10-02
+- [ ] **6. Anti-cheat and verification:** old builds send the same client hashes (exe md5, adapters,
+      uninstall id, disk) — keep ban-evasion; decide on device verification and circleguard for them.
+- [~] **7. Production:** `docs/old-clients.md` (player setup with `Titanic.fallback.exe`, supported
+      builds) and the production Caddyfile done; deploy and the Cloudflare settings next, then test
+      multiplayer with a second player and go build by build towards 2013.
+- [ ] Later: TCP builds (2013 and older) if a TCP port can be exposed; older eras.
 
 ## Bot accounts 🔒 (none) — done 2026-10-01
 - [x] Admins/developers make bots in the panel (`/panel/bots`): `bot` group, an owner, an IRC key.
@@ -343,15 +383,17 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
       group roles, staff user/server log channels. 2026-09-28.
 - [x] **Operations** (sundei.eu): mail through Proton (`osu@sundei.eu`, email verification on), downtime
       alerts by Discord DM to the admin (`watchdog.sh`, paused while `deploy.sh` runs), nightly backups
-      (`backup.sh`, kept on the VM; the Proton Drive copy isn't set up), the store says "not available".
+      (`backup.sh`, kept on the VM; ⏸ no off-site copy, by decision 2026-10-02), the store says "not available".
       2026-09-29
 - [ ] **Scaling up and out** — today one TomYum instance holds every online player, channel, match and
       spectator in memory (`PlayerRegistry`, `ChannelRegistry`, `MatchRegistry`), so bancho can't run as
       several copies behind a load balancer yet (a second copy loops stable's logins: its `osu-token` is
       unknown there). Not needed at today's load (2026-10-01: 4 vCPU/8 GB VM, TomYum ~280 MB, under 3%
       CPU); a few hundred daily players fit one VM. Stages, in order — stop at the first that's enough:
-  - [ ] **Always:** monitoring (CPU/RAM/disk, slow requests, to Discord like `watchdog.sh`) to know *what*
-        to scale (usually MySQL/Elasticsearch, not bancho); off-site backups (`backup.sh` keeps them on the VM).
+  - [x] **Always:** monitoring to know *what* to scale (usually MySQL/Elasticsearch, not bancho):
+        `watchdog.sh` also alerts on disk, memory, CPU, stopped/unhealthy/crashed containers and slow
+        requests (docs/monitoring.md); `deploy.sh` caps Docker's build cache at 20 GB (it had reached
+        128 GB). 2026-10-02. (Off-site backups: ⏸ skipped, 2026-10-02.)
   - [ ] **1. Scale up:** bigger VM (8/16, then 16/32), NVMe; more osu-web PHP workers, MySQL buffer pool,
         Elasticsearch heap. No code changes.
   - [ ] **2. Split the stack (config only):** MySQL + Redis on their own VM or managed (DigitalOcean
@@ -389,7 +431,7 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
   - [ ] Same bucket for the rest of the stack, which already supports S3: osu-web uploads (`S3_*`) and
         tomyum-spectator's lazer replays.
 - [x] **Config audit** (2026-10-01): every setting in TomYum's option classes is read somewhere, except
-      `Storage:*` (above). `src/TomYum.Caching/PlaceHolder.cs` is an empty leftover.
+      `Storage:*` (above). (`src/TomYum.Caching/PlaceHolder.cs`, an empty leftover, removed 2026-10-02.)
 - [x] **Anticheat** — circleguard (sundeiii/lazer-circleguard, C#) checks every ranked pass, stable and
       lazer, incl. against osu!'s top replays (docs/anticheat.md). 2026-09-29
 - [x] **IRC server** (docs/irc.md): port 6667, passwords from BanchoBot's `!irc`, the game's chat
