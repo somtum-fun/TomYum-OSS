@@ -41,10 +41,14 @@ public sealed class LazerPresence
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<LazerPlayer>> GetOnlineAsync()
+    public async Task<IReadOnlyList<LazerPlayer>> GetOnlineAsync() =>
+        await TryGetOnlineAsync().ConfigureAwait(false) ?? [];
+
+    /// <summary>Like <see cref="GetOnlineAsync"/>, but null (not empty) without Redis or when reading it failed.</summary>
+    public async Task<IReadOnlyList<LazerPlayer>?> TryGetOnlineAsync()
     {
         if (_redis is null)
-            return [];
+            return null;
         try
         {
             var entries = await _redis.GetDatabase().HashGetAllAsync(Key).ConfigureAwait(false);
@@ -53,7 +57,7 @@ public sealed class LazerPresence
         catch (Exception ex) when (ex is RedisException or TimeoutException)
         {
             _logger.LogWarning(ex, "Reading lazer presence from Redis failed.");
-            return [];
+            return null;
         }
     }
 

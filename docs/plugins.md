@@ -49,7 +49,7 @@ so the plugin can be cleanly unloaded.
 | `Commands` | `Register(name, description, handler)` — adds a `!`command. Returns an `IDisposable`; dispose it on shutdown. |
 | `Events` | `Subscribe<TEvent>(handler)` — react to server events. Some are **vetoable** (you can reject the operation). |
 | `Http` | `Map(method, pattern, handler, requireAuth, subdomain)` — serve HTTP, optionally on your own subdomain. |
-| `GetHostService<T>()` | Inspect live state. Today: `IHostPlayerView` (who's online, action, map, mods). |
+| `GetHostService<T>()` | Inspect live state. Today: `IHostPlayerView` (who's online, action, map, mods) and `IHostOnlineCounts` (players online by client: stable, IRC, lazer; open multiplayer rooms). |
 | `Data` | Raw ADO.NET `DbConnection` — **only** if the operator lists your id under `Plugins:Trusted`. Otherwise `null`. |
 
 ### Events you can subscribe to
@@ -58,6 +58,7 @@ All implement `IPluginEvent`; `ScoreSubmitting` also implements `IVetoableEvent`
 to reject the score):
 
 - `PlayerLoginEvent` — a player logged in.
+- `PlayerLoginRefusedEvent` — an osu!stable login was refused (`Held` when it's only for now: maintenance, or a device to verify).
 - `ChatMessageEvent` — a player sent a message.
 - `ActionChangedEvent` — a player's status changed (idle/playing/…, with map + mods).
 - `SpectateFrameEvent` — a raw replay-frame bundle from a spectated host.

@@ -130,7 +130,8 @@ public sealed class BanchoLoginHandler
     /// <summary>The outcome of a login attempt: the framed response body and the new token (if any).</summary>
     /// <param name="Body">Framed bancho packets to write to the HTTP response body.</param>
     /// <param name="Token">The minted <c>cho-token</c> on success; <c>null</c> on failure.</param>
-    public readonly record struct LoginOutcome(byte[] Body, string? Token);
+    /// <param name="Held">Refused for now, not for good: maintenance, or a device to verify first.</param>
+    public readonly record struct LoginOutcome(byte[] Body, string? Token, bool Held = false);
 
     /// <summary>
     /// Handles a first-contact login (request had no <c>osu-token</c> header). Always returns
@@ -141,6 +142,19 @@ public sealed class BanchoLoginHandler
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <param name="clientAddress">The player's IP address, for their login history (or null).</param>
     public async Task<LoginOutcome> HandleAsync(string body, string countryIso, CancellationToken cancellationToken, string? clientAddress = null)
+    {
+        var outcome = await HandleCoreAsync(body, countryIso, clientAddress, cancellationToken).ConfigureAwait(false);
+
+        // Plugins hear about refused logins too (a successful one raises PlayerLoginEvent).
+        if (outcome.Token is null && _events is not null)
+        {
+            var username = LoginRequest.TryParse(body, out var request) && request is not null ? request.Username : string.Empty;
+            await _events.PublishAsync(new TomYum.Plugins.Abstractions.PlayerLoginRefusedEvent(username, outcome.Held), cancellationToken).ConfigureAwait(false);
+        }
+        return outcome;
+    }
+
+    private async Task<LoginOutcome> HandleCoreAsync(string body, string countryIso, string? clientAddress, CancellationToken cancellationToken)
     {
         if (!LoginRequest.TryParse(body, out var request) || request is null)
         {
@@ -193,7 +207,7 @@ public sealed class BanchoLoginHandler
         if (_maintenance?.IsLocked == true && !ModerationCommands.IsStaff(user.Privileges))
         {
             _logger.LogInformation("Login held: {Username} (id {UserId}); maintenance.", user.Username, user.Id);
-            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.ServerError, _maintenance.Notice), null);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.ServerError, _maintenance.Notice), null, Held: true);
         }
 
         // Hardware hashes: recorded for every login; an account's first login is refused when the
@@ -211,7 +225,7 @@ public sealed class BanchoLoginHandler
                 HoldDevice(user.Id, hashes.UninstallMd5);
                 _logger.LogInformation("Login held: {Username} (id {UserId}) is on a device they haven't verified yet.", user.Username, user.Id);
                 await RecordLoginAsync(user.Id, "held", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
-                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired, VerificationNotice), null);
+                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired, VerificationNotice), null, Held: true);
             }
         }
 
