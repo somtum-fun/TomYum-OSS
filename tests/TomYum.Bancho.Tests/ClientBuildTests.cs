@@ -38,7 +38,8 @@ public class ClientBuildTests
 
     [Theory]
     [InlineData("b1122", 1122)]
-    [InlineData("b1814", 1814)]
+    [InlineData("b337.test", 337)]
+    [InlineData("b1704", 1704)]
     [InlineData("b1122test", 1122)]
     public void ANumberedBuild_IsAnOldBuildWithTheEarlyPackets(string version, int number)
     {
@@ -52,6 +53,8 @@ public class ClientBuildTests
     }
 
     [Theory]
+    [InlineData("b1807")]
+    [InlineData("b1844.test")]
     [InlineData("b20140624")]
     [InlineData("b2014")]
     [InlineData(null)]

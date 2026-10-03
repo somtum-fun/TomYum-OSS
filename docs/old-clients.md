@@ -41,8 +41,31 @@ Sign out of a real osu! account in that client first: its login is sent to this 
 |---|---|
 | `b20140624` | Tested 2026-10-02 (locally and on sundei.eu): login, chat, online users, osu!direct (search, download, import, thumbnails), leaderboards, score submission (pp, medals, ranking screen), being spectated by today's client. Not yet tested: multiplayer, spectating today's client. |
 | Late 2013 – 2015 | Expected to work like the above (HTTP bancho, protocol 18/19); not tested build by build yet. |
-| Up to `b20130815` | Bancho over raw TCP, which Cloudflare can't carry: TomYum's own TCP bancho (`TCP_BANCHO=true`, ports 13380-13384), or TomYum.Gateway on another box (docs/gateway.md), with a client patched to use `server.<domain>`. Packets are pushed as they're queued, and a ping goes out after 10 s of quiet (b1122 reconnects after 30). |
-| Numbered builds (`b1122`, 2011) | Their protocol (read from the decompiled b1122, example-org/private-repo) is translated by `EarlyPackets`: ids from 11 up are one higher, a user's status, stats and presence are one packet (12). Login, channels, chat, PMs, friends, statuses and the online list. Multiplayer, spectator frames and beatmap info are left out for now. |
+| `b20130823.3`, `b20130915.4` | HTTP bancho with the 2013 layouts below (era E3). |
+| Up to `b20130802.1` | Bancho over raw TCP, which Cloudflare can't carry: TomYum's own TCP bancho (`TCP_BANCHO=true`, ports 13380-13384), or TomYum.Gateway on another box (docs/gateway.md), with a client patched to use `server.<domain>`. Packets are pushed as they're queued, and a ping goes out after 10 s of quiet (b337-b558 reconnect after 20 s of nothing, b595b-b1704 after 30, b1807-2013 after 48). |
+| b337 – b20130802.1 (2008 – 2013) | Translated per era (below), from the decompiled clients; covered by tests (`OldBanchoTests`), not yet played build by build. Login, chat, PMs, channels, friends, statuses, the online list, spectating, multiplayer and song select's beatmap info. |
+
+The protocol eras (`ClientBuild.Has(BanchoFeature)` holds the first build of each change; `EarlyPackets`
+translates b337–b1704, `LegacyPackets` the rest):
+
+| Builds | Ids | What's different from today |
+|---|---|---|
+| b337 | own table | Ids 11–50 are today's + 1, from 51 its own. One chat pane (`#osu` and PMs only, no channels). The user update has a "new stats" flag (stats only with the name); status text unless Unknown; refusals -1/-2. |
+| b370 – b476 | + 1 from 11 | One user update (12) with a completeness byte, 16-bit rank; channels (`#osu` is created and joined by the client itself); no channel part before b639. Rooms: byte id, 16-bit mods, no password (b595b), teams/scoring (b558), host (b420), mode (b476). Privileges from b452, friends (32-bit count) from b476. |
+| b497 – b639 | + 1 from 11 | PROTOCOL_VERSION (sent after the login reply); statuses carry mode and beatmap id; 27-byte score frames before b558; beatmap info with 1 grade before b504, then 3. |
+| b699 – b1704 | + 1 from 11 | 32-bit rank (= b1122); full updates end with longitude/latitude from b1218; match player skipped from b1553; refusal -4 from b1700. |
+| b1807 – b20120812 | today's | Stats and presence split, but presence has an avatar flag, a location string and a whole permissions byte (and the mode from b20120812); 16-bit mods in statuses, stats and rooms; no pp before b20120812; 16-bit room ids from here. |
+| b20120916 – b20121223 | today's | 32-bit mods; mania from b20121003; 4 grades from b20121115; today's presence from b20121203; the menu icon is an image URL until b20121223. Rooms without free mods or seed. |
+| b20130303 – b20130802.1 | today's | Messages from the client have the sender id; rooms get free mods; from b20130513 frame bundles start with the extra int and rooms end with a seed (today's 8-slot room). |
+
+Every build up to 2013 gzips client packets of 150 bytes or more (header byte 2); TomYum unpacks them
+first. Before b20130513 spectator frame bundles lose today's leading int (and get one, plus the tag byte
+on b337–b534's 27-byte score frames, when they come in). A login refusal a build doesn't know reads as a
+successful login there, so refusals below its lowest code go out as -1 ("failed"), even before there's a
+session (the build is read from the login itself). Not sent to these builds: packets their table doesn't
+have (invites, silences, restart, menu icon before b20120916, ...), and to b337–b1704 rooms with an id
+past 255 (a byte there). b337 sees other players' stats only with their presence (its update has no
+stats-only form).
 
 ## What the server does for them
 
@@ -66,7 +89,7 @@ Sign out of a real osu! account in that client first: its login is sent to this 
   way); BanchoBot's `!mp invite <player>` sends the same, for clients whose menu doesn't.
 - **8-slot builds** join rooms only in slots 1–8 and aren't sent scores, fails or skips of slots
   9–16; room and spectator chat open as a tab (CHANNEL_AUTO_JOIN before JOIN_SUCCESS); the menu
-  icon is "|" rather than empty; client error reports (20) go to the server log;
+  icon is "|" rather than empty (from b20121223); client error reports (20) go to the server log;
   `osu-checktweets.php` answers empty.
 - **Diagnostics.** The server log names each packet type the first time it goes to or comes from
   an old build's session (`LegacyPacketLog`): that's how the chat problem showed.

@@ -109,8 +109,9 @@ public class EarlyPacketsTests
 
         var packets = Packets(EarlyPackets.Outgoing(w.ToArray()));
 
-        Assert.Equal([5, 65, 25, 13, 72, 73], packets.Select(p => (int)p.Id));
-        var friends = new BanchoPacketReader(packets[5].Payload);
+        // The protocol version (shifted to 76) goes right after the login reply.
+        Assert.Equal([5, 76, 65, 25, 13, 72, 73], packets.Select(p => (int)p.Id));
+        var friends = new BanchoPacketReader(packets[6].Payload);
         Assert.Equal(2, friends.ReadInt32()); // a 32-bit count
         Assert.Equal(4, friends.ReadInt32());
         Assert.Equal(9, friends.ReadInt32());

@@ -26,7 +26,8 @@ public static class BanchoExchange
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(services);
 
-        body = LegacyPackets.Incoming(body, player.Build);
+        // Builds up to 2013 gzip what they send from 150 bytes on (header byte 2); today's never do.
+        body = LegacyPackets.Incoming(LegacyPackets.Decompress(body), player.Build);
         var produced = body.Length == 0
             ? []
             : await dispatcher.DispatchAsync(player, registry, channels, matches, services, body).ConfigureAwait(false);
@@ -58,15 +59,20 @@ public static class BanchoExchange
         return response;
     }
 
-    /// <summary>A login reply as <paramref name="player"/>'s build reads it (and noted in the log for old builds).</summary>
-    public static byte[] LoginReply(byte[] reply, OnlinePlayer? player, IServiceProvider services)
+    /// <summary>
+    /// A login reply as the build that logged in reads it (and noted in the log for old builds): the
+    /// session's build, or for a refused login (no session) the one named in <paramref name="loginBody"/>,
+    /// so the refusal is one the build understands (an unknown one reads as success in old builds).
+    /// </summary>
+    public static byte[] LoginReply(byte[] reply, string loginBody, OnlinePlayer? player, IServiceProvider services)
     {
         ArgumentNullException.ThrowIfNull(reply);
         ArgumentNullException.ThrowIfNull(services);
-        if (player is not { Build.IsLegacy: true })
+        var build = player?.Build ?? ClientBuild.FromLogin(loginBody);
+        if (!build.IsLegacy)
             return reply;
-        reply = LegacyPackets.Outgoing(reply, player.Build);
-        if (services.GetService<ILoggerFactory>() is { } logs)
+        reply = LegacyPackets.Outgoing(reply, build);
+        if (player is not null && services.GetService<ILoggerFactory>() is { } logs)
             LegacyPacketLog.Note(player, reply, outgoing: true, logs.CreateLogger(typeof(LegacyPacketLog)));
         return reply;
     }

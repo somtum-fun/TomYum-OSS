@@ -202,7 +202,7 @@ internal sealed class TcpBanchoSession : IDisposable
             player = token is null ? null : registry.GetByToken(token);
             if (player is not null && scope.ServiceProvider.GetService<LoginIps>() is { } ips)
                 await ips.RecordAsync(player.UserId, ip).ConfigureAwait(false);
-            await WriteAsync(BanchoExchange.LoginReply(outcome.Body, player, scope.ServiceProvider), stoppingToken).ConfigureAwait(false);
+            await WriteAsync(BanchoExchange.LoginReply(outcome.Body, loginBody, player, scope.ServiceProvider), stoppingToken).ConfigureAwait(false);
         }
         if (player is null || token is null)
             return; // refused: the reply says why

@@ -15,10 +15,11 @@ public sealed partial record ClientBuild(string Version, DateOnly? Date)
     public int? Number { get; init; }
 
     /// <summary>
-    /// Whether this is a numbered build (2011 and earlier; b1122 checked): the packet ids from 11 up
+    /// Whether this is a numbered build before b1807 (b337 to b1704, 2008 to 2011): the packet ids from 11 up
     /// are one higher than today's, and a user's stats and presence are one packet (<see cref="EarlyPackets"/>).
+    /// b1807 to b1844 already use today's ids, with older layouts (<see cref="LegacyPackets"/>).
     /// </summary>
-    public bool HasEarlyPackets => Number is not null;
+    public bool HasEarlyPackets => Number is not null && !Has(BanchoFeature.TodaysIds);
 
     /// <summary>The build's date for the checks below: numbered builds are older than any dated one.</summary>
     private DateOnly? Era => Date ?? (Number is null ? null : DateOnly.MinValue);
