@@ -1,7 +1,8 @@
 # ppy's score processor (osu-queue-score-statistics: lazer pp, totals, medals) for TomYum, built from
 # ppy's source with one change: besides osu!'s own ranked mods, mods staff mark as ranked in the
 # website's admin panel (Admin panel > Mods) count too, for pp and medals, and old scores with a
-# mod that changed get their pp worked out again (TomYumRankedMods.cs). See docs/lazer.md.
+# mod that changed get their pp worked out again (TomYumRankedMods.cs), and Relax/Autopilot plays
+# wait for TomYum's import before they're processed (TomYumRelaxWait.cs). See docs/lazer.md.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
 ARG PROCESSOR_REPO=https://github.com/ppy/osu-queue-score-statistics
 ARG PROCESSOR_REF=7558b004f33cb79196b63682daa9862cb9c23faa
@@ -17,6 +18,11 @@ RUN grep -q 'if (!mod.Ranked)' Helpers/MedalHelpers.cs \
 # Start watching the panel's choices with the queue.
 RUN grep -q '            queue.Run(cancellationToken);' Commands/Queue/WatchQueueCommand.cs \
     && sed -i 's/^            queue.Run(cancellationToken);/            global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumRankedMods.Start(cancellationToken);\n            queue.Run(cancellationToken);/' Commands/Queue/WatchQueueCommand.cs
+# Relax/Autopilot plays: processed once TomYum has taken them in (TomYumRelaxWait.cs), so the game's
+# results screen shows the play counted in the player's relax/autopilot statistics.
+COPY TomYumRelaxWait.cs Helpers/TomYumRelaxWait.cs
+RUN grep -q '                    var score = item.Score;' ScoreStatisticsQueueProcessor.cs \
+    && sed -i 's/^                    var score = item.Score;/                    var score = item.Score;\n                    global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumRelaxWait.WaitForTomYum(conn, score);/' ScoreStatisticsQueueProcessor.cs
 RUN dotnet publish -c Release -o /out && rm -rf /out/runtimes /out/osu.Game.Resources.dll
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0
