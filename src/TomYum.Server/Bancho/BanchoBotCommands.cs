@@ -101,7 +101,7 @@ public sealed class BanchoBotCommands
 
     [ChatCommand("version")]
     private string Version(ChatCommandContext context) =>
-        string.Create(CultureInfo.InvariantCulture, $"TomYum {_version.Display} (@{_version.Commit})");
+        string.Create(CultureInfo.InvariantCulture, $"{_version.Label} (@{_version.Commit})");
 
     [ChatCommand("plugins", Hidden = true)]
     private string PluginsCommand(ChatCommandContext context) => ListPlugins();

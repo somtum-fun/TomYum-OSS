@@ -200,7 +200,7 @@ public sealed class DiscordDaily : BackgroundService
                 new DiscordField("Uptime", Uptime(uptime)),
             ],
             Color = 0x57F287,
-            Footer = $"TomYum {_version.Display} ▸ updated every minute",
+            Footer = $"{_version.Label} ▸ updated every minute",
             Timestamp = now,
         });
     }

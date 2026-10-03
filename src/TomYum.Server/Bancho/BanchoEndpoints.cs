@@ -65,7 +65,7 @@ public static class BanchoEndpoints
         {
             // Unknown token (e.g. the server restarted): tell the client to reconnect.
             var writer = new BanchoPacketWriter(64);
-            writer.WriteStringPacket(ServerPacketId.Notification, "TomYum has restarted — reconnecting.");
+            writer.WriteStringPacket(ServerPacketId.Notification, $"{services.GetRequiredService<TomYumVersion>().ServerName} has restarted — reconnecting.");
             writer.WritePacket(ServerPacketId.Restart, w => w.WriteInt32(0));
             return Results.Bytes(writer.ToArray(), OctetStream);
         }

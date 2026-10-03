@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Configuration;
+
 using TomYum.Server.Bancho;
 
 using Xunit;
@@ -50,5 +52,18 @@ public class TomYumVersionTests
         var version = new TomYumVersion();
         Assert.False(string.IsNullOrWhiteSpace(version.Display));
         Assert.False(string.IsNullOrWhiteSpace(version.Commit)); // a sha or "unknown", never blank
+    }
+
+    [Fact]
+    public void Server_name_comes_from_configuration_and_leads_the_label()
+    {
+        var named = new TomYumVersion(new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Server:Name"] = " example " }).Build());
+        Assert.Equal("example", named.ServerName);
+        Assert.Equal($"example · TomYum {named.Display}", named.Label);
+
+        var unnamed = new TomYumVersion();
+        Assert.Equal("TomYum", unnamed.ServerName);
+        Assert.Equal($"TomYum {unnamed.Display}", unnamed.Label);
     }
 }

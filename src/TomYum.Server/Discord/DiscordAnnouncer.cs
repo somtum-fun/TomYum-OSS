@@ -161,7 +161,7 @@ public sealed class DiscordAnnouncer : BackgroundService
 
         await _gateway.PostAsync(_options.ServerLogChannelId, new DiscordPost(Embed: new DiscordEmbed
         {
-            Description = $"🟢 **TomYum {_version.Display}** is up.",
+            Description = $"🟢 **{_version.Label}** is up.",
             Color = 0x57F287,
             Timestamp = _time.GetUtcNow(),
         }), cancellationToken).ConfigureAwait(false);

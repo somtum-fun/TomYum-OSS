@@ -3,7 +3,7 @@
 > **Docs convention.** `docs/` holds the documentation (contributors, operators): one page per
 > feature, plus this checklist.
 
-_Last updated: 2026-10-01 (version 0.2.0-dev)._ .NET 10; production at sundei.eu (stable, lazer and the website)._
+_Last updated: 2026-10-03 (version 0.3.0-dev)._ .NET 10; production at example.com (stable, lazer and the website), sundei.eu as the test server._
 
 This is the living checklist for the big feature wave requested on 2026-07-07: `.osu` cache →
 plugin host → moderation/HWID → spectating → DAN/Session ports → custom beatmaps → **osu!lazer
@@ -20,6 +20,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decisio
 - `0.2.0-dev` (2026-10-01): lazer and the website (osu-web) as accounts and scores, moderation and the
   staff panels, anti-cheat, Discord bot, IRC, bot accounts, BN/NAT tools (QAT), maintenance mode,
   support tickets, the store. Still `-dev`: not ready for production elsewhere or open source.
+- `0.3.0-dev` (2026-10-03): old clients (2013–2015 through Titanic! Hook, with raw TCP bancho for
+  builds up to b20130815), Relax/Autopilot done right (Akatsuki pp, lazer replays, boards by pp or
+  score), pp reworks and pp library updates from the admin panel, monitoring
+  (watchdog DMs), metrics as a plugin, upload/revive activity, tickets from any IMAP mailbox, and the
+  server's own name (`TOMYUM_SERVER__NAME`) in the bot's posts.
 
 ## Path to 1.0 (production-ready, open source) ⚖️
 _Before `1.0.0`: TomYum should run anyone's server without this one's choices baked in._

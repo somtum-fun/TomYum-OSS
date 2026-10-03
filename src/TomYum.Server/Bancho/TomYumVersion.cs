@@ -16,17 +16,41 @@ public sealed class TomYumVersion
     /// <summary>Used for <see cref="Commit"/> when no git revision is baked into the assembly.</summary>
     public const string UnknownCommit = "unknown";
 
+    /// <summary>The software's name, and the server's when it has none of its own.</summary>
+    public const string Product = "TomYum";
+
     /// <summary>Creates the version accessor, resolving the version from the entry assembly.</summary>
     public TomYumVersion()
+        : this(serverName: null)
+    {
+    }
+
+    /// <summary>With the server's own name from configuration (<c>Server:Name</c>, <c>TOMYUM_SERVER__NAME</c>).</summary>
+    public TomYumVersion(IConfiguration configuration)
+        : this(configuration["Server:Name"])
+    {
+    }
+
+    private TomYumVersion(string? serverName)
     {
         var informational = (Assembly.GetEntryAssembly() ?? Assembly.GetExecutingAssembly())
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
 
         (Display, Commit) = ParseInformationalVersion(informational);
+        ServerName = string.IsNullOrWhiteSpace(serverName) ? Product : serverName.Trim();
     }
 
     /// <summary>The display version string, e.g. <c>0.0.1-dev</c>.</summary>
     public string Display { get; }
+
+    /// <summary>What players know the server as (e.g. <c>example</c>); <see cref="Product"/> by default.</summary>
+    public string ServerName { get; }
+
+    /// <summary>
+    /// The server and the build, for the bot's posts and <c>!version</c>: <c>example · TomYum 0.3.0-dev</c>,
+    /// or <c>TomYum 0.3.0-dev</c> for a server without a name of its own.
+    /// </summary>
+    public string Label => ServerName == Product ? $"{Product} {Display}" : $"{ServerName} · {Product} {Display}";
 
     /// <summary>
     /// The short git commit the build was produced from (baked in via <c>SourceRevisionId</c>; see
