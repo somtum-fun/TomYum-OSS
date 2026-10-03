@@ -33,6 +33,7 @@ public static partial class DirectEndpoints
 
         // Download redirect — no host restriction so clients that hit the osu. subdomain
         // for /d/ still get the redirect. If the deployment needs host filtering, add hosts.
+        // "/d/123n" is the set without its video (builds from b699 on).
         app.MapGet("/d/{setId}", HandleDownloadForClientAsync);
 
         // One difficulty's .osu file, like osu.ppy.sh/osu/{id}: ppy's score processor reads maps
@@ -99,9 +100,11 @@ public static partial class DirectEndpoints
         IHttpClientFactory factory,
         IOptions<DirectOptions> opts,
         CustomBeatmapCatalog custom,
+        PlayerRegistry players,
         CancellationToken cancellationToken)
     {
         var cfg = opts.Value;
+        var withoutMania = HasNoMania(context.Request, players);
 
         // Query params the osu! client sends:
         //   r = status filter (0=ranked, 2=pending, 3=qualified, 4=all, 5=graveyard, 7=ranked (played), 8=loved)
@@ -143,9 +146,11 @@ public static partial class DirectEndpoints
         var url = cfg.MirrorBaseUrl + cfg.SearchPath + qs;
 
         // This server's own sets come first, on the first page.
-        var customSets = page == 0
+        IReadOnlyList<CustomSet> customSets = page == 0
             ? await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, cancellationToken).ConfigureAwait(false)
             : [];
+        if (withoutMania)
+            customSets = customSets.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();
 
         JsonElement[] sets;
         try
@@ -164,16 +169,18 @@ public static partial class DirectEndpoints
             return MirrorFailed(customSets, custom);
         }
 
-        var sb = new StringBuilder();
-        // If exactly 100 results are returned, signal "more pages available" by sending 101.
-        sb.AppendLine(sets.Length == 100 ? "101" : (sets.Length + customSets.Count).ToString(CultureInfo.InvariantCulture));
+        var lines = new StringBuilder();
+        var shown = customSets.Count;
         foreach (var set in customSets)
-            sb.AppendLine(custom.ToDirectLine(set));
+            lines.AppendLine(custom.ToDirectLine(set));
 
         foreach (var set in sets)
         {
             if (!set.TryGetProperty("ChildrenBeatmaps", out var children) || children.ValueKind == JsonValueKind.Null)
                 continue;
+            if (withoutMania && IsManiaOnly(set))
+                continue;
+            shown++;
 
             var diffs = children.EnumerateArray()
                 .OrderBy(d => d.TryGetProperty("DifficultyRating", out var dr) ? dr.GetDouble() : 0)
@@ -194,7 +201,7 @@ public static partial class DirectEndpoints
             var setId   = set.TryGetProperty("SetID",        out var sid)  ? sid.GetInt32()    : 0;
             var artist  = SanitisePipeChar(set.TryGetProperty("Artist",       out var art)  ? art.GetString() ?? "" : "");
             var title   = SanitisePipeChar(set.TryGetProperty("Title",        out var tit)  ? tit.GetString() ?? "" : "");
-            var creator = set.TryGetProperty("Creator",      out var cre)  ? cre.GetString() ?? "" : "";
+            var creator = SanitisePipeChar(set.TryGetProperty("Creator", out var cre) ? cre.GetString() ?? "" : "");
             // Pass the mirror's RankedStatus value through as-is. bancho.py sends it raw and
             // the osu!stable client renders the icon from this field directly (1=ranked,
             // 4=loved, 3=qualified, 0=pending, -2=graveyard). ToDirectStatus() was incorrectly
@@ -208,10 +215,14 @@ public static partial class DirectEndpoints
             // Wire format (bancho.py DIRECT_SET_INFO_FMTSTR):
             // {SetID}.osz|{Artist}|{Title}|{Creator}|{RankedStatus}|10.0|{LastUpdate}|{SetID}|
             // 0|{HasVideo}|0|0|0|{diffs}
-            sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
+            lines.AppendLine(string.Create(CultureInfo.InvariantCulture,
                 $"{setId}.osz|{artist}|{title}|{creator}|{ranked}|10.0|{updated}|{setId}|0|{hasVideo}|0|0|0|{string.Join(",", diffs)}"));
         }
 
+        // If exactly 100 results are returned, signal "more pages available" by sending 101.
+        var sb = new StringBuilder();
+        sb.AppendLine(sets.Length == 100 ? "101" : shown.ToString(CultureInfo.InvariantCulture));
+        sb.Append(lines);
         return Results.Text(sb.ToString(), "text/plain");
     }
 
@@ -234,9 +245,12 @@ public static partial class DirectEndpoints
         IHttpClientFactory factory,
         IOptions<DirectOptions> opts,
         CustomBeatmapCatalog custom,
+        PlayerRegistry players,
         CancellationToken cancellationToken)
     {
         var cfg = opts.Value;
+        // A build without osu!mania can't play a mania-only set: for it, there's no such set.
+        var withoutMania = HasNoMania(context.Request, players);
 
         // Client sends exactly one of: s=<setId>, b=<mapId>, c=<md5>
         var setIdStr  = context.Request.Query["s"].ToString();
@@ -250,7 +264,11 @@ public static partial class DirectEndpoints
         if (customSet is not null || customMap is not null || byChecksum is not null)
         {
             if (await custom.FindAsync(customSet, customMap, byChecksum, cancellationToken).ConfigureAwait(false) is { } local)
-                return Results.Text(custom.ToDirectLine(local, withDifficulties: false), "text/plain");
+            {
+                return withoutMania && IsManiaOnly(local.Maps.Select(b => b.Mode))
+                    ? Results.Text(string.Empty, "text/plain")
+                    : Results.Text(custom.ToDirectLine(local, withDifficulties: false), "text/plain");
+            }
             if (byChecksum is null)
                 return Results.Text(string.Empty, "text/plain");
         }
@@ -282,11 +300,16 @@ public static partial class DirectEndpoints
             return Results.Text(string.Empty, "text/plain");
         }
 
+        if (withoutMania && IsManiaOnly(set))
+            return Results.Text(string.Empty, "text/plain");
+
         var sid     = set.TryGetProperty("SetID",        out var sidp) ? sidp.GetInt32()    : 0;
         var artist  = SanitisePipeChar(set.TryGetProperty("Artist",  out var art) ? art.GetString() ?? "" : "");
         var title   = SanitisePipeChar(set.TryGetProperty("Title",   out var tit) ? tit.GetString() ?? "" : "");
-        var creator = set.TryGetProperty("Creator",      out var cre) ? cre.GetString() ?? "" : "";
-        var status  = ToDirectStatus(set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0);
+        var creator = SanitisePipeChar(set.TryGetProperty("Creator", out var cre) ? cre.GetString() ?? "" : "");
+        // The mirror's status as it is (1 ranked, 2 approved, 3 qualified, 4 loved), as in osu-search.php;
+        // not the search filter's codes (ranked is 7 there, which every old build shows as pending).
+        var status  = set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0;
         var updated = set.TryGetProperty("LastUpdate",   out var lu)  ? lu.GetString() ?? "" : "";
 
         // Wire format (bancho.py osu-search-set response):
@@ -303,12 +326,14 @@ public static partial class DirectEndpoints
     internal const string DownloadHttpClientName = "BeatmapMirrorDownload";
 
     /// <summary>
-    /// A download for whoever asks (<c>?u=</c> is the player): <see cref="HandleDownload"/>, except
-    /// that an old build (before 2016, <see cref="ClientBuild.IsLegacy"/>) can't follow a redirect to the
-    /// mirror's HTTPS (no TLS 1.2 on .NET 2.0), so the file is fetched here and passed on.
+    /// A download for whoever asks (<c>/d/{set}</c>, or <c>/d/{set}n</c> without the video; <c>?u=</c> is the
+    /// player when it's sent): <see cref="HandleDownload"/>, except that an old build (before 2016) can't
+    /// follow a redirect to the mirror's HTTPS (no TLS 1.2 on .NET 2.0), so the file is fetched here and
+    /// passed on. Old builds are told by the plain HTTP they come over (b476–b639 send no <c>?u=</c>, and
+    /// b452's is malformed), or by the online player's build.
     /// </summary>
     internal static async Task<IResult> HandleDownloadForClientAsync(
-        int setId,
+        string setId,
         HttpContext context,
         IOptions<DirectOptions> opts,
         CustomBeatmapStore store,
@@ -316,10 +341,14 @@ public static partial class DirectEndpoints
         IHttpClientFactory factory,
         CancellationToken cancellationToken)
     {
-        var result = HandleDownload(setId, context.Request, opts, store);
+        if (ParseDownloadId(setId) is not { } parsed)
+            return Results.NotFound();
+        var (id, noVideo) = parsed;
+
+        var result = HandleDownload(id, context.Request, opts, store, noVideo);
         if (result is not RedirectHttpResult redirect
-            || context.Request.Query["u"].ToString() is not { Length: > 0 } username
-            || players.GetByUsername(username) is not { Build.IsLegacy: true })
+            || !(CameOverPlainHttp(context.Request)
+                 || (context.Request.Query["u"].ToString() is { Length: > 0 } username && players.GetByUsername(username) is { Build.IsLegacy: true })))
         {
             return result;
         }
@@ -337,16 +366,24 @@ public static partial class DirectEndpoints
         context.Response.ContentLength = upstream.Content.Headers.ContentLength; // the client's progress bar
         var name = upstream.Content.Headers.ContentDisposition?.FileNameStar?.Trim('"')
             ?? upstream.Content.Headers.ContentDisposition?.FileName?.Trim('"')
-            ?? string.Create(CultureInfo.InvariantCulture, $"{setId}.osz");
+            ?? string.Create(CultureInfo.InvariantCulture, $"{id}.osz");
         var body = await upstream.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
         return Results.Stream(body, "application/x-osu-beatmap-archive", name);
     }
+
+    /// <summary>The set id in a <c>/d/</c> path, and whether a trailing <c>n</c> asks for it without the video; null when it isn't one.</summary>
+    internal static (int SetId, bool NoVideo)? ParseDownloadId(string value) =>
+        DownloadId().Match(value ?? string.Empty) is { Success: true } match
+        && int.TryParse(match.Groups["id"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+            ? (id, match.Groups["n"].Success)
+            : null;
 
     internal static IResult HandleDownload(
         int setId,
         HttpRequest request,
         IOptions<DirectOptions> opts,
-        CustomBeatmapStore store)
+        CustomBeatmapStore store,
+        bool noVideo = false)
     {
         if (setId >= Beatmap.CustomIdFloor)
         {
@@ -357,10 +394,10 @@ public static partial class DirectEndpoints
 
         var cfg = opts.Value;
         // Pass through ?novideo if the client sent it; osu-web (as a download mirror) sends nv=1.
-        var noVideo = request.Query.ContainsKey("novideo") || request.Query["nv"] == "1" ? "?novideo" : string.Empty;
+        var withoutVideo = noVideo || request.Query.ContainsKey("novideo") || request.Query["nv"] == "1" ? "?novideo" : string.Empty;
         var url = cfg.MirrorBaseUrl
             + string.Format(CultureInfo.InvariantCulture, cfg.DownloadPath, setId)
-            + noVideo;
+            + withoutVideo;
         return Results.Redirect(url, permanent: false);
     }
 
@@ -436,26 +473,51 @@ public static partial class DirectEndpoints
     [GeneratedRegex(@"^/(?<kind>thumb|preview)/(?<id>[0-9]+)(?<large>l)?\.(jpg|mp3)$")]
     private static partial Regex CustomAsset();
 
+    [GeneratedRegex(@"^(?<id>[0-9]{1,9})(?<n>n)?$")]
+    private static partial Regex DownloadId();
+
     /// <summary>
-    /// Maps the osu!Direct ranked-status filter code (sent by the client as <c>?r=</c>)
-    /// to the osu! API status value expected by mino.pw-compatible mirrors.
-    /// Returns <c>null</c> for "all" (no status filter should be sent).
+    /// The build asking, as far as osu!direct can tell: the online player named by <c>u</c> (sent from
+    /// b1652 on), else the version the request carries (<c>v</c>). Null when neither says.
     /// </summary>
-    /// <summary>
-    /// Maps the osu! API ranked status returned by the mirror to the osu!Direct display code
-    /// the osu!stable client expects in the search response's status field.
-    /// </summary>
-    private static int ToDirectStatus(int mirrorStatus) => mirrorStatus switch
+    internal static ClientBuild? ClientOf(HttpRequest request, PlayerRegistry players)
     {
-        -2 => 5, // graveyard
-        -1 => 5, // WIP → graveyard
-         0 => 0, // pending
-         1 => 7, // ranked
-         2 => 7, // approved → ranked
-         3 => 3, // qualified
-         4 => 8, // loved
-         _ => 0,
-    };
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(players);
+        if (request.Query["u"].ToString() is { Length: > 0 } username && players.GetByUsername(username) is { } player)
+            return player.Build;
+        return request.Query["v"].ToString() is { Length: > 0 } version ? ClientBuild.Parse(version) : null;
+    }
+
+    /// <summary>
+    /// Whether the build asking has no osu!mania (numbered builds and those before b20121003). Builds
+    /// before b1652 send no player at all; such a request over plain HTTP is one of them.
+    /// </summary>
+    internal static bool HasNoMania(HttpRequest request, PlayerRegistry players) =>
+        ClientOf(request, players) is { } build
+            ? !build.HasMania
+            : !request.Query.ContainsKey("u") && CameOverPlainHttp(request);
+
+    /// <summary>
+    /// Whether every difficulty is osu!mania. Sets that mix modes stay listed for builds without mania:
+    /// their mania difficulties show as empty "(mania)" maps there.
+    /// </summary>
+    internal static bool IsManiaOnly(IEnumerable<int> modes)
+    {
+        var any = false;
+        foreach (var mode in modes)
+        {
+            if (mode != 3)
+                return false;
+            any = true;
+        }
+        return any;
+    }
+
+    /// <summary>Whether a mirror set (its <c>ChildrenBeatmaps</c>) is osu!mania only.</summary>
+    internal static bool IsManiaOnly(JsonElement set) =>
+        set.TryGetProperty("ChildrenBeatmaps", out var children) && children.ValueKind == JsonValueKind.Array
+        && IsManiaOnly(children.EnumerateArray().Select(d => d.TryGetProperty("Mode", out var m) && m.ValueKind == JsonValueKind.Number ? m.GetInt32() : 0));
 
     /// <summary>The osu!direct tabs the client sends as its search text.</summary>
     internal static bool IsTab(string query) =>

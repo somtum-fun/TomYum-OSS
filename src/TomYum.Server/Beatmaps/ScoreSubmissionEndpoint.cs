@@ -29,7 +29,20 @@ public static class ScoreSubmissionEndpoint
         app.MapPost(LegacyPath, HandleAsync)
             .RequireHost(hosts)
             .DisableAntiforgery();
+        // Builds from 2008–2010 (b337–b904): the score in the query, and a reply of a few lines.
+        app.MapPost(SubmitPath, HandleAsync)
+            .RequireHost(hosts)
+            .DisableAntiforgery();
+        app.MapPost(SubmitNewPath, HandleAsync)
+            .RequireHost(hosts)
+            .DisableAntiforgery();
     }
+
+    /// <summary>Where b337–b497 submit their scores.</summary>
+    internal const string SubmitPath = "/web/osu-submit.php";
+
+    /// <summary>Where b504–b904 submit their scores.</summary>
+    internal const string SubmitNewPath = "/web/osu-submit-new.php";
 
     /// <summary>The submission endpoint of old clients (before the selector, which came after 2015).</summary>
     internal const string LegacyPath = "/web/osu-submit-modular.php";
@@ -71,23 +84,30 @@ public static class ScoreSubmissionEndpoint
 
         // Old clients post to osu-submit-modular.php: no osuver (an older key) and no bmk (the map's
         // checksum is the score's first field), and they expect the older reply below.
-        var legacy = string.Equals(context.Request.Path.Value, LegacyPath, StringComparison.OrdinalIgnoreCase);
+        // osu-submit(-new).php (b337–b904) are older still: their reply is lines, not charts.
+        var earlyReply = IsEarlyPath(context.Request.Path.Value);
+        var legacy = earlyReply || string.Equals(context.Request.Path.Value, LegacyPath, StringComparison.OrdinalIgnoreCase);
+        // Those builds read a rejection as "no new record" only when it has two lines; fewer and they retry.
+        IResult Rejected() => Results.Text(earlyReply ? "0\n0\n" : "error: no", "text/plain");
         var osuver = form["osuver"].ToString();
         var bmk = form["bmk"].ToString();
         var ivBase64 = form["iv"].ToString();
         var scoreParams = form["score"];
 
-        // Numbered builds (b1122, docs/old-clients.md) send the score unencrypted in the query
-        // (?score=<the same fields>&pass=<md5>), and the replay as a file part named "replay".
-        var plainScore = legacy && string.IsNullOrEmpty(ivBase64) && context.Request.Query["score"].ToString() is { Length: > 0 } inQuery
-            ? inQuery
+        // Builds before 2012 (docs/old-clients.md) send the score unencrypted: b337–b1652 in the query
+        // (?score=<the same fields>&pass=<md5>), b1700–b1844.test as the form field `score` (with `pass`).
+        // An encrypted score is base64, which never has the fields' colons.
+        var plainInQuery = legacy && string.IsNullOrEmpty(ivBase64) && context.Request.Query["score"].ToString() is { Length: > 0 };
+        var plainScore = !legacy || !string.IsNullOrEmpty(ivBase64) ? null
+            : plainInQuery ? context.Request.Query["score"].ToString()
+            : scoreParams.Count > 0 && scoreParams[0] is { } inForm && inForm.Contains(':', StringComparison.Ordinal) ? inForm
             : null;
 
         if (plainScore is null
             && ((!legacy && (string.IsNullOrEmpty(osuver) || string.IsNullOrEmpty(bmk))) || string.IsNullOrEmpty(ivBase64) || scoreParams.Count == 0))
         {
             logger.LogWarning("Score submission rejected: missing form fields (osuver/bmk/iv/score)");
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
         // The client sends the `score` field twice: [0] = encrypted score string, [1] = .osr file.
@@ -130,15 +150,16 @@ public static class ScoreSubmissionEndpoint
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Score submission rejected: AES decryption failed (osuver='{Osuver}')", osuver);
-                return Results.Text("error: no", "text/plain");
+                return Rejected();
             }
         }
 
         var parts = decrypted.Split(':');
-        if (parts.Length < 16)
+        // b337–b476 send 15 fields (no mode: osu!), b497–b558 16, b595b–b1218 17, later builds 18.
+        if (parts.Length < (plainScore is null ? 16 : 15))
         {
             logger.LogWarning("Score submission rejected: too few fields ({Count}) in decrypted payload", parts.Length);
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
         if (string.IsNullOrEmpty(bmk))
             bmk = parts[0];
@@ -150,22 +171,22 @@ public static class ScoreSubmissionEndpoint
         if (user is null)
         {
             logger.LogWarning("Score submission rejected: user '{Username}' not found", usernameFromScore);
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
-        var passwordMd5 = plainScore is null ? form["pass"].ToString() : context.Request.Query["pass"].ToString();
+        var passwordMd5 = plainInQuery ? context.Request.Query["pass"].ToString() : form["pass"].ToString();
         // An unencrypted score always needs the password (nothing else ties it to the player).
         if ((plainScore is not null && string.IsNullOrEmpty(passwordMd5))
             || (!string.IsNullOrEmpty(passwordMd5) && !hasher.Verify(passwordMd5, user.PasswordBcrypt)))
         {
             logger.LogWarning("Score submission rejected: pass verification failed for '{Username}'", usernameFromScore);
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
         if (user.IsBot)
         {
             logger.LogWarning("Score submission rejected: '{Username}' is a bot account", usernameFromScore);
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
         var player = registry.GetByUserId(user.Id);
@@ -179,10 +200,10 @@ public static class ScoreSubmissionEndpoint
             !long.TryParse(parts[9], out var scoreValue) ||
             !int.TryParse(parts[10], out var maxCombo) ||
             !int.TryParse(parts[13], out var mods) ||
-            !int.TryParse(parts[15], out var mode))
+            !int.TryParse(parts.Length > 15 ? parts[15] : "0", out var mode))
         {
             logger.LogWarning("Score submission rejected: failed to parse numeric fields from '{Decrypted}'", decrypted);
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
         var perfect = parts[11].Equals("True", StringComparison.OrdinalIgnoreCase);
@@ -190,12 +211,12 @@ public static class ScoreSubmissionEndpoint
         var grade = parts[12];
 
         // Old clients (docs/old-clients.md): their mods in today's numbering, and Co-op refused.
-        var build = LegacyScoreRules.BuildOf(parts);
+        var build = legacy ? LegacyScoreRules.BuildOf(parts, player?.Build) : LegacyScoreRules.BuildOf(parts);
         mods = LegacyScoreRules.Mods(mods, build);
         if (LegacyScoreRules.IsRefused(mods, build))
         {
             logger.LogWarning("Score submission rejected: Co-op from an old client ({Build})", LegacyScoreRules.Describe(build));
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
         // Fold Relax/Autopilot into the combined gamemode used for stats + leaderboards so those
@@ -207,14 +228,14 @@ public static class ScoreSubmissionEndpoint
         if ((mods & (1 << 29)) != 0)
         {
             logger.LogWarning("Score submission rejected: ScoreV2 is not supported");
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
         var beatmap = await beatmaps.GetByMd5Async(bmk, cancellationToken).ConfigureAwait(false);
         if (beatmap is null)
         {
             logger.LogWarning("Score submission rejected: beatmap MD5 '{Bmk}' not found", bmk);
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
         // Persist beatmap metadata so tools like RecalcPp can join against the beatmaps table.
@@ -323,7 +344,7 @@ public static class ScoreSubmissionEndpoint
         if (submitting.IsVetoed)
         {
             logger.LogInformation("A plugin rejected {User}'s score on {Beatmap}.", user.Username, beatmap.Id);
-            return Results.Text("error: no", "text/plain");
+            return Rejected();
         }
 
         if (scoreStatus == ScoreStatus.Best && prevBest is not null)
@@ -485,6 +506,16 @@ public static class ScoreSubmissionEndpoint
         }
         var achievementsNew = MedalService.FormatAchievementsNew(newMedals);
 
+        if (earlyReply)
+        {
+            // The map rank this play reached when it's the player's new best (0: "you have a higher
+            // record"), the points to the next overall rank (0 hides it), and new medals' image names.
+            var earlyResponse = string.Create(CultureInfo.InvariantCulture,
+                $"{(scoreStatus == ScoreStatus.Best ? scoreRank : 0)}\n0\n{string.Join(' ', newMedals.Select(m => m.File))}\n");
+            logger.LogInformation("Early-client score reply for {User} ({Version}): {Reply}", user.Username, player?.Build.Version, earlyResponse.ReplaceLineEndings("|"));
+            return Results.Text(earlyResponse, "text/plain");
+        }
+
         if (legacy)
         {
             // The older reply: the map line and the overall chart only (the player's beatmap rank in it),
@@ -510,6 +541,11 @@ public static class ScoreSubmissionEndpoint
 
         return Results.Text(response, "text/plain");
     }
+
+    /// <summary>Whether <paramref name="path"/> is where b337–b904 submit (and want the reply in lines).</summary>
+    internal static bool IsEarlyPath(string? path) =>
+        string.Equals(path, SubmitPath, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(path, SubmitNewPath, StringComparison.OrdinalIgnoreCase);
 
     private static double ComputeAccuracy(int mode, int n300, int n100, int n50, int ngeki, int nkatu, int nmiss) =>
         AccuracyCalculator.Compute(mode, n300, n100, n50, ngeki, nkatu, nmiss);

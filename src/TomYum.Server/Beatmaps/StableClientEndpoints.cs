@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using TomYum.Bancho;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
@@ -44,6 +45,14 @@ public static partial class StableClientEndpoints
         app.MapGet("/release/update2.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapGet("/release/patches.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapGet("/release/update", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        // The chat word filter (b639 on), fetched weekly when the player turns it on. Without the file the
+        // client's chat stays on "Chat filter is updating...". Nothing is filtered here, but the list
+        // can't be empty (the client may not save an empty download) or have an empty line (b639 would
+        // loop on it), so it holds one word nobody types.
+        app.MapGet("/release/filter.txt", () => Results.Text(ChatFilterPlaceholder, "text/plain")).RequireHost(hosts);
+        // osu!coins, the April Fools' joke of b20150331: the client reads the reply as a number on the
+        // game thread (a missing one could crash it). Nobody has coins here.
+        app.MapMethods("/web/coins.php", [HttpMethods.Get, HttpMethods.Post], () => Results.Text("0", "text/plain")).RequireHost(hosts).DisableAntiforgery();
 
         app.MapPost("/web/osu-getbeatmapinfo.php", HandleBeatmapInfoAsync).RequireHost(hosts);
         app.MapGet("/web/maps/{filename}", HandleMapFileAsync).RequireHost(hosts);
@@ -66,6 +75,12 @@ public static partial class StableClientEndpoints
     internal static async Task<IResult> HandleBanchoConnectAsync(HttpContext context, CancellationToken cancellationToken)
     {
         var query = context.Request.Query;
+        // b20130802.1 (no query) to b20130915.4 wait 5 seconds before connecting unless the answer reads
+        // as an IP address (the closest server's; they don't use it).
+        var build = ClientBuild.Parse(query["v"]);
+        if (string.IsNullOrEmpty(query["v"]) || build.IsBefore(CountryAnswerFrom))
+            return Results.Text("127.0.0.1", "text/plain");
+
         var user = await UserAsync(context, query["u"], query["h"], cancellationToken).ConfigureAwait(false);
         if (user is null)
             return Results.Text("error: pass\n", "text/plain");
@@ -81,8 +96,26 @@ public static partial class StableClientEndpoints
             return Results.Text("error: verify\n", "text/plain");
         }
 
-        return Results.Text(user.Country.ToLowerInvariant(), "text/plain");
+        return Results.Text(CountryAnswer(user.Country, build), "text/plain");
     }
+
+    /// <summary>bancho_connect.php's answer is the player's country from this build on (an IP address before).</summary>
+    internal static readonly DateOnly CountryAnswerFrom = new(2013, 10, 9);
+
+    /// <summary>
+    /// The country bancho_connect.php answers. Old builds (before 2016) add osu!'s own Chinese bancho to
+    /// the servers they try for <c>cn</c> and <c>tw</c>, which would get the player's login: they get
+    /// <c>xx</c> (unknown) instead.
+    /// </summary>
+    internal static string CountryAnswer(string country, ClientBuild build)
+    {
+        ArgumentNullException.ThrowIfNull(build);
+        var code = (country ?? string.Empty).ToLowerInvariant();
+        return build.IsLegacy && code is "cn" or "tw" ? "xx" : code;
+    }
+
+    /// <summary>The chat filter's only word (see <c>/release/filter.txt</c>).</summary>
+    internal const string ChatFilterPlaceholder = "~tomyum-no-filter~";
 
     /// <summary>
     /// Song select's statuses for the player's local maps, by file name:
@@ -127,13 +160,15 @@ public static partial class StableClientEndpoints
 
     /// <summary>
     /// An outdated map's new <c>.osu</c> (stable's "update" button): custom maps from this server's
-    /// copy, osu!'s from osu!.
+    /// copy, osu!'s from osu!. Builds before 2016 can't follow a redirect to osu!'s HTTPS, so over
+    /// plain HTTP osu!'s file is fetched here and passed on.
     /// </summary>
     internal static async Task<IResult> HandleMapFileAsync(string filename, HttpContext context, OsuFileCache files, CancellationToken cancellationToken)
     {
+        var plainHttp = DirectEndpoints.CameOverPlainHttp(context.Request);
         if (context.RequestServices.GetService<OsuWebStableClient>() is { } website
             && await website.FindByFilenamesAsync([filename], cancellationToken).ConfigureAwait(false) is [var map, ..]
-            && map.BeatmapId >= Beatmap.CustomIdFloor)
+            && (map.BeatmapId >= Beatmap.CustomIdFloor || plainHttp))
         {
             try
             {
@@ -145,7 +180,23 @@ public static partial class StableClientEndpoints
                 return Results.NotFound();
             }
         }
-        return Results.Redirect("https://osu.ppy.sh/web/maps/" + Uri.EscapeDataString(filename));
+        var official = "https://osu.ppy.sh/web/maps/" + Uri.EscapeDataString(filename);
+        if (!plainHttp || context.RequestServices.GetService<IHttpClientFactory>() is not { } factory)
+            return Results.Redirect(official);
+
+        try
+        {
+            using var http = factory.CreateClient(DirectEndpoints.HttpClientName);
+            using var upstream = await http.GetAsync(official, cancellationToken).ConfigureAwait(false);
+            if (!upstream.IsSuccessStatusCode)
+                return Results.NotFound();
+            var bytes = await upstream.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
+            return bytes.Length == 0 ? Results.NotFound() : Results.File(bytes, "application/octet-stream", filename);
+        }
+        catch (HttpRequestException)
+        {
+            return Results.NotFound();
+        }
     }
 
     /// <summary>The ♥ in song select: <c>?u=&amp;h=&amp;a={set}</c>.</summary>
@@ -251,6 +302,9 @@ public static partial class StableClientEndpoints
 
         if (form["a"] == "get")
         {
+            // Builds up to 2015 style supporters' comments by "subscriber" (today's by "supporter").
+            var oldClient = DirectEndpoints.CameOverPlainHttp(context.Request)
+                || context.RequestServices.GetService<PlayerRegistry>()?.GetByUserId(user.Id) is { Build.IsLegacy: true };
             var users = context.RequestServices.GetRequiredService<IUserRepository>();
             var lines = new List<string>();
             foreach (var comment in await comments.ForPlayAsync(setId, beatmapId, scoreId, cancellationToken).ConfigureAwait(false))
@@ -258,7 +312,7 @@ public static partial class StableClientEndpoints
                 var author = await users.GetByIdAsync(comment.UserId, cancellationToken).ConfigureAwait(false);
                 if (author is null || author.IsRestricted)
                     continue;
-                var format = CommentFormat(author.Privileges) + (comment.Colour is { } shade ? "|" + shade : string.Empty);
+                var format = CommentFormat(author.Privileges, oldClient) + (comment.Colour is { } shade ? "|" + shade : string.Empty);
                 lines.Add(string.Create(CultureInfo.InvariantCulture, $"{comment.Time}\t{comment.TargetType}\t{format}\t{comment.Text}"));
             }
             return Results.Text(string.Join('\n', lines), "text/plain");
@@ -296,19 +350,28 @@ public static partial class StableClientEndpoints
         return Results.Text(string.Empty, "text/plain");
     }
 
-    /// <summary>How osu! styles a commenter: staff as "bat" (osu!'s nominator colour), supporters in their colour.</summary>
-    private static string CommentFormat(UserPrivileges privileges) =>
+    /// <summary>
+    /// How osu! styles a commenter: staff as "bat" (osu!'s nominator colour), supporters in their colour
+    /// ("subscriber" for builds before 2016, <paramref name="oldClient"/>).
+    /// </summary>
+    internal static string CommentFormat(UserPrivileges privileges, bool oldClient = false) =>
         (privileges & (UserPrivileges.Moderator | UserPrivileges.Administrator | UserPrivileges.Developer)) != 0 ? "bat"
-        : privileges.HasFlag(UserPrivileges.Supporter) ? "supporter"
+        : privileges.HasFlag(UserPrivileges.Supporter) ? (oldClient ? "subscriber" : "supporter")
         : string.Empty;
 
-    /// <summary>An uploaded screenshot (form: <c>u</c>, <c>p</c>, file <c>ss</c>); answers its file name.</summary>
+    /// <summary>
+    /// An uploaded screenshot (form: <c>u</c>, <c>p</c>, file <c>ss</c>; builds up to 2015 send <c>u</c> and
+    /// <c>p</c> in the query); answers its file name.
+    /// </summary>
     internal static async Task<IResult> HandleScreenshotAsync(HttpContext context, IConfiguration configuration, CancellationToken cancellationToken)
     {
         if (!context.Request.HasFormContentType)
             return Results.BadRequest();
         var form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
-        if (await UserAsync(context, form["u"], form["p"], cancellationToken).ConfigureAwait(false) is null)
+        var query = context.Request.Query;
+        var username = form["u"].ToString() is { Length: > 0 } inForm ? inForm : query["u"].ToString();
+        var passwordMd5 = form["p"].ToString() is { Length: > 0 } passInForm ? passInForm : query["p"].ToString();
+        if (await UserAsync(context, username, passwordMd5, cancellationToken).ConfigureAwait(false) is null)
             return Results.Unauthorized();
         if (form.Files.GetFile("ss") is not { Length: > 0 and <= MaxScreenshotBytes } upload)
             return Results.BadRequest();

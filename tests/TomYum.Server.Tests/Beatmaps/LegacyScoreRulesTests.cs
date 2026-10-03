@@ -22,11 +22,31 @@ public class LegacyScoreRulesTests
     public void TheBuild_IsTheScoresVersion(string version, int year, int month, int day) =>
         Assert.Equal(new DateOnly(year, month, day), LegacyScoreRules.BuildOf(Parts(version)).Date);
 
-    [Fact]
-    public void WithoutAVersion_ItsTodaysClient()
+    [Theory]
+    [InlineData(15)] // b337–b476
+    [InlineData(16)] // b497–b558
+    [InlineData(17)] // b595b–b1218
+    public void WithoutAVersion_ItsAnOldBuild(int fields)
     {
-        Assert.Null(LegacyScoreRules.BuildOf(new string[16]).Date);
-        Assert.False(LegacyScoreRules.BuildOf(new string[16]).IsLegacy);
+        var build = LegacyScoreRules.BuildOf(new string[fields]);
+        Assert.True(build.IsLegacy);
+        // The player's session says which, when they're online.
+        Assert.Equal(1122, LegacyScoreRules.BuildOf(new string[fields], ClientBuild.Parse("b1122")).Number);
+        // A session of today's client doesn't make the score today's.
+        Assert.True(LegacyScoreRules.BuildOf(new string[fields], ClientBuild.Parse("b20240101")).IsLegacy);
+    }
+
+    [Theory]
+    [InlineData("1553")]
+    [InlineData("1700 ")]
+    [InlineData("")]
+    public void NumberedBuilds_AreOld(string version)
+    {
+        const int hiddenAndBit4 = (int)(Mods.Hidden | Mods.TouchDevice);
+        var build = LegacyScoreRules.BuildOf(Parts(version));
+
+        Assert.True(build.IsLegacy);
+        Assert.Equal((int)Mods.Hidden, LegacyScoreRules.Mods(hiddenAndBit4, build));
     }
 
     [Fact]
@@ -35,6 +55,7 @@ public class LegacyScoreRulesTests
         const int hiddenAndBit4 = (int)(Mods.Hidden | Mods.TouchDevice);
 
         Assert.Equal((int)Mods.Hidden, LegacyScoreRules.Mods(hiddenAndBit4, ClientBuild.Parse("b20131231")));
+        Assert.Equal((int)Mods.Hidden, LegacyScoreRules.Mods(hiddenAndBit4, ClientBuild.Parse("b1122")));
         Assert.Equal(hiddenAndBit4, LegacyScoreRules.Mods(hiddenAndBit4, ClientBuild.Parse("b20140101")));
         Assert.Equal(hiddenAndBit4, LegacyScoreRules.Mods(hiddenAndBit4, ClientBuild.Parse("b20240101")));
     }

@@ -19,9 +19,23 @@ public static class WebEndpoints
         // Numbered builds' leaderboards (b1122, docs/old-clients.md): the same, in their older reply.
         app.MapGet("/web/osu-getscores6.php", HandleGetScoresAsync)
             .RequireHost(hosts);
+        // …and those of 2008–2009 (b337–b534.test), each in its own older reply.
+        foreach (var version in new[] { 2, 3, 4, 5 })
+        {
+            app.MapGet(string.Create(CultureInfo.InvariantCulture, $"/web/osu-getscores{version}.php"), HandleGetScoresAsync)
+                .RequireHost(hosts);
+        }
+        // b337's song select asks for the status of the maps it has no status for.
+        app.MapGet("/web/osu-getstatus.php", HandleGetStatusAsync)
+            .RequireHost(hosts);
 
         // The 1-10 rating after playing a map (kept with the website's ratings).
         app.MapGet("/web/osu-rate.php", HandleRateAsync)
+            .RequireHost(hosts);
+        // The same, for builds before b20121203 (their replies differ a little: HandleOldRateAsync).
+        app.MapGet("/rating/ingame-rate.php", HandleOldRateAsync)
+            .RequireHost(hosts);
+        app.MapGet("/rating/ingame-rate2.php", HandleOldRateAsync)
             .RequireHost(hosts);
 
         app.MapGet("/web/osu-getreplay.php", HandleGetReplayAsync)
@@ -52,14 +66,16 @@ public static class WebEndpoints
         RestrictedUsers restricted,
         CancellationToken cancellationToken)
     {
-        // osu-getscores6.php (numbered builds): the first line is the status alone (anything else reads
-        // as ranked there), the player is sent by id (u), and dates are text (format 1).
-        var early = context.Request.Path.Value?.EndsWith("/osu-getscores6.php", StringComparison.Ordinal) == true;
+        // osu-getscores2.php to osu-getscores6.php (2008–2012 builds): the first line is the status alone
+        // (in their numbers), there's no `us` (the player is the id `u`, from getscores4), and dates are
+        // text (format 1). Each version's reply has fewer lines than the next (ScoresVersion).
+        var version = ScoresVersion(context.Request.Path.Value);
+        var early = version != 0;
 
         var md5 = context.Request.Query["c"].ToString();
         if (string.IsNullOrEmpty(md5))
         {
-            return Results.Text(early ? EarlyStatus(RankedStatus.NotSubmitted) : NotSubmitted, "text/plain");
+            return Results.Text(early ? EarlyStatus(RankedStatus.NotSubmitted, version) : NotSubmitted, "text/plain");
         }
 
         var beatmap = await beatmaps.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
@@ -68,13 +84,15 @@ public static class WebEndpoints
             // An unknown hash may be an old version of a known map: then the client offers an update.
             var outdated = await IsOutdatedAsync(context, beatmaps, cancellationToken).ConfigureAwait(false);
             if (early)
-                return Results.Text(EarlyStatus(outdated ? RankedStatus.UpdateAvailable : RankedStatus.NotSubmitted), "text/plain");
+                return Results.Text(EarlyStatus(outdated ? RankedStatus.UpdateAvailable : RankedStatus.NotSubmitted, version), "text/plain");
             return Results.Text(outdated ? UpdateAvailable : NotSubmitted, "text/plain");
         }
 
-        if (!beatmap.Status.HasLeaderboard())
+        // The status alone (no line break: getscores5 would read an empty offset line) when there's
+        // no board, or when b337–b370 ask only for the status (s=1).
+        if (!beatmap.Status.HasLeaderboard() || (version == 2 && context.Request.Query["s"] == "1"))
         {
-            var line = early ? EarlyStatus(beatmap.Status) : string.Create(CultureInfo.InvariantCulture, $"{(int)beatmap.Status}|false");
+            var line = early ? EarlyStatus(beatmap.Status, version) : string.Create(CultureInfo.InvariantCulture, $"{(int)beatmap.Status}|false");
             return Results.Text(line, "text/plain");
         }
 
@@ -88,15 +106,14 @@ public static class WebEndpoints
         _ = int.TryParse(context.Request.Query["mods"].ToString(), out var modsArg);
         var gameMode = ((Mods)modsArg).ToGameMode(mode);
 
-        // The requesting player. osu!stable sends its username as `us` and its password's md5 as `ha`.
-        // Personal bests are public (they're on the board too), so the name is enough, except for a
-        // restricted player: their scores are hidden from everyone else, so they see them (in place
-        // on the board, bancho.py's shadow leaderboard) only when the password checks out.
+        // The requesting player. osu!stable sends its username as `us` and its password's md5 as `ha`;
+        // builds before 2013 send only their user id as `u`. Personal bests are public (they're on the
+        // board too), so the name is enough, except for a restricted player: their scores are hidden
+        // from everyone else, so they see them (in place on the board, bancho.py's shadow leaderboard)
+        // only when the password checks out.
         Score? personalBest = null;
-        var requesterId = early
-            ? (int.TryParse(context.Request.Query["u"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var byId)
-                && await users.GetByIdAsync(byId, cancellationToken).ConfigureAwait(false) is not null ? byId : null)
-            : await ResolveRequesterIdAsync(context.Request.Query["us"].ToString(), registry, users, cancellationToken).ConfigureAwait(false);
+        var requesterId = await ResolveRequesterIdAsync(context.Request.Query["us"].ToString(), registry, users, cancellationToken).ConfigureAwait(false)
+            ?? await RequesterByIdAsync(context.Request.Query["u"].ToString(), users, cancellationToken).ConfigureAwait(false);
         if (requesterId is { } requester && restricted.Contains(requester)
             && (await users.GetByIdAsync(requester, cancellationToken).ConfigureAwait(false) is not { } requesterUser
                 || context.Request.Query["ha"].ToString() is not { Length: > 0 } passwordMd5
@@ -108,7 +125,7 @@ public static class WebEndpoints
         // The tab in song select (`v`): 1 global, 2 selected mods, 3 friends, 4 country.
         _ = int.TryParse(context.Request.Query["v"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var boardType);
         var board = await BoardAsync(context, scores, users, md5, gameMode, boardType, modsArg, requesterId, cancellationToken).ConfigureAwait(false);
-        if (requesterId is { } viewer)
+        if (requesterId is { } viewer && version is 0 or >= 4)
         {
             personalBest = await scores.GetStablePersonalBestAsync(viewer, md5, gameMode, cancellationToken).ConfigureAwait(false);
             // On the selected mods tab, a best with other mods isn't this board's.
@@ -122,15 +139,23 @@ public static class WebEndpoints
 
         var sb = new System.Text.StringBuilder();
         sb.AppendLine(early
-            ? EarlyStatus(beatmap.Status)
+            ? EarlyStatus(beatmap.Status, version)
             : string.Create(CultureInfo.InvariantCulture, $"{StatusFor((int)beatmap.Status, formatVersion)}|false|{beatmap.Id}|{beatmap.SetId}|{board.Count}|0|"));
-        sb.AppendLine("0");
-        sb.AppendLine(beatmap.FullName);
-        // The players' average rating (the website's); 10.0 without the website.
-        var rating = context.RequestServices?.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is { } website
-            ? await website.AverageRatingAsync(beatmap.SetId, cancellationToken).ConfigureAwait(false)
-            : 10.0;
-        sb.AppendLine(rating.ToString("0.0#", CultureInfo.InvariantCulture));
+        if (version is 0 or >= 5)
+        {
+            // The map's online offset, then the title shown when it starts (osu!'s own markup and lines;
+            // a title of its own starting with "[" would be read as markup).
+            sb.AppendLine("0");
+            sb.AppendLine(DisplayTitle(beatmap));
+        }
+        if (version is 0 or 6)
+        {
+            // The players' average rating (the website's); 10.0 without the website.
+            var rating = context.RequestServices?.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is { } website
+                ? await website.AverageRatingAsync(beatmap.SetId, cancellationToken).ConfigureAwait(false)
+                : 10.0;
+            sb.AppendLine(rating.ToString("0.0#", CultureInfo.InvariantCulture));
+        }
 
         var replayDir = configuration["Replays:Path"] ?? "data/replays";
         var replayDirFull = Path.GetFullPath(replayDir);
@@ -139,28 +164,74 @@ public static class WebEndpoints
         // (bancho.py's leaderboard_value), matching the pp-based ranking.
         var showPp = GameMode.UsesPpLeaderboard(gameMode);
 
-        if (personalBest is not null)
+        // getscores2 and 3 have no personal best line.
+        if (version is 0 or >= 4)
         {
-            var pbUsername = await GetUsernameAsync(personalBest.UserId, users, registry, cancellationToken).ConfigureAwait(false);
-            var pbRank = board.TakeWhile(s => s.Id != personalBest.Id).Count() + 1;
-            var pbHasReplay = File.Exists(Path.Combine(replayDirFull, $"{personalBest.Id}.osr"));
-            sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank, pbHasReplay, showPp, formatVersion));
-        }
-        else
-        {
-            sb.AppendLine(string.Empty);
+            if (personalBest is not null)
+            {
+                var pbUsername = await GetUsernameAsync(personalBest.UserId, users, registry, cancellationToken).ConfigureAwait(false);
+                var pbRank = board.TakeWhile(s => s.Id != personalBest.Id).Count() + 1;
+                var pbHasReplay = File.Exists(Path.Combine(replayDirFull, $"{personalBest.Id}.osr"));
+                sb.AppendLine(FormatScoreLine(personalBest, pbUsername, pbRank, pbHasReplay, showPp, formatVersion));
+            }
+            else
+            {
+                sb.AppendLine(string.Empty);
+            }
         }
 
         for (var i = 0; i < board.Count; i++)
         {
             var s = board[i];
             var username = await GetUsernameAsync(s.UserId, users, registry, cancellationToken).ConfigureAwait(false);
+            if (version is 2 or 3)
+            {
+                sb.AppendLine(FormatOldestScoreLine(s, username, showPp));
+                continue;
+            }
             var hasReplay = File.Exists(Path.Combine(replayDirFull, $"{s.Id}.osr"));
             sb.AppendLine(FormatScoreLine(s, username, i + 1, hasReplay, showPp, formatVersion));
         }
 
         return Results.Text(sb.ToString(), "text/plain");
     }
+
+    /// <summary>
+    /// <c>osu-getstatus.php?c={md5},{md5},…</c> (b337): one <c>md5,ranked,beatmap,set,topic</c> line for
+    /// each map known here (ranked is 1 for a map with a leaderboard, 0 otherwise); unknown maps are left out.
+    /// </summary>
+    internal static async Task<IResult> HandleGetStatusAsync(HttpContext context, BeatmapService beatmaps, CancellationToken cancellationToken)
+    {
+        var sb = new System.Text.StringBuilder();
+        // The client sends up to 1800 characters of checksums (54 maps) at a time.
+        foreach (var md5 in context.Request.Query["c"].ToString().Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(60))
+        {
+            if (md5.Length != 32 || await beatmaps.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false) is not { } beatmap)
+                continue;
+            sb.Append(StatusLine(md5, beatmap)).Append('\n');
+        }
+        return Results.Text(sb.ToString(), "text/plain");
+    }
+
+    /// <summary>A map's line in the osu-getstatus.php reply (the topic is left empty).</summary>
+    internal static string StatusLine(string md5, TomYum.Domain.Entities.Beatmap beatmap) =>
+        string.Create(CultureInfo.InvariantCulture, $"{md5},{(beatmap.Status.HasLeaderboard() ? 1 : 0)},{beatmap.Id},{beatmap.SetId},");
+
+    /// <summary>
+    /// The leaderboard reply's version, from the path: 2–6 for osu-getscores2.php to osu-getscores6.php,
+    /// 0 for osu-osz2-getscores.php (whose format goes by <c>vv</c>).
+    /// </summary>
+    internal static int ScoresVersion(string? path)
+    {
+        const string prefix = "/web/osu-getscores";
+        return path is { Length: > 0 } && path.StartsWith(prefix, StringComparison.Ordinal) && path.Length == prefix.Length + 5
+            && path[prefix.Length] is >= '2' and <= '6'
+            ? path[prefix.Length] - '0'
+            : 0;
+    }
+
+    /// <summary>The title shown as a map starts, as osu! sent it: the artist and the title on two lines.</summary>
+    internal static string DisplayTitle(TomYum.Domain.Entities.Beatmap beatmap) => $"[bold:0,size:20]{beatmap.Artist}|{beatmap.Title}";
 
     /// <summary>The menu backgrounds for osu!stable: a JSON list of image URLs on the website.</summary>
     internal static async Task<IResult> HandleSeasonalAsync(HttpContext context, IConfiguration configuration, CancellationToken cancellationToken)
@@ -178,30 +249,92 @@ public static class WebEndpoints
     /// </summary>
     internal static async Task<IResult> HandleRateAsync(HttpContext context, BeatmapService beatmaps, IUserRepository users, IPasswordHasher passwords, CancellationToken cancellationToken)
     {
+        var (answer, average) = await RateAsync(context, beatmaps, users, passwords, cancellationToken).ConfigureAwait(false);
+        return answer switch
+        {
+            RateAnswer.AuthFail => Results.Text("auth fail", "text/plain", statusCode: StatusCodes.Status401Unauthorized),
+            RateAnswer.AlreadyVoted or RateAnswer.Voted => Results.Text("alreadyvoted\n" + average.ToString("0.0#", CultureInfo.InvariantCulture), "text/plain"),
+            _ => Results.Text(RateAnswerText(answer), "text/plain"),
+        };
+    }
+
+    /// <summary>
+    /// <c>/rating/ingame-rate.php</c> (b337–b595b) and <c>/rating/ingame-rate2.php</c> (b534.test–b20121119):
+    /// the same questions as osu-rate.php. A vote is answered with the average alone; a check with
+    /// <c>ok</c> or why not, and in ingame-rate2 the average on a second line.
+    /// </summary>
+    internal static async Task<IResult> HandleOldRateAsync(HttpContext context, BeatmapService beatmaps, IUserRepository users, IPasswordHasher passwords, CancellationToken cancellationToken)
+    {
+        var (answer, average) = await RateAsync(context, beatmaps, users, passwords, cancellationToken).ConfigureAwait(false);
+        var withAverage = context.Request.Path.Value?.EndsWith("/ingame-rate2.php", StringComparison.Ordinal) == true;
+        return Results.Text(OldRateReply(answer, average, withAverage), "text/plain");
+    }
+
+    /// <summary>
+    /// The reply to an old build's rating request. Builds up to b20121119 read the average in the
+    /// player's own number format, so it has at most one decimal (a whole number reads the same anywhere).
+    /// </summary>
+    internal static string OldRateReply(RateAnswer answer, double average, bool withAverage)
+    {
+        var number = Math.Round(average, 1).ToString("0.#", CultureInfo.InvariantCulture);
+        return answer switch
+        {
+            RateAnswer.Voted => number,
+            RateAnswer.AlreadyVoted when withAverage => "alreadyvoted\n" + number,
+            _ => RateAnswerText(answer),
+        };
+    }
+
+    /// <summary>What a rating request comes to.</summary>
+    internal enum RateAnswer
+    {
+        /// <summary>The player may rate the map.</summary>
+        Ok,
+
+        /// <summary>Wrong name or password.</summary>
+        AuthFail,
+
+        /// <summary>The map isn't known here.</summary>
+        NoExist,
+
+        /// <summary>The map has no leaderboard.</summary>
+        NotRanked,
+
+        /// <summary>The player rated the map before.</summary>
+        AlreadyVoted,
+
+        /// <summary>The player's rating was just kept.</summary>
+        Voted,
+    }
+
+    private static string RateAnswerText(RateAnswer answer) => answer switch
+    {
+        RateAnswer.AuthFail => "auth fail",
+        RateAnswer.NoExist => "no exist",
+        RateAnswer.NotRanked => "not ranked",
+        RateAnswer.AlreadyVoted or RateAnswer.Voted => "alreadyvoted",
+        _ => "ok",
+    };
+
+    /// <summary>The rating request (<c>?u=&amp;p=&amp;c=[&amp;v=]</c>) answered, and the map's average where there is one.</summary>
+    private static async Task<(RateAnswer Answer, double Average)> RateAsync(HttpContext context, BeatmapService beatmaps, IUserRepository users, IPasswordHasher passwords, CancellationToken cancellationToken)
+    {
         var query = context.Request.Query;
         var user = await users.GetBySafeNameAsync(User.MakeSafeName(query["u"].ToString()), cancellationToken).ConfigureAwait(false);
         if (user is null || query["p"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt))
-            return Results.Text("auth fail", "text/plain", statusCode: StatusCodes.Status401Unauthorized);
+            return (RateAnswer.AuthFail, 0);
         if (context.RequestServices.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is not { } website)
-            return Results.Text("ok", "text/plain");
+            return (RateAnswer.Ok, 0);
         if (await beatmaps.GetByMd5Async(query["c"].ToString(), cancellationToken).ConfigureAwait(false) is not { } beatmap)
-            return Results.Text("no exist", "text/plain");
+            return (RateAnswer.NoExist, 0);
         if (!beatmap.Status.HasLeaderboard())
-            return Results.Text("not ranked", "text/plain");
+            return (RateAnswer.NotRanked, 0);
 
-        double average;
         if (int.TryParse(query["v"], NumberStyles.None, CultureInfo.InvariantCulture, out var vote) && vote is >= 1 and <= 10)
-        {
-            average = await website.RateAsync(user.Id, beatmap.SetId, vote, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            var (voted, current) = await website.RatingAsync(user.Id, beatmap.SetId, cancellationToken).ConfigureAwait(false);
-            if (!voted)
-                return Results.Text("ok", "text/plain");
-            average = current;
-        }
-        return Results.Text("alreadyvoted\n" + average.ToString("0.0#", CultureInfo.InvariantCulture), "text/plain");
+            return (RateAnswer.Voted, await website.RateAsync(user.Id, beatmap.SetId, vote, cancellationToken).ConfigureAwait(false));
+
+        var (voted, current) = await website.RatingAsync(user.Id, beatmap.SetId, cancellationToken).ConfigureAwait(false);
+        return voted ? (RateAnswer.AlreadyVoted, current) : (RateAnswer.Ok, 0);
     }
 
     /// <summary>
@@ -271,6 +404,13 @@ public static class WebEndpoints
         return user?.Id;
     }
 
+    /// <summary>The user behind an old build's <c>u</c> (its user id): null when it isn't one, or unknown.</summary>
+    internal static async Task<int?> RequesterByIdAsync(string id, IUserRepository users, CancellationToken cancellationToken) =>
+        int.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out var userId) && userId > 0
+        && await users.GetByIdAsync(userId, cancellationToken).ConfigureAwait(false) is not null
+            ? userId
+            : null;
+
     private static IResult HandleGetReplayAsync(HttpContext context, IConfiguration configuration)
     {
         if (!long.TryParse(context.Request.Query["c"].ToString(), out var scoreId))
@@ -317,6 +457,19 @@ public static class WebEndpoints
     }
 
     /// <summary>
+    /// A score line for osu-getscores2.php and 3 (b337–b394a): "perfect" as True/False, the player's avatar
+    /// file in place of the rank (the client fetches it from <c>/forum/download.php?avatar=</c>), and the date
+    /// as text (b337 can't read anything else).
+    /// </summary>
+    internal static string FormatOldestScoreLine(Score s, string username, bool showPp)
+    {
+        var leaderboardValue = showPp ? (long)Math.Round(s.Pp, MidpointRounding.AwayFromZero) : s.ScoreValue;
+        var date = s.SubmittedAt.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+        return string.Create(CultureInfo.InvariantCulture,
+            $"{s.Id}|{username}|{leaderboardValue}|{s.MaxCombo}|{s.Count50}|{s.Count100}|{s.Count300}|{s.CountMiss}|{s.CountKatu}|{s.CountGeki}|{(s.Perfect ? "True" : "False")}|{s.Mods}|{s.UserId}|{s.UserId}.png|{date}");
+    }
+
+    /// <summary>
     /// A map's status in the leaderboard reply's format version <paramref name="formatVersion"/> (`vv`).
     /// Today's (4): 2 ranked, 3 approved, 4 qualified, 5 loved. Format 3 had no loved (sent as approved);
     /// formats 1–2 numbered ranked 4 and qualified 2 as well. An old client waits forever on a number it
@@ -330,14 +483,17 @@ public static class WebEndpoints
     };
 
     /// <summary>
-    /// A map's status for osu-getscores6.php: -1 not submitted, 0 pending, 1 update available, 2 ranked,
-    /// 3 approved. Those builds have no qualified or loved; both go as approved (a board, no pp).
+    /// A map's status for osu-getscores<paramref name="version"/>.php: -1 not submitted, 0 pending, 1 update
+    /// available, 2 ranked, 3 approved. Those builds have no qualified or loved; both go as approved (a
+    /// board, no pp). getscores2 (b337, b370) has no approved either: "3" would be read as a score there.
     /// </summary>
-    internal static string EarlyStatus(RankedStatus status) => status switch
+    internal static string EarlyStatus(RankedStatus status, int version = 6) => status switch
     {
         RankedStatus.Ranked => "2",
-        RankedStatus.Approved or RankedStatus.Qualified or RankedStatus.Loved => "3",
-        _ => ((int)status).ToString(CultureInfo.InvariantCulture),
+        RankedStatus.Approved or RankedStatus.Qualified or RankedStatus.Loved => version <= 2 ? "2" : "3",
+        RankedStatus.UpdateAvailable => "1",
+        RankedStatus.NotSubmitted => "-1",
+        _ => "0",
     };
 
     private static readonly string UpdateAvailable = string.Create(CultureInfo.InvariantCulture, $"{(int)RankedStatus.UpdateAvailable}|false");
