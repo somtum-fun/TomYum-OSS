@@ -58,9 +58,10 @@ public sealed record LoginRequest(
             return false;
         }
 
-        // osu_version|utc_offset|display_city|client_hashes|pm_private
+        // osu_version|utc_offset|display_city|client_hashes|pm_private; builds before b20130131
+        // (docs/old-clients.md) have no pm_private field.
         var info = lines[2].Split('|');
-        if (info.Length < 5)
+        if (info.Length < 4)
         {
             return false;
         }
@@ -82,7 +83,7 @@ public sealed record LoginRequest(
             UtcOffset: utcOffset,
             DisplayCity: info[2] == "1",
             ClientHashes: hashes!,
-            PmPrivate: info[4].StartsWith('1'));
+            PmPrivate: info.Length > 4 && info[4].StartsWith('1'));
         return true;
     }
 }

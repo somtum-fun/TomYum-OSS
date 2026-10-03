@@ -47,8 +47,11 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Development
       ASPNETCORE_URLS: http://+:8080
+      # Bancho over raw TCP for osu! builds up to b20130815 (docs/old-clients.md).
+      TOMYUM_BANCHO__TCP__ENABLED: "true"
     ports:
       - "8080:8080"
+      - "13380-13384:13380-13384"
     volumes:
       # Replays and the .osu cache; kept across rebuilds.
       - server-data:/app/data

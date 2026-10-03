@@ -406,6 +406,13 @@ builder.Services.AddSingleton(ircOptions);
 if (ircOptions.Enabled)
     builder.Services.AddHostedService<TomYum.Server.Irc.IrcServer>();
 
+// Bancho over raw TCP for osu! builds up to b20130815 (docs/old-clients.md): off unless Bancho:Tcp:Enabled.
+var tcpBanchoOptions = new TcpBanchoOptions();
+builder.Configuration.GetSection(TcpBanchoOptions.Section).Bind(tcpBanchoOptions);
+builder.Services.AddSingleton(tcpBanchoOptions);
+if (tcpBanchoOptions.Enabled)
+    builder.Services.AddHostedService<TcpBanchoServer>();
+
 // The Discord bot (docs/discord.md): runs when Discord:Token and Discord:GuildId are set.
 var discordOptions = TomYum.Server.Discord.DiscordOptions.Read(builder.Configuration.GetSection(TomYum.Server.Discord.DiscordOptions.SectionName));
 if (discordOptions.IsConfigured)

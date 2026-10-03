@@ -74,37 +74,7 @@ public static class BanchoEndpoints
         // this player or others), then flush this player's queue followed by anything the
         // handlers produced for the originator in-line.
         var body = await ReadBodyAsync(context.Request, cancellationToken).ConfigureAwait(false);
-        // Old builds (docs/old-clients.md): what they send in today's layout (8-slot rooms to 16).
-        body = LegacyPackets.Incoming(body, player.Build);
-        var produced = await dispatcher.DispatchAsync(player, registry, channels, matches, services, body).ConfigureAwait(false);
-
-        var queued = player.DequeueAll();
-        byte[] response;
-        if (produced.Length == 0)
-        {
-            response = queued;
-        }
-        else if (queued.Length == 0)
-        {
-            response = produced;
-        }
-        else
-        {
-            response = new byte[queued.Length + produced.Length];
-            queued.CopyTo(response, 0);
-            produced.CopyTo(response, queued.Length);
-        }
-
-        // ...and what they're sent in theirs: no packets they don't know, rooms with their slot count.
-        response = LegacyPackets.Outgoing(response, player.Build);
-
-        if (player.Build.IsLegacy && services.GetService<ILoggerFactory>() is { } logs)
-        {
-            var log = logs.CreateLogger(typeof(LegacyPacketLog));
-            LegacyPacketLog.Note(player, body, outgoing: false, log);
-            LegacyPacketLog.Note(player, response, outgoing: true, log);
-        }
-
+        var response = await BanchoExchange.RunAsync(player, body, dispatcher, registry, channels, matches, services).ConfigureAwait(false);
         return Results.Bytes(response, OctetStream);
     }
 
@@ -138,14 +108,9 @@ public static class BanchoEndpoints
         {
             await ips.RecordAsync(player.UserId, LoginIps.ClientAddress(context)).ConfigureAwait(false);
         }
-        var reply = outcome.Body;
-        if (outcome.Token is { } loggedIn
-            && context.RequestServices.GetService<PlayerRegistry>()?.GetByToken(loggedIn) is { Build.IsLegacy: true } oldClient)
-        {
-            reply = LegacyPackets.Outgoing(reply, oldClient.Build);
-            if (context.RequestServices.GetService<ILoggerFactory>() is { } logs)
-                LegacyPacketLog.Note(oldClient, reply, outgoing: true, logs.CreateLogger(typeof(LegacyPacketLog)));
-        }
+        var reply = BanchoExchange.LoginReply(outcome.Body,
+            outcome.Token is { } loggedIn ? context.RequestServices.GetService<PlayerRegistry>()?.GetByToken(loggedIn) : null,
+            context.RequestServices);
 
         // The client reads cho-token from the response header on every login attempt; on
         // failure the value is irrelevant (it branches on the USER_ID packet) but must exist.

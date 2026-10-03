@@ -128,6 +128,16 @@ public sealed class OnlinePlayer
     /// Atomically takes everything queued so far, clearing the queue. Returns an empty
     /// array when nothing is pending. Called when flushing a poll response.
     /// </summary>
+    /// <summary>Whether anything is queued for the player (TCP sessions push it as it comes).</summary>
+    public bool HasQueued
+    {
+        get
+        {
+            lock (_queueLock)
+                return _outbound.Count > 0;
+        }
+    }
+
     public byte[] DequeueAll()
     {
         lock (_queueLock)
