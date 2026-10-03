@@ -16,8 +16,8 @@ authors="--author=sundei@sundei.ee=sundeiii:76597738:2"
 # Commits left off the changelog (changes to the changelog's own authors, not worth listing).
 skip="--skip=c2ed1c4 --skip=35fde80 --skip=7d6df42"
 
-# The layout changed (2026-09-30): rebuild once.
-layout=4
+# The layout changed (2026-09-30; 2026-10-03: commit trailers left out): rebuild once.
+layout=5
 state="$HOME/.tomyum-changelog-layout"
 reset=
 if [ -n "$RESET" ] || [ "$(cat "$state" 2>/dev/null)" != "$layout" ]; then
