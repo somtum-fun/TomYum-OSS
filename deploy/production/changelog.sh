@@ -13,8 +13,9 @@ web=${web:-../../../osu-web}
 # Commit authors: email=GitHub login:GitHub account id:website user id.
 authors="--author=sundei@sundei.ee=sundeiii:76597738:2"
 
-# Commits left off the changelog (changes to the changelog's own authors, not worth listing).
-skip="--skip=c2ed1c4 --skip=35fde80 --skip=7d6df42"
+# Commits left off the changelog (changes to the changelog itself, not worth listing; a commit can
+# also leave itself out with "[no changelog]" in its message).
+skip="--skip=c2ed1c4 --skip=35fde80 --skip=7d6df42 --skip=6cb387e --skip=fe43f38 --skip=9a12c3a"
 
 # The layout changed (2026-09-30; 2026-10-03: commit trailers left out, and a fixed start: a date
 # alone means that day at the current time of day, so each rebuild started somewhere else): rebuild once.
