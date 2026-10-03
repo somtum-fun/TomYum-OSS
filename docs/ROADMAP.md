@@ -358,8 +358,8 @@ Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what wor
       multiplayer with a second player and go build by build towards 2013.
 - [ ] Later: TCP builds (2013 and older) if a TCP port can be exposed; older eras.
 
-### ⏸ Status 2026-10-03: paused, needs more research (example.com)
-_Decided 2026-10-03: old-client work is **paused**. Getting old builds stable needs more research and
+### production's findings 2026-10-03 (example.com; work paused there, continuing on sundei.eu)
+_production decided 2026-10-03 to pause old-client work on their server. Getting old builds stable needs more research and
 far more work than expected, whether through a hook or by patching the client. Priority goes to the
 upstream side: the **latest lazer client**, **stable 2023+ (latest)** and **anti-cheat**. Comments and
 findings on old clients are welcome; add them here._
