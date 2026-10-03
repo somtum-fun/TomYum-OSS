@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    The edge for raw TCP (docs/gateway.md): pre-2014 bancho on server.<domain> and IRC, relayed to
+    the main server over HTTP(S). Runs next to it or on its own box; references nothing else.
+  -->
+
+</Project>

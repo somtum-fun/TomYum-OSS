@@ -16,14 +16,15 @@ namespace TomYum.Server.Irc;
 /// what an IRC user says goes through the same handlers as the game's chat packets (channels, PMs,
 /// BanchoBot commands, silences, the website/lazer/Discord bridges), and the chat packets queued for
 /// the session come out as IRC lines. One session per player: someone in the game can't also be on
-/// IRC, and logging into the game ends their IRC session.
+/// IRC, and logging into the game ends their IRC session. The connection is a TCP socket on the IRC
+/// port, or one relayed by the gateway (docs/gateway.md).
 /// </summary>
 public sealed class IrcSession : IDisposable
 {
     private static readonly TimeSpan PumpInterval = TimeSpan.FromMilliseconds(200);
     private const int MaxTextBytes = 400;
 
-    private readonly TcpClient _client;
+    private readonly Stream _connection;
     private readonly IrcOptions _options;
     private readonly IrcTokens _tokens;
     private readonly PlayerRegistry _players;
@@ -39,10 +40,10 @@ public sealed class IrcSession : IDisposable
     private string _nick = "*";
 
     public IrcSession(
-        TcpClient client, IrcOptions options, IrcTokens tokens, PlayerRegistry players, ChannelRegistry channels,
+        Stream connection, IrcOptions options, IrcTokens tokens, PlayerRegistry players, ChannelRegistry channels,
         MatchRegistry matches, BanchoPacketDispatcher dispatcher, IServiceScopeFactory scopes, ILogger<IrcSession> logger)
     {
-        _client = client;
+        _connection = connection;
         _options = options;
         _tokens = tokens;
         _players = players;
@@ -59,18 +60,17 @@ public sealed class IrcSession : IDisposable
     {
         _writeGate.Dispose();
         _writer?.Dispose();
-        _client.Dispose();
+        _connection.Dispose();
     }
 
     private string Mask(string nick) => $"{nick}!{nick}@{Host}";
 
     public async Task RunAsync(CancellationToken stoppingToken)
     {
-        var client = _client;
         using var cancel = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
         try
         {
-            var stream = client.GetStream();
+            var stream = _connection;
             using var reader = new StreamReader(stream, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
             _writer = new StreamWriter(stream, new UTF8Encoding(false), bufferSize: 1024, leaveOpen: true) { NewLine = "\r\n", AutoFlush = true };
 
@@ -391,7 +391,7 @@ public sealed class IrcSession : IDisposable
             if (_players.GetByToken(_player!.Token) is null)
             {
                 await ErrorAsync("You logged in from osu!; this IRC session has ended.").ConfigureAwait(false);
-                _client.Close();
+                _connection.Close();
                 return;
             }
             _player.LastActivityUtc = DateTimeOffset.UtcNow;
