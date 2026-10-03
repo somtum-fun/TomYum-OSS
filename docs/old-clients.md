@@ -76,13 +76,26 @@ Sign out of a real osu! account in that client first: its login is sent to this 
   passes it on.
 - **Leaderboards** (`osu-osz2-getscores.php`) in the format the client asks for (`vv`): before
   `vv=3` ranked is 4 and qualified 2, before `vv=4` there's no loved (sent as approved) and no
-  replay flag, and `vv=1` has the date as text. An unknown status left a 2014 build waiting forever.
+  replay flag, and `vv=1` has the date as text. (The client reads a status it doesn't know as ranked.)
+  Builds before 2013 send the player as `u=<id>` with no `us`; their personal best is found by that id.
+- **Leaderboards of 2008–2012 builds**, each version in its own reply: `osu-getscores2.php` (b337,
+  b370: status line, then scores with perfect as `True`/`False` and the avatar file in place of the
+  rank; approved, qualified and loved go as ranked), `osu-getscores3.php` (b394a, the same with approved),
+  `osu-getscores4.php` (b420, + personal best), `osu-getscores5.php` (b452–b534.test, + offset and
+  title) and `osu-getscores6.php` (b558–b20120916, + rating). The title is osu!'s
+  `[bold:0,size:20]Artist|Title`. `osu-getstatus.php` (b337) answers `md5,ranked,beatmap,set,` for
+  known maps.
 - **Score submission** (`osu-submit-modular.php`): today's submission with the old key (no
   `osuver`), the map's checksum from the score, and the old reply (map line and overall chart,
-  accuracy as a fraction, medal file names, no empty fields).
+  accuracy as a fraction, medal file names, no empty fields). Builds before 2012 send the score
+  unencrypted (then the password is required): b337–b1652 in the query, b1700–b1844.test as the
+  form field `score`. b337–b904 post to `osu-submit.php` (to b497) and `osu-submit-new.php`, with 15
+  to 17 fields (no mode before b497: osu!), and get `rank\ntoNextRank\nmedals` back (the map rank
+  when the play is the player's new best, else 0; a rejection is `0\n0`, which they don't retry).
 - **Fair shared leaderboards.** Score v1 and the mod multipliers haven't changed since 2013 in any
   mode, so old clients' scores count as they are (osuTitanic does the same), with three exceptions
-  (`LegacyScoreRules`, by the build in the score's version field): mod bit 4 was NoVideo before
+  (`LegacyScoreRules`, by the build in the score's version field; a score with no version, or a
+  numbered one like `1553`, is from a build before 2012): mod bit 4 was NoVideo before
   2014 and isn't taken as TouchDevice (which lowers pp); Co-op is refused (unranked since April
   2015); and a passed taiko or catch play whose 300s, 100s and misses don't add up to the map's max
   combo in that mode (the old client converted it differently) is kept but off the leaderboard, with
@@ -92,6 +105,19 @@ Sign out of a real osu! account in that client first: its login is sent to this 
   images' 133×103 (osu! no longer has the old art; it isn't used).
 - **Update checks** (`/release/update.php` and the like) answer "no update", or the client waits on
   "Receiving data..." for good.
+- **osu!direct for 2009–2012 builds.** `/d/<set>n` is the set without its video. Downloads over
+  plain HTTP are passed on (b476–b639 send no `?u=`, b452 a malformed one), and so is
+  `/web/maps/<file>` (an outdated map's new file). `osu-search-set.php` sends the map's status as
+  `osu-search.php` does (1 ranked, 2 approved…). Builds without osu!mania (numbered builds and those
+  before b20121003, told by the online player named in `u`, or by a request with no player over
+  plain HTTP) aren't shown mania-only sets; sets that mix modes stay.
+- **Small answers.** `/rating/ingame-rate.php` (b337–b595b) and `ingame-rate2.php` (to b20121119)
+  rate maps like `osu-rate.php`, a vote answered with the bare average; `coins.php` (b20150331) is
+  `0`; `osu-screenshot.php` takes `u`/`p` from the query; in-game comments style supporters as
+  `subscriber` for builds before 2016; `/release/filter.txt` (the chat filter) holds one word nobody
+  types; `bancho_connect.php` answers `127.0.0.1` to b20130802.1–b20130915.4 (anything else costs
+  them 5 seconds), and `xx` instead of `cn`/`tw` to builds before 2016 (those add osu!'s Chinese
+  bancho to their server list).
 - **Frames.** Score and spectator frames in an older layout get today's fields added for today's
   clients (`LegacyFrames`); `b20140624` already sends today's layout. The server logs, once per
   session, what an old build's frames looked like.
