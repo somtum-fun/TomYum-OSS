@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Microsoft.Extensions.DependencyInjection;
 using TomYum.Bancho;
 using TomYum.Server.Bancho;
 using Xunit;
@@ -71,5 +72,26 @@ public class TcpBanchoTests
         Assert.True(LoginRequest.TryParse("Lilian\n5f4dcc3b5aa765d61d8327deb882cf99\nb20121225|1|0|a:b:c:d:e:\n", out var request));
         Assert.False(request!.PmPrivate);
         Assert.Equal("b20121225", request.OsuVersion);
+    }
+
+    [Theory]
+    [InlineData("b337.test|7", -1, 25)]       // maintenance (-5) is "failed" there; the notice is shifted
+    [InlineData("b1807|7|0|a:b:c", -5, 24)]
+    [InlineData("b20250101|7|0|a:b:c:d:e:|0", -5, 24)]
+    public void ARefusedLogin_IsInTheLoginsBuild(string info, int code, int notice)
+    {
+        using var services = new ServiceCollection().BuildServiceProvider();
+        var refusal = LoginResponseBuilder.BuildFailure(LoginFailureReason.ServerError, "Maintenance.");
+
+        var reply = BanchoExchange.LoginReply(refusal, $"Lilian\n5f4dcc3b5aa765d61d8327deb882cf99\n{info}\n", null, services);
+
+        var r = new BanchoPacketReader(reply);
+        Assert.Equal(notice, r.ReadUInt16());
+        _ = r.ReadByte();
+        r.Skip((int)r.ReadUInt32());
+        Assert.Equal(5, r.ReadUInt16());
+        _ = r.ReadByte();
+        Assert.Equal(4u, r.ReadUInt32());
+        Assert.Equal(code, r.ReadInt32());
     }
 }
