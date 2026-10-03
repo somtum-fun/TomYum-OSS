@@ -41,7 +41,8 @@ Sign out of a real osu! account in that client first: its login is sent to this 
 |---|---|
 | `b20140624` | Tested 2026-10-02 (locally and on sundei.eu): login, chat, online users, osu!direct (search, download, import, thumbnails), leaderboards, score submission (pp, medals, ranking screen), being spectated by today's client. Not yet tested: multiplayer, spectating today's client. |
 | Late 2013 – 2015 | Expected to work like the above (HTTP bancho, protocol 18/19); not tested build by build yet. |
-| Up to `b20130815` | Not supported: these speak bancho over raw TCP, which a Cloudflare Tunnel can't carry. |
+| Up to `b20130815` | Bancho over raw TCP, which Cloudflare can't carry: through TomYum.Gateway on `server.<domain>:13381` (docs/gateway.md), with a client patched to use it. Transport tested 2026-10-03 (login, packets, logout). |
+| Numbered builds (`b1122`, 2011) | Their protocol (read from the decompiled b1122, example-org/private-repo) is translated by `EarlyPackets`: ids from 11 up are one higher, a user's status, stats and presence are one packet (12). Login, channels, chat, PMs, friends, statuses and the online list. Multiplayer, spectator frames and beatmap info are left out for now. |
 
 ## What the server does for them
 

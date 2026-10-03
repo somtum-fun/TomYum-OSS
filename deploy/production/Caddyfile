@@ -92,6 +92,24 @@ http://osu.{$DOMAIN} {
 		import osu-web
 	}
 
+	# Numbered builds' avatars (b1122, docs/old-clients.md): /forum/download.php?avatar=<id>.png,
+	# the website's avatar (the guest one when there's none).
+	@old-avatar {
+		path /forum/download.php
+		vars_regexp avatar {query.avatar} ^([0-9]+)
+	}
+	handle @old-avatar {
+		rewrite * /uploads/avatar/{re.avatar.1}
+		reverse_proxy osu-web:8080 {
+			header_down Content-Type image/png
+			@missing status 404
+			handle_response @missing {
+				rewrite * /images/layout/avatar-guest@2x.png
+				reverse_proxy osu-web:8080
+			}
+		}
+	}
+
 	# /beatmap-submission: lazer's beatmap submission (its default, under the API URL).
 	# /ss: stable's uploaded screenshots; /difficulty-rating: stable's star ratings with mods;
 	# /release: old clients' update checks (docs/old-clients.md).

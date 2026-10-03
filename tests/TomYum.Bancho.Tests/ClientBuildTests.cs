@@ -35,4 +35,26 @@ public class ClientBuildTests
         Assert.Null(build.Date);
         Assert.False(build.IsLegacy);
     }
+
+    [Theory]
+    [InlineData("b1122", 1122)]
+    [InlineData("b1814", 1814)]
+    [InlineData("b1122test", 1122)]
+    public void ANumberedBuild_IsAnOldBuildWithTheEarlyPackets(string version, int number)
+    {
+        var build = ClientBuild.Parse(version);
+
+        Assert.Equal(number, build.Number);
+        Assert.Null(build.Date);
+        Assert.True(build.IsLegacy);
+        Assert.True(build.HasEarlyPackets);
+        Assert.Equal(8, build.MatchSlots);
+    }
+
+    [Theory]
+    [InlineData("b20140624")]
+    [InlineData("b2014")]
+    [InlineData(null)]
+    public void OtherBuilds_DontHaveTheEarlyPackets(string? version) =>
+        Assert.False(ClientBuild.Parse(version).HasEarlyPackets);
 }
