@@ -28,6 +28,7 @@ internal sealed class PluginHostService : IHostedService
     private readonly LoadedPluginRegistry _loaded;
     private readonly DatabaseOptions _database;
     private readonly IHostPlayerView _playerView;
+    private readonly IHostOnlineCounts _onlineCounts;
 
     private readonly List<IPlugin> _plugins = [];
     private PluginLoader? _loader;
@@ -43,7 +44,8 @@ internal sealed class PluginHostService : IHostedService
         HostServiceRegistry hostServices,
         LoadedPluginRegistry loaded,
         DatabaseOptions database,
-        IHostPlayerView playerView)
+        IHostPlayerView playerView,
+        IHostOnlineCounts onlineCounts)
     {
         _options = options;
         _configuration = configuration;
@@ -57,12 +59,14 @@ internal sealed class PluginHostService : IHostedService
         _loaded = loaded;
         _database = database;
         _playerView = playerView;
+        _onlineCounts = onlineCounts;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         // Publish the host services plugins can resolve via GetHostService<T>().
         _hostServices.Register(_playerView);
+        _hostServices.Register(_onlineCounts);
 
         var directory = ResolvePluginsDirectory(_options.Directory);
         _loader = new PluginLoader(

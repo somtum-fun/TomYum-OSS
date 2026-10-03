@@ -79,6 +79,39 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task RelaxBoard_ByPp_OrByScore_WithTheLazerReplay()
+    {
+        var db = await NewTomYumContextAsync();
+        db.Beatmaps.Add(new Beatmap { Id = 10, SetId = 1, Md5 = "a", Artist = "A", Title = "T", Version = "V", Creator = "C" });
+        db.Scores.AddRange(
+            new Score { UserId = 1, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 300, ScoreValue = 1_000 },
+            new Score { UserId = 2, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 200, ScoreValue = 3_000 },
+            new Score { UserId = 3, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 100, ScoreValue = 2_000, FromLazer = true, OsuWebScoreId = 77 });
+        await db.SaveChangesAsync();
+
+        // The spectator server saved player 3's lazer replay (named by its website score id).
+        var lazerReplays = Directory.CreateTempSubdirectory().FullName;
+        await File.WriteAllBytesAsync(Path.Combine(lazerReplays, "77"), [1, 2, 3]);
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Circleguard:LazerReplaysPath"] = lazerReplays }).Build();
+
+        async Task<JsonElement> Board(string? sort) => await Body(await AdminModeScoresEndpoints.LeaderboardAsync(
+            10, 4, 2, viewerId: 3, mods: null, sort, new TomYum.Persistence.Repositories.BeatmapRepository(NewTomYumContext()), NewTomYumContext(), new RestrictedUsers(), configuration, CancellationToken.None));
+        static string Players(JsonElement board) => string.Join(",", board.GetProperty("scores").EnumerateArray().Select(e => e.GetProperty("userId").GetInt32()));
+
+        var byPp = await Board(null);
+        Assert.Equal("1,2", Players(byPp));                                          // the top 2 by pp
+        Assert.Equal(3, byPp.GetProperty("userScore").GetProperty("position").GetInt32());
+        var byScore = await Board("score");
+        Assert.Equal("2,3", Players(byScore));
+        Assert.Equal(2, byScore.GetProperty("userScore").GetProperty("position").GetInt32());
+        Assert.True(byScore.GetProperty("scores")[1].GetProperty("score").GetProperty("hasReplay").GetBoolean());
+        Assert.False(byScore.GetProperty("scores")[0].GetProperty("score").GetProperty("hasReplay").GetBoolean());
+        // The lazer play carries its website score id (its replay's id); the stable one has none.
+        Assert.Equal(77UL, byScore.GetProperty("scores")[1].GetProperty("score").GetProperty("osuWebScoreId").GetUInt64());
+        Assert.Equal(JsonValueKind.Null, byScore.GetProperty("scores")[0].GetProperty("score").GetProperty("osuWebScoreId").ValueKind);
+    }
+
+    [MySqlFact]
     public async Task RankHistory_IsSnapshotted_AndShownAsTheGraph()
     {
         var db = await NewTomYumContextAsync();

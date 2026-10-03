@@ -33,7 +33,7 @@ public static partial class StableClientEndpoints
         // Answers the client only needs to get (bancho.py answers these the same way).
         app.MapGet("/web/osu-markasread.php", HandleMarkAsReadAsync).RequireHost(hosts);
         app.MapPost("/web/osu-session.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
-        app.MapPost("/web/osu-error.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
+        app.MapPost("/web/osu-error.php", HandleClientErrorAsync).RequireHost(hosts).DisableAntiforgery();
         app.MapGet("/web/check-updates.php", (HttpContext context) =>
             Results.Redirect("https://osu.ppy.sh/web/check-updates.php" + context.Request.QueryString.Value)).RequireHost(hosts);
         // Old clients' update checks (docs/old-clients.md): never an update, the build stays as it is.
@@ -208,6 +208,27 @@ public static partial class StableClientEndpoints
             return Results.Unauthorized();
         var friends = await context.RequestServices.GetRequiredService<IFriendRepository>().GetFriendIdsAsync(user.Id, cancellationToken).ConfigureAwait(false);
         return Results.Text(string.Join('\n', friends), "text/plain");
+    }
+
+    /// <summary>
+    /// The client's own error report (<c>osu-error.php</c>): osu! posts it when it catches an
+    /// exception it can survive, or just before it gives up. Logged (without the client's config
+    /// and hashes) so a stuck or crashing client, old builds especially, can be diagnosed from the
+    /// server log. The client only needs an empty answer.
+    /// </summary>
+    internal static async Task<IResult> HandleClientErrorAsync(HttpContext context, ILoggerFactory loggers, CancellationToken cancellationToken)
+    {
+        if (context.Request.HasFormContentType)
+        {
+            var form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+            static string Field(IFormCollection f, string key, int max) =>
+                f[key].ToString() is { Length: > 0 } v ? (v.Length > max ? v[..max] + "…" : v) : "-";
+            loggers.CreateLogger("TomYum.Server.ClientErrors").LogWarning(
+                "Client error from {User} on {Version} (mode {OsuMode}, gamemode {GameMode}): {Exception}\n{StackTrace}\nFeedback: {Feedback}",
+                Field(form, "u", 64), Field(form, "version", 64), Field(form, "osumode", 32), Field(form, "gamemode", 8),
+                Field(form, "exception", 1000), Field(form, "stacktrace", 6000), Field(form, "feedback", 500));
+        }
+        return Results.Text(string.Empty, "text/plain");
     }
 
     /// <summary>

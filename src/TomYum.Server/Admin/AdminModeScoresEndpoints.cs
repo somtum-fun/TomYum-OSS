@@ -7,11 +7,14 @@ using TomYum.Server.Beatmaps;
 
 namespace TomYum.Server.Admin;
 
-/// <summary>A Relax/Autopilot score as a profile lists it.</summary>
+/// <summary>
+/// A Relax/Autopilot score as a profile lists it. <see cref="OsuWebScoreId"/> is the website's score id
+/// of a lazer play (its replay carries that id), or null.
+/// </summary>
 public sealed record ModeScore(
     long Id, int BeatmapId, int Mods, double Pp, double Accuracy, string Grade, int MaxCombo, bool Perfect,
     long Score, bool Passed, DateTimeOffset PlayedAt, int Count300, int Count100, int Count50, int CountMiss, int CountGeki, int CountKatu,
-    bool Stable, bool HasReplay);
+    bool Stable, bool HasReplay, ulong? OsuWebScoreId);
 
 /// <summary>A page of a profile list, and how many there are in all.</summary>
 public sealed record ModeScorePage(int Total, IReadOnlyList<ModeScore> Scores);
@@ -93,21 +96,22 @@ public static class AdminModeScoresEndpoints
     /// A map's Relax/Autopilot leaderboard for the website's beatmap page: the in-game one (by pp,
     /// restricted players left out), plus the viewer's best when <paramref name="viewerId"/> is given.
     /// <paramref name="mods"/> keeps plays with exactly those mods, like the in-game "Selected Mods"
-    /// board; the Relax/Autopilot bit itself is ignored (the mode already says it).
+    /// board; the Relax/Autopilot bit itself is ignored (the mode already says it). <paramref name="sort"/>
+    /// "score" orders the same plays (each player's best) by score instead of pp.
     /// </summary>
     internal static Task<IResult> LeaderboardAsync(
-        int beatmapId, int mode, int? limit, int? viewerId, int? mods,
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods, string? sort,
         TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken) =>
-        BoardAsync(beatmapId, mode, limit, viewerId, mods, null, beatmaps, db, restricted, configuration, cancellationToken);
+        BoardAsync(beatmapId, mode, limit, viewerId, mods, sort == "score", null, beatmaps, db, restricted, configuration, cancellationToken);
 
     /// <summary>The same leaderboard with only <see cref="ModeLeaderboardPlayers.UserIds"/>'s plays (country, friends, team).</summary>
     internal static Task<IResult> PlayersLeaderboardAsync(
-        int beatmapId, int mode, int? limit, int? viewerId, int? mods, ModeLeaderboardPlayers players,
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods, string? sort, ModeLeaderboardPlayers players,
         TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken) =>
-        BoardAsync(beatmapId, mode, limit, viewerId, mods, players.UserIds ?? [], beatmaps, db, restricted, configuration, cancellationToken);
+        BoardAsync(beatmapId, mode, limit, viewerId, mods, sort == "score", players.UserIds ?? [], beatmaps, db, restricted, configuration, cancellationToken);
 
     private static async Task<IResult> BoardAsync(
-        int beatmapId, int mode, int? limit, int? viewerId, int? mods, IReadOnlyList<int>? userIds,
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods, bool byScore, IReadOnlyList<int>? userIds,
         TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken)
     {
         if (mode is < GameMode.RelaxOffset or > GameMode.AutopilotOffset + 3)
@@ -116,12 +120,14 @@ public static class AdminModeScoresEndpoints
         if (beatmap is null)
             return Results.Ok(new ModeLeaderboard([], null));
 
-        // As the in-game board (ScoreRepository.GetLeaderboardAsync): by pp, restricted players left
-        // out except to themselves.
+        // As the in-game board (ScoreRepository.GetLeaderboardAsync): by pp (or by score when asked),
+        // restricted players left out except to themselves.
         var hiddenFromBoard = restricted.Ids.Where(id => id != viewerId).ToList();
-        var top = await Board(db, beatmap.Md5, mode, mods, userIds).Where(s => !hiddenFromBoard.Contains(s.UserId))
-            .OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue).Take(Math.Clamp(limit ?? 50, 1, 100))
-            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var visible = Board(db, beatmap.Md5, mode, mods, userIds).Where(s => !hiddenFromBoard.Contains(s.UserId));
+        var ordered = byScore
+            ? visible.OrderByDescending(s => s.ScoreValue).ThenByDescending(s => s.Pp)
+            : visible.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue);
+        var top = await ordered.Take(Math.Clamp(limit ?? 50, 1, 100)).ToListAsync(cancellationToken).ConfigureAwait(false);
         var entries = top.Select((s, i) => new ModeLeaderboardEntry(i + 1, s.UserId, Describe(s, mode, configuration))).ToList();
 
         ModeLeaderboardEntry? mine = entries.FirstOrDefault(e => e.UserId == viewerId);
@@ -131,8 +137,9 @@ public static class AdminModeScoresEndpoints
             if (best is not null && best.Passed)
             {
                 var hidden = restricted.Ids.Where(id => id != viewer).ToList();
-                var position = 1 + await Board(db, beatmap.Md5, mode, mods, userIds)
-                    .CountAsync(s => s.Pp > best.Pp && !hidden.Contains(s.UserId), cancellationToken).ConfigureAwait(false);
+                var ahead = Board(db, beatmap.Md5, mode, mods, userIds).Where(s => !hidden.Contains(s.UserId));
+                ahead = byScore ? ahead.Where(s => s.ScoreValue > best.ScoreValue) : ahead.Where(s => s.Pp > best.Pp);
+                var position = 1 + await ahead.CountAsync(cancellationToken).ConfigureAwait(false);
                 mine = new ModeLeaderboardEntry(position, viewer, Describe(best, mode, configuration));
             }
         }
@@ -182,24 +189,28 @@ public static class AdminModeScoresEndpoints
             userId = score.UserId,
             mode = score.Mode,
             position,
-            hasReplay = ReplayFiles.Exists(configuration, score.Id),
+            hasReplay = ReplayFiles.Find(configuration, score) is not null,
         });
     }
 
-    /// <summary>The play's replay as a complete .osr (the stored file is the replay data only; the header comes from the score).</summary>
+    /// <summary>The play's replay as a complete .osr (a stable play's stored file is the replay data only; the header comes from the score).</summary>
     internal static async Task<IResult> ReplayAsync(long scoreId, TomYumDbContext db, TomYum.Domain.Repositories.IUserRepository users, IConfiguration configuration, CancellationToken cancellationToken)
     {
         var score = await db.Scores.AsNoTracking().FirstOrDefaultAsync(s => s.Id == scoreId && s.Mode >= GameMode.RelaxOffset, cancellationToken).ConfigureAwait(false);
-        if (score is null || !ReplayFiles.Exists(configuration, score.Id))
+        if (score is null || ReplayFiles.Find(configuration, score) is not { } replay)
             return Results.NotFound();
-        var frames = await File.ReadAllBytesAsync(ReplayFiles.PathFor(configuration, score.Id), cancellationToken).ConfigureAwait(false);
         var player = (await users.GetByIdAsync(score.UserId, cancellationToken).ConfigureAwait(false))?.Username ?? string.Empty;
-        return Results.File(OsrFile.Build(score, player, frames), "application/octet-stream", $"{player} - {score.BeatmapMd5} ({score.Id}).osr");
+        var fileName = $"{player} - {score.BeatmapMd5} ({score.Id}).osr";
+        if (replay.Complete)
+            return Results.File(replay.Path, "application/octet-stream", fileName);
+        var frames = await File.ReadAllBytesAsync(replay.Path, cancellationToken).ConfigureAwait(false);
+        return Results.File(OsrFile.Build(score, player, frames), "application/octet-stream", fileName);
     }
 
     private static ModeScore Describe(Score s, int mode, IConfiguration configuration) => new(
         s.Id, s.BeatmapId, s.Mods, s.Pp,
         AccuracyCalculator.Compute(GameMode.AsVanilla(mode), s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss),
         s.Grade, s.MaxCombo, s.Perfect, s.ScoreValue, s.Passed, s.SubmittedAt,
-        s.Count300, s.Count100, s.Count50, s.CountMiss, s.CountGeki, s.CountKatu, !s.FromLazer, ReplayFiles.Exists(configuration, s.Id));
+        s.Count300, s.Count100, s.Count50, s.CountMiss, s.CountGeki, s.CountKatu, !s.FromLazer, ReplayFiles.Find(configuration, s) is not null,
+        s.FromLazer ? s.OsuWebScoreId : null);
 }

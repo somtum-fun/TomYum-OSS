@@ -1,0 +1,8 @@
+{
+  "id": "tomyum.metrics",
+  "name": "Metrics (Prometheus)",
+  "version": "0.1.0",
+  "authors": "Phapoom Saksri",
+  "description": "GET /metrics for the status page's Prometheus: players online, scores submitted, stable logins, registered players, process and GC numbers. Internal host names only.",
+  "entryPoint": "MetricsPlugin"
+}

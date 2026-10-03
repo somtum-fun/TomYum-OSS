@@ -358,6 +358,43 @@ Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what wor
       multiplayer with a second player and go build by build towards 2013.
 - [ ] Later: TCP builds (2013 and older) if a TCP port can be exposed; older eras.
 
+### ⏸ Status 2026-10-03: paused, needs more research (example.com)
+_Decided 2026-10-03: old-client work is **paused**. Getting old builds stable needs more research and
+far more work than expected, whether through a hook or by patching the client. Priority goes to the
+upstream side: the **latest lazer client**, **stable 2023+ (latest)** and **anti-cheat**. Comments and
+findings on old clients are welcome; add them here._
+
+Tested on example.com with the production hook ([example-org/private-repo](https://github.com/example-org/private-repo),
+MIT, a clean-room loader instead of Titanic! Hook):
+- **Works:** no more startup crashes on b1814–b20131009 (the hook never patches osu!'s obfuscated
+  `Main`: Harmony 2/MonoMod crashed there; Titanic! Hook avoids it with a Harmony 1 fork), no update
+  prompt (`/release/update.php` answers `0`), TCP-era builds reach bancho through the hook's local
+  **bancho bridge** (raw TCP in, HTTPS bancho to `c.<domain>` out, so no TCP port or server IP is
+  exposed and Cloudflare stays in front), login bodies without `pm_private`/hashes are accepted
+  (`LoginRequest`), held logins carry a verify-your-device notice, and the hook fills blank client
+  hashes with its own machine id. b20151128.2 logs in, chats, searches and downloads maps.
+- **Open problems:**
+  - b20151128.2 freezes on a black screen after **Play Solo**: the client posts `osu-error.php` (now
+    logged by TomYum as a warning) and a finalizer NRE follows; the cause isn't known yet. It may be a
+    server reply the build can't read (then it's a TomYum fix) or an osu! bug.
+  - osu!'s own races on .NET 4 (`MapPackage.Close`, `Dispose` finalizers): keeping the process alive
+    (legacy exception policy, a `Dispose` guard) only turned crashes into frozen black screens, so a
+    crash to desktop stays the default.
+  - The hook runs 2.0-era builds on the .NET 4 CLR; native .NET 2 behaviour differs (exception policy,
+    timing), which is a likely source of more of these.
+  - Old builds have no osu!auth: anything the hook sends (device id, hashes) can be faked, so anti-cheat
+    for them is weak until the hook has its own integrity checks.
+- **Options to research (none chosen):**
+  - Keep the hook (players bring their own `osu!.exe`, no ppy code shipped) and add small, targeted
+    in-memory fixes for specific osu! bugs, found by the method's IL shape rather than its obfuscated
+    name. Most work per bug, least legal risk, stays MIT.
+  - Patch the client like osuTitanic (their download page ships pre-patched builds, "unofficial,
+    unlicensed", with a DMCA contact). Easier to fix osu!'s own bugs, but obfuscation means editing IL
+    per build (not recompiling decompiled source), it redistributes ppy's code (DMCA risk, can't be
+    open source) and every build needs its own patches. If ever done, ship a patcher for the player's
+    own copy, never patched binaries.
+  - Use Titanic! Hook as docs/old-clients.md describes, and only keep TomYum's server side compatible.
+
 ## Bot accounts 🔒 (none) — done 2026-10-01
 - [x] Admins/developers make bots in the panel (`/panel/bots`): `bot` group, an owner, an IRC key.
       Owners (user menu → My bots), admins and developers change the avatar, banner, me! page, name,

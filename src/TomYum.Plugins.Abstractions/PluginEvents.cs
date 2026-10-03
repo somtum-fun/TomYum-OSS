@@ -34,6 +34,15 @@ public abstract class VetoableEvent : IVetoableEvent
 /// <param name="CountryIso">Two-letter country code resolved for the session (may be empty).</param>
 public sealed record PlayerLoginEvent(long UserId, string Username, string CountryIso) : IPluginEvent;
 
+/// <summary>
+/// Raised when an osu!stable login is refused: unknown user, wrong password, a locked, deleted or bot
+/// account, and so on. <see cref="Held"/> is true when it's refused only for now (maintenance, or a
+/// new device the player has to verify first). A successful login raises <see cref="PlayerLoginEvent"/>.
+/// </summary>
+/// <param name="Username">The username the client sent (unverified; empty when the request was unreadable).</param>
+/// <param name="Held">Whether the login was held rather than refused for good.</param>
+public sealed record PlayerLoginRefusedEvent(string Username, bool Held) : IPluginEvent;
+
 /// <summary>Raised when a player sends a chat message, before it is delivered to recipients.</summary>
 /// <param name="SenderUserId">Id of the sending player.</param>
 /// <param name="SenderUsername">Display name of the sending player.</param>

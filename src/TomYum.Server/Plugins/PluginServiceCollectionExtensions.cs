@@ -10,8 +10,8 @@ public static class PluginServiceCollectionExtensions
 {
     /// <summary>
     /// Registers the plugin host: the shared event bus, command registry, HTTP route table,
-    /// host-service registry, the loaded-plugin registry, the read-only player view exposed to
-    /// plugins, and the <see cref="PluginHostService"/> that loads + drives plugins on start.
+    /// host-service registry, the loaded-plugin registry, the read-only player view and online
+    /// counts exposed to plugins, and the <see cref="PluginHostService"/> that loads + drives plugins on start.
     /// Requires <c>DatabaseOptions</c> to be registered (used for trusted plugin data access).
     /// </summary>
     public static IServiceCollection AddTomYumPlugins(this IServiceCollection services, IConfiguration configuration)
@@ -30,6 +30,7 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<HostServiceRegistry>();
         services.AddSingleton<LoadedPluginRegistry>();
         services.AddSingleton<IHostPlayerView, HostPlayerView>();
+        services.AddSingleton<IHostOnlineCounts, HostOnlineCountsView>();
 
         services.AddHostedService<PluginHostService>();
 
