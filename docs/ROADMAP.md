@@ -367,10 +367,12 @@ Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what wor
 _Decided 2026-10-03: like Titanic!'s `server.titanic.sh`, pre-2014 builds connect to `server.<domain>`
 over raw TCP; the hoster patches the client to point there (and patches the server for those
 builds' protocol themselves). The hook route below stays paused._
-- [x] TomYum.Gateway (docs/gateway.md): TCP bancho (13381) → HTTP bancho, IRC (6667) → WebSocket to
-      the main server; on the same server (`COMPOSE_PROFILES=gateway`) or its own box (deploy/gateway),
-      so an attack on those ports leaves the rest alone. The player's address is passed on with a
-      shared key (`GATEWAY_KEY`).
+- [x] TomYum.Gateway (docs/gateway.md): TCP bancho (13381) and IRC (6667) on another box, relayed
+      to the main server over WebSockets, so an attack on those ports leaves the rest alone. The
+      player's address is passed on with a shared key (`GATEWAY_KEY`).
+- [x] 2026-10-03: bancho over TCP is TomYum's own (`Bancho:Tcp`, sundei's: packets pushed as
+      queued), with a ping after 10 s of quiet for b1122; the gateway relays to it
+      (`/_gateway/bancho`) instead of polling HTTP bancho. On example.com: `TCP_BANCHO=true`.
 - [x] Tested on example.com: a TCP login (b20130606 login body), packets split across writes,
       logout on exit and on a dropped socket, the player's address and IRC through the relay.
 - [ ] A real pre-2014 build, patched to use `server.<domain>`.

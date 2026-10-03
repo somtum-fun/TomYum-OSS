@@ -93,7 +93,10 @@ public sealed class TcpBanchoServer : BackgroundService
     }
 }
 
-/// <summary>One TCP bancho connection: PROXY header (optional), login, then packets both ways.</summary>
+/// <summary>
+/// One TCP bancho connection: PROXY header (optional), login, then packets both ways. The connection
+/// is a TCP socket on the bancho ports, or one relayed by TomYum.Gateway (docs/gateway.md).
+/// </summary>
 internal sealed class TcpBanchoSession : IDisposable
 {
     private const int MaxLoginBytes = 4096;
@@ -101,12 +104,22 @@ internal sealed class TcpBanchoSession : IDisposable
     private static readonly TimeSpan LoginTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PushInterval = TimeSpan.FromMilliseconds(50);
 
-    private readonly TcpClient _client;
+    /// <summary>
+    /// A ping goes out after this long without anything sent: old builds reconnect when bancho says
+    /// nothing for a while (b1122 after 30 seconds), as bancho then pinged them.
+    /// </summary>
+    private static readonly TimeSpan KeepAlive = TimeSpan.FromSeconds(10);
+
+    private static readonly byte[] PingPacket = new BanchoPacketWriter(8).WritePacket(ServerPacketId.Pong, null).ToArray();
+
+    private readonly TcpClient? _client;
     private readonly bool _proxyProtocol;
     private readonly IServiceProvider _services;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
-    private NetworkStream? _stream;
+    private Stream? _stream;
+    private IPAddress? _address;
+    private long _lastWriteTicks = Environment.TickCount64;
 
     public TcpBanchoSession(TcpClient client, bool proxyProtocol, IServiceProvider services, ILogger logger)
     {
@@ -116,12 +129,27 @@ internal sealed class TcpBanchoSession : IDisposable
         _logger = logger;
     }
 
+    /// <summary>A connection relayed by the gateway: its stream, and the player's address as the gateway saw it.</summary>
+    public TcpBanchoSession(Stream stream, IPAddress? address, IServiceProvider services, ILogger logger)
+    {
+        _stream = stream;
+        _address = address;
+        _services = services;
+        _logger = logger;
+    }
+
     public async Task RunAsync(CancellationToken stoppingToken)
     {
-        _client.NoDelay = true;
-        _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-        _stream = _client.GetStream();
-        var address = (_client.Client.RemoteEndPoint as IPEndPoint)?.Address;
+        if (_client is not null)
+        {
+            _client.NoDelay = true;
+            _client.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
+            _stream = _client.GetStream();
+            _address = (_client.Client.RemoteEndPoint as IPEndPoint)?.Address;
+        }
+        if (_stream is null)
+            return;
+        var address = _address;
         var buffer = new List<byte>(512);
         var chunk = new byte[16 * 1024];
 
@@ -260,21 +288,21 @@ internal sealed class TcpBanchoSession : IDisposable
             if (registry.GetByToken(token) is null)
             {
                 // Logged out, replaced by a new login or kicked: the connection ends with the session.
-                _client.Close();
+                Close();
                 return;
             }
             player.LastActivityUtc = DateTimeOffset.UtcNow; // an open connection is a live player
-            if (player.HasQueued)
+            try
             {
-                try
-                {
+                if (player.HasQueued)
                     await ExchangeAsync(player, [], cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
-                {
-                    _client.Close();
-                    return;
-                }
+                else if (Environment.TickCount64 - Interlocked.Read(ref _lastWriteTicks) >= (long)KeepAlive.TotalMilliseconds)
+                    await WriteAsync(PingPacket, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+            {
+                Close();
+                return;
             }
         }
     }
@@ -287,11 +315,22 @@ internal sealed class TcpBanchoSession : IDisposable
         try
         {
             await _stream.WriteAsync(data, cancellationToken).ConfigureAwait(false);
+            await _stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            Interlocked.Exchange(ref _lastWriteTicks, Environment.TickCount64);
         }
         finally
         {
             _writeLock.Release();
         }
+    }
+
+    /// <summary>Ends the connection (the read loop then ends the session).</summary>
+    private void Close()
+    {
+        if (_client is not null)
+            _client.Close();
+        else
+            _stream?.Dispose();
     }
 
     /// <summary>A dropped connection logs the player out, as a LOGOUT packet would (unless the session already ended).</summary>
@@ -319,6 +358,6 @@ internal sealed class TcpBanchoSession : IDisposable
     public void Dispose()
     {
         _writeLock.Dispose();
-        _client.Dispose();
+        _client?.Dispose();
     }
 }
