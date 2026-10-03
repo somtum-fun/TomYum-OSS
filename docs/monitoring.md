@@ -9,6 +9,10 @@ report anything, so that needs an outside monitor.
 * * * * * ~/TomYum/deploy/production/watchdog.sh
 ```
 
+Each DM starts with the server's domain, so one admin can follow several servers. The bot's token comes
+from `tomyum.env`; a server whose game server runs without the bot (a test server, while the bot is
+logged in on the main one) can give it to the alerts alone with `WATCHDOG_DISCORD_TOKEN=` in `.env`.
+
 `./watchdog.sh --test` sends a DM to check the bot can reach the admin (who must share a server with
 the bot and allow DMs). `./watchdog.sh --status` prints every check's reading without sending
 anything. While `deploy.sh` runs, the checks are paused.

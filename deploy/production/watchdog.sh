@@ -23,7 +23,10 @@ fi
 
 domain=$(grep -E '^DOMAIN=' .env | cut -d= -f2-)
 admin=${WATCHDOG_DISCORD_USER:-1113690068113170484}
-token=$(grep -E '^TOMYUM_DISCORD__TOKEN=' tomyum.env | cut -d= -f2-)
+# The bot's token; on a server whose game server runs without the bot (one bot can only be logged in
+# once), WATCHDOG_DISCORD_TOKEN in .env gives it to the alerts alone (they only send DMs).
+token=$(grep -E '^WATCHDOG_DISCORD_TOKEN=' .env | cut -d= -f2-)
+[ -n "$token" ] || token=$(grep -E '^TOMYUM_DISCORD__TOKEN=' tomyum.env | cut -d= -f2-)
 
 # Limits (override in the crontab line, e.g. WATCHDOG_DISK_PERCENT=90 ~/TomYum/.../watchdog.sh).
 disk_percent=${WATCHDOG_DISK_PERCENT:-85}       # disk use, %
@@ -50,8 +53,9 @@ dm() {
 		-H "Authorization: Bot $token" -H "Content-Type: application/json" \
 		-d "{\"recipient_id\":\"$admin\"}" | grep -oE '"id": ?"[0-9]+"' | head -1 | grep -oE '[0-9]+')
 	[ -n "$channel" ] || return 1
-	# JSON string: backslashes, quotes and newlines escaped.
-	body=$(printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk '{printf "%s%s", (NR > 1 ? "\\n" : ""), $0}')
+	# JSON string: backslashes, quotes and newlines escaped. Starts with the server's domain, for an
+	# admin who gets alerts from more than one.
+	body=$(printf '**%s** · %s' "$domain" "$1" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' | awk '{printf "%s%s", (NR > 1 ? "\\n" : ""), $0}')
 	curl -s -m 15 -o /dev/null -X POST "https://discord.com/api/v10/channels/$channel/messages" \
 		-H "Authorization: Bot $token" -H "Content-Type: application/json" \
 		-d "{\"content\":\"$body\"}"
