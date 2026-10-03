@@ -363,7 +363,21 @@ Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what wor
       multiplayer with a second player and go build by build towards 2013.
 - [ ] Later: TCP builds (2013 and older) if a TCP port can be exposed; older eras.
 
-### production's findings 2026-10-03 (example.com; work paused there, continuing on sundei.eu)
+### Gateway for TCP bancho and IRC — 2026-10-03 (production, example.com)
+_Decided 2026-10-03: like Titanic!'s `server.titanic.sh`, pre-2014 builds connect to `server.<domain>`
+over raw TCP; the hoster patches the client to point there (and patches the server for those
+builds' protocol themselves). The hook route below stays paused._
+- [x] TomYum.Gateway (docs/gateway.md): TCP bancho (13381) → HTTP bancho, IRC (6667) → WebSocket to
+      the main server; on the same server (`COMPOSE_PROFILES=gateway`) or its own box (deploy/gateway),
+      so an attack on those ports leaves the rest alone. The player's address is passed on with a
+      shared key (`GATEWAY_KEY`).
+- [x] Tested on example.com: a TCP login (b20130606 login body), packets split across writes,
+      logout on exit and on a dropped socket, the player's address and IRC through the relay.
+- [ ] A real pre-2014 build, patched to use `server.<domain>`.
+- Here (example.com) TomYum's own TCP bancho (`Bancho:Tcp`, inside the game server) takes 13381;
+  the gateway is merged but off, for when old clients and IRC should move to another box.
+
+### production's findings 2026-10-03 (example.com; work paused there, continuing on example.com)
 _production decided 2026-10-03 to pause old-client work on their server. Getting old builds stable needs more research and
 far more work than expected, whether through a hook or by patching the client. Priority goes to the
 upstream side: the **latest lazer client**, **stable 2023+ (latest)** and **anti-cheat**. Comments and

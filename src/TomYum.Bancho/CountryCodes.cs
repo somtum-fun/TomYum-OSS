@@ -67,4 +67,8 @@ public static class CountryCodes
     /// </summary>
     public static byte ToNumeric(string? isoCode) =>
         !string.IsNullOrEmpty(isoCode) && Table.TryGetValue(isoCode, out var id) ? id : (byte)0;
+
+    /// <summary>The 2-letter code (uppercase) of an osu! numeric country id, or an empty string.</summary>
+    public static string ToIso(byte numeric) =>
+        Table.FirstOrDefault(entry => entry.Value == numeric).Key?.ToUpperInvariant() ?? string.Empty;
 }

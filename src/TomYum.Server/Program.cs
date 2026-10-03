@@ -9,6 +9,7 @@ using TomYum.Persistence;
 using TomYum.Persistence.OsuWeb;
 using TomYum.Server.Admin;
 using TomYum.Server.Bancho;
+using TomYum.Server.Gateway;
 using TomYum.Server.Bancho.Packets;
 using TomYum.Server.Bancho.Packets.Match;
 using TomYum.Server.Bancho.Packets.Spectate;
@@ -413,6 +414,12 @@ builder.Services.AddSingleton(tcpBanchoOptions);
 if (tcpBanchoOptions.Enabled)
     builder.Services.AddHostedService<TcpBanchoServer>();
 
+// TomYum.Gateway (docs/gateway.md): the edge for raw TCP (pre-2014 bancho, IRC), on this host or
+// another. Gateway:Key is the secret shared with it.
+var gatewayOptions = new TomYum.Server.Gateway.GatewayOptions();
+builder.Configuration.GetSection(TomYum.Server.Gateway.GatewayOptions.SectionName).Bind(gatewayOptions);
+builder.Services.AddSingleton(gatewayOptions);
+
 // The Discord bot (docs/discord.md): runs when Discord:Token and Discord:GuildId are set.
 var discordOptions = TomYum.Server.Discord.DiscordOptions.Read(builder.Configuration.GetSection(TomYum.Server.Discord.DiscordOptions.SectionName));
 if (discordOptions.IsConfigured)
@@ -441,6 +448,10 @@ if (discordOptions.IsConfigured)
 }
 
 var app = builder.Build();
+
+// The gateway's player address, before anything reads X-Real-IP; WebSockets for its IRC relay.
+app.UseGatewayLink(gatewayOptions);
+app.UseWebSockets();
 
 var version = app.Services.GetRequiredService<TomYumVersion>();
 app.Logger.LogInformation(
@@ -610,6 +621,10 @@ app.Logger.LogInformation("Bancho hosts bound to domain: {Domain}", domain);
 
 // osu!stable bancho surface: POST / login + poll, GET / status page (c./c4./ce./cho.).
 app.MapBancho(BanchoHosts.Bancho(domain));
+
+// IRC connections the gateway relays (docs/gateway.md); off without Gateway:Key.
+if (gatewayOptions.Enabled)
+    app.MapGatewayIrc(BanchoHosts.Bancho(domain));
 
 // osu!stable in-game registration: POST /users (osu. host).
 app.MapRegistration(BanchoHosts.Web(domain));

@@ -1,0 +1,25 @@
+# TomYum.Gateway on its own box (docs/gateway.md): the only machine exposed for raw TCP. pre-2014
+# osu! builds' bancho (server.<domain>:13381) and IRC (irc.<domain>:6667) end here and go on to the
+# main server over HTTPS, through Cloudflare, so the main server's address stays hidden and an
+# attack on these ports takes down only old clients and IRC.
+#
+# Configure with gateway.env (copy gateway.env.example). Run from a TomYum checkout:
+#   docker compose up -d --build
+
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        PROJECT: services/TomYum.Gateway/TomYum.Gateway.csproj
+    entrypoint: ["dotnet", "TomYum.Gateway.dll"]
+    restart: unless-stopped
+    env_file: gateway.env
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+    ports:
+      - "${GATEWAY_BANCHO_PORT:-13381}:13381"
+      - "${GATEWAY_IRC_PORT:-6667}:6667"
+      # /health, for a status page on this box only.
+      - "127.0.0.1:${GATEWAY_HEALTH_PORT:-8081}:8080"

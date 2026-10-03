@@ -33,7 +33,10 @@ the VM's own network. For players elsewhere, either:
   (grey cloud: not proxied); or
 - add `irc.<domain>` as a TCP public hostname of the tunnel (to `tcp://server:6667`), and have
   players run `cloudflared access tcp --hostname irc.<domain> --url localhost:6667` and connect
-  their client to `localhost:6667`.
+  their client to `localhost:6667`; or
+- run TomYum.Gateway on another box (docs/gateway.md) and point `irc.<domain>` there: it carries
+  IRC to TomYum over HTTPS, so the main server's address isn't shown and an attack on port 6667
+  doesn't reach it.
 
 Settings (`tomyum.env`): `TOMYUM_IRC__ENABLED` (default true), `TOMYUM_IRC__PORT` (6667),
 `TOMYUM_IRC__SERVERNAME` (default `irc.<domain>`).

@@ -5,7 +5,8 @@ namespace TomYum.Bancho;
 /// <summary>
 /// Bancho packets for old builds (docs/old-clients.md), following Lekuruu's per-build protocol notes
 /// (chio): packets a build doesn't know yet are left out of what it's sent, and builds before
-/// b20140528 get multiplayer rooms with 8 slots (and send them), where today's have 16. Today's
+/// b20140528 get multiplayer rooms with 8 slots (and send them), where today's have 16. Numbered
+/// builds (2011 and before) speak an older protocol still: <see cref="EarlyPackets"/>. Today's
 /// clients' traffic is passed through as it is.
 /// </summary>
 public static class LegacyPackets
@@ -31,6 +32,8 @@ public static class LegacyPackets
         ArgumentNullException.ThrowIfNull(build);
         if (!build.IsLegacy || stream.Length == 0)
             return stream;
+        if (build.HasEarlyPackets)
+            return EarlyPackets.Outgoing(stream);
         return Rewrite(stream, (id, payload, writer) =>
         {
             if (!build.Knows((ServerPacketId)id))
@@ -61,6 +64,8 @@ public static class LegacyPackets
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(build);
+        if (build.HasEarlyPackets)
+            return EarlyPackets.Incoming(stream);
         if (build.MatchSlots == 16 || stream.Length == 0)
             return stream;
         return Rewrite(stream, (id, payload, writer) =>

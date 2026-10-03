@@ -16,6 +16,9 @@ public static class WebEndpoints
 
         app.MapGet("/web/osu-osz2-getscores.php", HandleGetScoresAsync)
             .RequireHost(hosts);
+        // Numbered builds' leaderboards (b1122, docs/old-clients.md): the same, in their older reply.
+        app.MapGet("/web/osu-getscores6.php", HandleGetScoresAsync)
+            .RequireHost(hosts);
 
         // The 1-10 rating after playing a map (kept with the website's ratings).
         app.MapGet("/web/osu-rate.php", HandleRateAsync)
@@ -49,22 +52,29 @@ public static class WebEndpoints
         RestrictedUsers restricted,
         CancellationToken cancellationToken)
     {
+        // osu-getscores6.php (numbered builds): the first line is the status alone (anything else reads
+        // as ranked there), the player is sent by id (u), and dates are text (format 1).
+        var early = context.Request.Path.Value?.EndsWith("/osu-getscores6.php", StringComparison.Ordinal) == true;
+
         var md5 = context.Request.Query["c"].ToString();
         if (string.IsNullOrEmpty(md5))
         {
-            return Results.Text(NotSubmitted, "text/plain");
+            return Results.Text(early ? EarlyStatus(RankedStatus.NotSubmitted) : NotSubmitted, "text/plain");
         }
 
         var beatmap = await beatmaps.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
         if (beatmap is null)
         {
             // An unknown hash may be an old version of a known map: then the client offers an update.
-            return Results.Text(await IsOutdatedAsync(context, beatmaps, cancellationToken).ConfigureAwait(false) ? UpdateAvailable : NotSubmitted, "text/plain");
+            var outdated = await IsOutdatedAsync(context, beatmaps, cancellationToken).ConfigureAwait(false);
+            if (early)
+                return Results.Text(EarlyStatus(outdated ? RankedStatus.UpdateAvailable : RankedStatus.NotSubmitted), "text/plain");
+            return Results.Text(outdated ? UpdateAvailable : NotSubmitted, "text/plain");
         }
 
         if (!beatmap.Status.HasLeaderboard())
         {
-            var line = string.Create(CultureInfo.InvariantCulture, $"{(int)beatmap.Status}|false");
+            var line = early ? EarlyStatus(beatmap.Status) : string.Create(CultureInfo.InvariantCulture, $"{(int)beatmap.Status}|false");
             return Results.Text(line, "text/plain");
         }
 
@@ -83,7 +93,10 @@ public static class WebEndpoints
         // restricted player: their scores are hidden from everyone else, so they see them (in place
         // on the board, bancho.py's shadow leaderboard) only when the password checks out.
         Score? personalBest = null;
-        var requesterId = await ResolveRequesterIdAsync(context.Request.Query["us"].ToString(), registry, users, cancellationToken).ConfigureAwait(false);
+        var requesterId = early
+            ? (int.TryParse(context.Request.Query["u"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var byId)
+                && await users.GetByIdAsync(byId, cancellationToken).ConfigureAwait(false) is not null ? byId : null)
+            : await ResolveRequesterIdAsync(context.Request.Query["us"].ToString(), registry, users, cancellationToken).ConfigureAwait(false);
         if (requesterId is { } requester && restricted.Contains(requester)
             && (await users.GetByIdAsync(requester, cancellationToken).ConfigureAwait(false) is not { } requesterUser
                 || context.Request.Query["ha"].ToString() is not { Length: > 0 } passwordMd5
@@ -104,12 +117,13 @@ public static class WebEndpoints
         }
 
         // The reply's format version (`vv`): old clients (docs/old-clients.md) send 1–3, today's 4.
-        if (!int.TryParse(context.Request.Query["vv"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var formatVersion))
+        if (early || !int.TryParse(context.Request.Query["vv"].ToString(), NumberStyles.None, CultureInfo.InvariantCulture, out var formatVersion))
             formatVersion = 1;
 
         var sb = new System.Text.StringBuilder();
-        sb.AppendLine(string.Create(CultureInfo.InvariantCulture,
-            $"{StatusFor((int)beatmap.Status, formatVersion)}|false|{beatmap.Id}|{beatmap.SetId}|{board.Count}|0|"));
+        sb.AppendLine(early
+            ? EarlyStatus(beatmap.Status)
+            : string.Create(CultureInfo.InvariantCulture, $"{StatusFor((int)beatmap.Status, formatVersion)}|false|{beatmap.Id}|{beatmap.SetId}|{board.Count}|0|"));
         sb.AppendLine("0");
         sb.AppendLine(beatmap.FullName);
         // The players' average rating (the website's); 10.0 without the website.
@@ -313,6 +327,17 @@ public static class WebEndpoints
         >= 4 => status,
         3 => status == 5 ? 3 : status,
         _ => status switch { 2 => 4, 4 => 2, 5 => 3, _ => status },
+    };
+
+    /// <summary>
+    /// A map's status for osu-getscores6.php: -1 not submitted, 0 pending, 1 update available, 2 ranked,
+    /// 3 approved. Those builds have no qualified or loved; both go as approved (a board, no pp).
+    /// </summary>
+    internal static string EarlyStatus(RankedStatus status) => status switch
+    {
+        RankedStatus.Ranked => "2",
+        RankedStatus.Approved or RankedStatus.Qualified or RankedStatus.Loved => "3",
+        _ => ((int)status).ToString(CultureInfo.InvariantCulture),
     };
 
     private static readonly string UpdateAvailable = string.Create(CultureInfo.InvariantCulture, $"{(int)RankedStatus.UpdateAvailable}|false");

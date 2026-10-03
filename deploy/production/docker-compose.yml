@@ -118,6 +118,8 @@ services:
       TOMYUM_OSU__APIKEY: ${OSU_API_KEY:-}
       TOMYUM_OSU__CLIENTID: ${OSU_CLIENT_ID:-}
       TOMYUM_OSU__CLIENTSECRET: ${OSU_CLIENT_SECRET:-}
+      # TomYum.Gateway (docs/gateway.md): the secret shared with it; empty turns the link off.
+      TOMYUM_GATEWAY__KEY: ${GATEWAY_KEY:-}
     volumes:
       - server-data:/app/data
       # Checks lazer logins for beatmap submission.
@@ -134,6 +136,29 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # pre-2014 osu! builds' bancho over TCP (server.<domain>:13381), on this server (docs/gateway.md).
+  # Off unless the gateway profile is on (COMPOSE_PROFILES=gateway in .env). IRC stays in TomYum here;
+  # to move IRC and server.<domain> to another box instead, use deploy/gateway there.
+  gateway:
+    profiles: [gateway]
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        PROJECT: services/TomYum.Gateway/TomYum.Gateway.csproj
+    entrypoint: ["dotnet", "TomYum.Gateway.dll"]
+    restart: unless-stopped
+    ports:
+      - "${GATEWAY_BANCHO_PORT:-13381}:13381"
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      TOMYUM_GATEWAY__DOMAIN: ${DOMAIN}
+      TOMYUM_GATEWAY__UPSTREAM: http://server:8080
+      TOMYUM_GATEWAY__KEY: ${GATEWAY_KEY:-}
+      TOMYUM_GATEWAY__IRC__ENABLED: "false"
+    depends_on:
+      - server
 
   # --- The website (your osu-web fork, built with ppy's production Dockerfile) -----------------
   osu-web-build:

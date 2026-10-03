@@ -92,6 +92,11 @@ panel (**Admin panel → Ranked mods**) count as ranked too, whatever their sett
 - Every 30 seconds it looks for mods whose `ranked` changed (`applied` is the value old scores were
   last worked out for): lazer scores with that mod lose their pp and get it worked out again, go
   back into the search index, and their players' totals are recalculated.
+- Relax/Autopilot plays (RX in osu!, taiko, catch; AP in osu!) wait in the processor until TomYum's
+  import (`LazerRelaxImport`, every second) has taken them into the relax/autopilot statistics; at most
+  15 seconds (`TomYumRelaxWait.cs`). The game asks for the player's statistics once the processor says
+  a score is processed, so its results screen then shows the play counted (the client asks for the
+  `osurx`/`osuap`/... statistics after an RX/AP play).
 - Relax and Autopilot aren't offered (they have their own leaderboards here, like stable's); Classic
   marks stable plays. Stable plays aren't affected.
 - The lazer client still shows such a mod as unranked while playing: only the server's answer changes.

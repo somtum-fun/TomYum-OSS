@@ -21,7 +21,9 @@ namespace TomYum.Server.OsuWeb;
 /// </summary>
 public sealed class LazerRelaxImport : BackgroundService
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(5);
+    // Every second: ppy's score processor holds a Relax/Autopilot play until it's taken in here
+    // (deploy/score-processor/TomYumRelaxWait.cs), so the game shows the play counted.
+    private static readonly TimeSpan Interval = TimeSpan.FromSeconds(1);
 
     private readonly IServiceScopeFactory _scopes;
     private readonly PlayerRegistry _players;

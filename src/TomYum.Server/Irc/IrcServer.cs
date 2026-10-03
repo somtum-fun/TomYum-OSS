@@ -59,9 +59,10 @@ public sealed class IrcServer : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 var client = await listener.AcceptTcpClientAsync(stoppingToken).ConfigureAwait(false);
-                var session = ActivatorUtilities.CreateInstance<IrcSession>(_services, client);
+                var session = ActivatorUtilities.CreateInstance<IrcSession>(_services, (Stream)client.GetStream());
                 _ = Task.Run(async () =>
                 {
+                    using (client)
                     using (session)
                         await session.RunAsync(stoppingToken).ConfigureAwait(false);
                 }, stoppingToken);

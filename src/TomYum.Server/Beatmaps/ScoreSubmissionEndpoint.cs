@@ -65,7 +65,9 @@ public static class ScoreSubmissionEndpoint
         if (context.Request.ContentType?.Contains(";+boundary=", StringComparison.OrdinalIgnoreCase) == true)
             context.Request.ContentType = context.Request.ContentType.Replace(";+boundary=", "; boundary=", StringComparison.OrdinalIgnoreCase);
 
-        var form = context.Request.Form;
+        var form = context.Request.HasFormContentType
+            ? await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false)
+            : FormCollection.Empty;
 
         // Old clients post to osu-submit-modular.php: no osuver (an older key) and no bmk (the map's
         // checksum is the score's first field), and they expect the older reply below.
@@ -75,7 +77,14 @@ public static class ScoreSubmissionEndpoint
         var ivBase64 = form["iv"].ToString();
         var scoreParams = form["score"];
 
-        if ((!legacy && (string.IsNullOrEmpty(osuver) || string.IsNullOrEmpty(bmk))) || string.IsNullOrEmpty(ivBase64) || scoreParams.Count == 0)
+        // Numbered builds (b1122, docs/old-clients.md) send the score unencrypted in the query
+        // (?score=<the same fields>&pass=<md5>), and the replay as a file part named "replay".
+        var plainScore = legacy && string.IsNullOrEmpty(ivBase64) && context.Request.Query["score"].ToString() is { Length: > 0 } inQuery
+            ? inQuery
+            : null;
+
+        if (plainScore is null
+            && ((!legacy && (string.IsNullOrEmpty(osuver) || string.IsNullOrEmpty(bmk))) || string.IsNullOrEmpty(ivBase64) || scoreParams.Count == 0))
         {
             logger.LogWarning("Score submission rejected: missing form fields (osuver/bmk/iv/score)");
             return Results.Text("error: no", "text/plain");
@@ -84,7 +93,7 @@ public static class ScoreSubmissionEndpoint
         // The client sends the `score` field twice: [0] = encrypted score string, [1] = .osr file.
         // Read replay bytes now while the multipart body is still buffered.
         byte[]? replayBytes = null;
-        var replayFiles = form.Files.GetFiles("score");
+        var replayFiles = form.Files.GetFiles("score") is { Count: > 0 } scoreFiles ? scoreFiles : form.Files.GetFiles("replay");
         var replayFile = replayFiles.Count > 0 ? replayFiles[replayFiles.Count - 1] : null;
         if (replayFile is not null && replayFile.Length >= MinReplaySize)
         {
@@ -96,26 +105,33 @@ public static class ScoreSubmissionEndpoint
         // Decrypt first — the username is inside the payload at parts[1].
         // Format: beatmapMd5:username:clientMd5:n300:n100:n50:nGeki:nKatu:nMiss:score:maxCombo:perfect:grade:mods:passed:mode:date:version
         string decrypted;
-        try
+        if (plainScore is not null)
         {
-            var keyRaw = Encoding.UTF8.GetBytes(string.IsNullOrEmpty(osuver) ? LegacyKey : $"osu!-scoreburgr---------{osuver}");
-            var keyBytes = new byte[32];
-            Buffer.BlockCopy(keyRaw, 0, keyBytes, 0, Math.Min(keyRaw.Length, 32));
-            var ivBytes = Convert.FromBase64String(ivBase64);
-            var cipherText = Convert.FromBase64String(scoreParams[0]!);
-
-            var engine = new RijndaelEngine(256);
-            var cipher = new PaddedBufferedBlockCipher(new CbcBlockCipher(engine), new Pkcs7Padding());
-            cipher.Init(false, new ParametersWithIV(new KeyParameter(keyBytes), ivBytes));
-            var plain = new byte[cipher.GetOutputSize(cipherText.Length)];
-            var len = cipher.ProcessBytes(cipherText, 0, cipherText.Length, plain, 0);
-            len += cipher.DoFinal(plain, len);
-            decrypted = Encoding.UTF8.GetString(plain, 0, len);
+            decrypted = plainScore;
         }
-        catch (Exception ex)
+        else
         {
-            logger.LogWarning(ex, "Score submission rejected: AES decryption failed (osuver='{Osuver}')", osuver);
-            return Results.Text("error: no", "text/plain");
+            try
+            {
+                var keyRaw = Encoding.UTF8.GetBytes(string.IsNullOrEmpty(osuver) ? LegacyKey : $"osu!-scoreburgr---------{osuver}");
+                var keyBytes = new byte[32];
+                Buffer.BlockCopy(keyRaw, 0, keyBytes, 0, Math.Min(keyRaw.Length, 32));
+                var ivBytes = Convert.FromBase64String(ivBase64);
+                var cipherText = Convert.FromBase64String(scoreParams[0]!);
+
+                var engine = new RijndaelEngine(256);
+                var cipher = new PaddedBufferedBlockCipher(new CbcBlockCipher(engine), new Pkcs7Padding());
+                cipher.Init(false, new ParametersWithIV(new KeyParameter(keyBytes), ivBytes));
+                var plain = new byte[cipher.GetOutputSize(cipherText.Length)];
+                var len = cipher.ProcessBytes(cipherText, 0, cipherText.Length, plain, 0);
+                len += cipher.DoFinal(plain, len);
+                decrypted = Encoding.UTF8.GetString(plain, 0, len);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Score submission rejected: AES decryption failed (osuver='{Osuver}')", osuver);
+                return Results.Text("error: no", "text/plain");
+            }
         }
 
         var parts = decrypted.Split(':');
@@ -137,8 +153,10 @@ public static class ScoreSubmissionEndpoint
             return Results.Text("error: no", "text/plain");
         }
 
-        var passwordMd5 = form["pass"].ToString();
-        if (!string.IsNullOrEmpty(passwordMd5) && !hasher.Verify(passwordMd5, user.PasswordBcrypt))
+        var passwordMd5 = plainScore is null ? form["pass"].ToString() : context.Request.Query["pass"].ToString();
+        // An unencrypted score always needs the password (nothing else ties it to the player).
+        if ((plainScore is not null && string.IsNullOrEmpty(passwordMd5))
+            || (!string.IsNullOrEmpty(passwordMd5) && !hasher.Verify(passwordMd5, user.PasswordBcrypt)))
         {
             logger.LogWarning("Score submission rejected: pass verification failed for '{Username}'", usernameFromScore);
             return Results.Text("error: no", "text/plain");
