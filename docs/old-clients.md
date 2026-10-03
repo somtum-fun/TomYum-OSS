@@ -58,6 +58,15 @@ Sign out of a real osu! account in that client first: its login is sent to this 
   (104 account restricted before b20140716, 105 before b20140731, 106 match abort and 107 before
   b20141104), and builds before b20140528 get and send multiplayer rooms with 8 slots instead of 16
   (slots past 8 are dropped for them; their rooms get the other 8 locked).
+- **Song select** asks bancho for its maps' status and the player's grades (BEATMAP_INFO_REQUEST 68,
+  by file name and id); the reply (69) uses the build's statuses (qualified from b20150826, loved
+  from b20161101, approved before) and grades in the order osu!, catch, taiko, mania.
+- **Invites** reach old builds as MATCH_INVITE (88) with the inviter as the target (osuTitanic's
+  way); BanchoBot's `!mp invite <player>` sends the same, for clients whose menu doesn't.
+- **8-slot builds** join rooms only in slots 1–8 and aren't sent scores, fails or skips of slots
+  9–16; room and spectator chat open as a tab (CHANNEL_AUTO_JOIN before JOIN_SUCCESS); the menu
+  icon is "|" rather than empty; client error reports (20) go to the server log;
+  `osu-checktweets.php` answers empty.
 - **Diagnostics.** The server log names each packet type the first time it goes to or comes from
   an old build's session (`LegacyPacketLog`): that's how the chat problem showed.
 - **Downloads and thumbnails.** .NET 2.0 has no TLS 1.2, so these clients can't follow the usual

@@ -39,6 +39,8 @@ public static partial class StableClientEndpoints
         // Old clients' update checks (docs/old-clients.md): never an update, the build stays as it is.
         // Without an answer a 2014 build waits on "Receiving data..." for good.
         app.MapGet("/release/update.php", () => Results.Text("0", "text/plain")).RequireHost(hosts);
+        // Old clients' news ticker (a status line osu! once showed in-game): nothing to show.
+        app.MapGet("/web/osu-checktweets.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapGet("/release/update2.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapGet("/release/patches.php", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);
         app.MapGet("/release/update", () => Results.Text(string.Empty, "text/plain")).RequireHost(hosts);

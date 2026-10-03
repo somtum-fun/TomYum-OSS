@@ -106,7 +106,7 @@ public sealed class BanchoBotCommands
     [ChatCommand("plugins", Hidden = true)]
     private string PluginsCommand(ChatCommandContext context) => ListPlugins();
 
-    [ChatCommand("mp", Usage = "<start|abort|countdown|host|kick>")]
+    [ChatCommand("mp", Usage = "<start|abort|countdown|host|kick|invite>")]
     private Task<string?> Mp(ChatCommandContext context) =>
         MpAsync(context.Caller, context.Parts, context.Privileges, context.CancellationToken);
 
@@ -344,7 +344,7 @@ public sealed class BanchoBotCommands
         CancellationToken cancellationToken)
     {
         if (parts.Length < 2)
-            return "Usage: !mp <start [seconds]|abort|countdown <seconds>|host <player>|kick <player>>";
+            return "Usage: !mp <start [seconds]|abort|countdown <seconds>|host <player>|kick <player>|invite <player>>";
 
         var sub = parts[1].ToLowerInvariant();
 
@@ -363,6 +363,7 @@ public sealed class BanchoBotCommands
             "countdown" => await MpCountdownAsync(match, parts).ConfigureAwait(false),
             "host"      => MpHost(match, parts, caller, privileges),
             "kick"      => MpKick(match, parts, privileges),
+            "invite"    => MpInvite(match, parts, caller),
             _ => string.Create(CultureInfo.InvariantCulture, $"Unknown !mp subcommand \"{sub}\"."),
         };
     }
@@ -498,6 +499,24 @@ public sealed class BanchoBotCommands
 
         MatchBroadcast.UpdateMatch(match, _players);
         return string.Create(CultureInfo.InvariantCulture, $"{target.Presence.Username} is now the host.");
+    }
+
+    /// <summary>!mp invite: the same invite as the client's own (old clients' menus may not send one).</summary>
+    private string MpInvite(Match match, string[] parts, OnlinePlayer caller)
+    {
+        if (parts.Length < 3)
+            return "Usage: !mp invite <username>";
+        var targetName = string.Join(' ', parts.Skip(2));
+        var target = _players.GetByUsername(targetName);
+        if (target is null || target.IsIrc)
+            return string.Create(CultureInfo.InvariantCulture, $"\"{targetName}\" is not online in the game.");
+        lock (match.SyncRoot)
+        {
+            if (match.IndexOf(target.UserId) >= 0)
+                return string.Create(CultureInfo.InvariantCulture, $"{target.Presence.Username} is already in this room.");
+        }
+        Packets.Match.MatchInviteHandler.Send(match, caller, target);
+        return string.Create(CultureInfo.InvariantCulture, $"Invited {target.Presence.Username}.");
     }
 
     private string MpKick(Match match, string[] parts, BanchoPrivileges privileges)

@@ -35,6 +35,20 @@ public static class LegacyPackets
         {
             if (!build.Knows((ServerPacketId)id))
                 return; // left out
+            if (build.MatchSlots != 16 && SlotOf(id, payload) is { } slot && slot >= build.MatchSlots)
+                return; // a slot this build doesn't have
+            switch ((ServerPacketId)id)
+            {
+                case ServerPacketId.MainMenuIcon when payload is [0]:
+                    // "image|url" with neither: old builds split it on the pipe (chio sends "|").
+                    writer.WritePacket(ServerPacketId.MainMenuIcon, w => w.WriteString("|"));
+                    return;
+                case ServerPacketId.ChannelJoinSuccess when ChannelName(payload) is { } name
+                    && (name.StartsWith("#multiplayer", StringComparison.Ordinal) || name.StartsWith("#spectator", StringComparison.Ordinal)):
+                    // Room and spectator chat: old builds open the tab from "auto-join", then "joined" (as osuTitanic sends them).
+                    ChatEncoder.WriteChannelAutoJoin(writer, name, string.Empty, 1);
+                    break;
+            }
             var converted = build.MatchSlots != 16 && ServerMatchPackets.Contains(id)
                 ? Room(payload, 16, build.MatchSlots)
                 : null;
@@ -121,6 +135,28 @@ public static class LegacyPackets
             return null;
         }
         catch (OverflowException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The match slot a server packet is about, for the ones that name one (score frames, fails, skips).</summary>
+    private static int? SlotOf(ushort id, byte[] payload) => (ServerPacketId)id switch
+    {
+        ServerPacketId.MatchScoreUpdate when payload.Length > 4 => payload[4], // the score frame's id byte
+        ServerPacketId.MatchPlayerFailed or ServerPacketId.MatchPlayerSkipped when payload.Length >= 4
+            => BinaryPrimitives.ReadInt32LittleEndian(payload),
+        _ => null,
+    };
+
+    /// <summary>The channel name in a JOIN_SUCCESS payload, or null.</summary>
+    private static string? ChannelName(byte[] payload)
+    {
+        try
+        {
+            return new BanchoPacketReader(payload).ReadString();
+        }
+        catch (InvalidDataException)
         {
             return null;
         }

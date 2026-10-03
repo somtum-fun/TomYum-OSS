@@ -21,15 +21,41 @@ public sealed class MatchInviteHandler : IClientPacketHandler
         var target   = context.Registry.GetByUserId(targetId);
         if (target is null) return Task.CompletedTask;
 
-        // The invite is a SEND_MESSAGE (7) from the inviting player whose text is the match URL.
+        Send(match, context.Player, target);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Invites <paramref name="target"/> to <paramref name="match"/> from <paramref name="from"/> (also
+    /// BanchoBot's <c>!mp invite</c>). Old builds (docs/old-clients.md) take an invite only as
+    /// MATCH_INVITE (88), with the inviter as the target, as osuTitanic and bancho.py send it; today's
+    /// client gets the same text as a plain message, whose link it shows.
+    /// </summary>
+    public static void Send(TomYum.Server.Bancho.Match match, OnlinePlayer from, OnlinePlayer target)
+    {
+        ArgumentNullException.ThrowIfNull(match);
+        ArgumentNullException.ThrowIfNull(from);
+        ArgumentNullException.ThrowIfNull(target);
+
         var inviteText = $"Come join my multiplayer game: [osump://{match.Id}/{Uri.EscapeDataString(match.Password)} {match.Name}]";
-        var sender     = context.Player.Presence.Username;
-        var message    = new BanchoMessage(sender, inviteText, target.Presence.Username, context.Player.UserId);
+        var sender     = from.Presence.Username;
+        var message    = new BanchoMessage(sender, inviteText, target.Presence.Username, from.UserId);
 
         var w = new BanchoPacketWriter(256);
-        ChatEncoder.WriteMessage(w, message);
+        if (target.Build.IsLegacy)
+        {
+            w.WritePacket(ServerPacketId.MatchInvite, pw =>
+            {
+                pw.WriteString(message.Sender);
+                pw.WriteString(message.Text);
+                pw.WriteString(message.Sender);
+                pw.WriteInt32(message.SenderId);
+            });
+        }
+        else
+        {
+            ChatEncoder.WriteMessage(w, message);
+        }
         target.Enqueue(w.ToArray());
-
-        return Task.CompletedTask;
     }
 }
