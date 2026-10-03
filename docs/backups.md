@@ -41,5 +41,6 @@ for v in server-data osu-web-uploads osu-web-storage redis-data; do
   docker run --rm -v tomyum_$v:/v -v ~/backups/<run>:/in alpine sh -c "cd /v && tar xzf /in/$v.tar.gz"
 done
 docker compose up -d
-docker compose run --rm artisan es:index-documents --yes   # rebuild the search index
+docker compose run --rm -T artisan es:index-documents --no-interaction </dev/null   # rebuild the search indexes
+docker compose run --rm -T score-indexer queue pump-all </dev/null                  # and the scores' index
 ```
