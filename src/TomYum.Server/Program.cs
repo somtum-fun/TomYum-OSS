@@ -349,6 +349,9 @@ builder.Services.AddSingleton<IClientPacketHandler, MatchChangeModsHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, MatchChangeTeamHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, MatchTransferHostHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, MatchInviteHandler>();
+// Old clients (docs/old-clients.md): song select's beatmap info, and their error reports.
+builder.Services.AddSingleton<IClientPacketHandler, TomYum.Server.Bancho.Packets.BeatmapInfoRequestHandler>();
+builder.Services.AddSingleton<IClientPacketHandler, TomYum.Server.Bancho.Packets.ErrorReportHandler>();
 builder.Services.AddSingleton<IClientPacketHandler, MatchChangePasswordHandler>();
 
 // Spectating handlers.

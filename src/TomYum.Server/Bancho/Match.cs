@@ -82,9 +82,10 @@ public sealed class Match
     }
 
     /// <summary>Returns the first open slot index, or -1 when all slots are occupied/locked.</summary>
-    public int FirstOpenSlot()
+    public int FirstOpenSlot(int slotCount = SlotCount)
     {
-        for (var i = 0; i < Slots.Length; i++)
+        // An old build sees only its own number of slots (docs/old-clients.md): it's placed among those.
+        for (var i = 0; i < Math.Min(slotCount, Slots.Length); i++)
             if (Slots[i].Status == SlotStatus.Open) return i;
         return -1;
     }

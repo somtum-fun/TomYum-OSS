@@ -74,6 +74,8 @@ public static class BanchoEndpoints
         // this player or others), then flush this player's queue followed by anything the
         // handlers produced for the originator in-line.
         var body = await ReadBodyAsync(context.Request, cancellationToken).ConfigureAwait(false);
+        // Old builds (docs/old-clients.md): what they send in today's layout (8-slot rooms to 16).
+        body = LegacyPackets.Incoming(body, player.Build);
         var produced = await dispatcher.DispatchAsync(player, registry, channels, matches, services, body).ConfigureAwait(false);
 
         var queued = player.DequeueAll();
@@ -92,6 +94,9 @@ public static class BanchoEndpoints
             queued.CopyTo(response, 0);
             produced.CopyTo(response, queued.Length);
         }
+
+        // ...and what they're sent in theirs: no packets they don't know, rooms with their slot count.
+        response = LegacyPackets.Outgoing(response, player.Build);
 
         if (player.Build.IsLegacy && services.GetService<ILoggerFactory>() is { } logs)
         {
@@ -133,16 +138,18 @@ public static class BanchoEndpoints
         {
             await ips.RecordAsync(player.UserId, LoginIps.ClientAddress(context)).ConfigureAwait(false);
         }
+        var reply = outcome.Body;
         if (outcome.Token is { } loggedIn
-            && context.RequestServices.GetService<PlayerRegistry>()?.GetByToken(loggedIn) is { Build.IsLegacy: true } oldClient
-            && context.RequestServices.GetService<ILoggerFactory>() is { } logs)
+            && context.RequestServices.GetService<PlayerRegistry>()?.GetByToken(loggedIn) is { Build.IsLegacy: true } oldClient)
         {
-            LegacyPacketLog.Note(oldClient, outcome.Body, outgoing: true, logs.CreateLogger(typeof(LegacyPacketLog)));
+            reply = LegacyPackets.Outgoing(reply, oldClient.Build);
+            if (context.RequestServices.GetService<ILoggerFactory>() is { } logs)
+                LegacyPacketLog.Note(oldClient, reply, outgoing: true, logs.CreateLogger(typeof(LegacyPacketLog)));
         }
 
         // The client reads cho-token from the response header on every login attempt; on
         // failure the value is irrelevant (it branches on the USER_ID packet) but must exist.
         context.Response.Headers[ChoTokenHeader] = outcome.Token ?? "no-token";
-        return Results.Bytes(outcome.Body, OctetStream);
+        return Results.Bytes(reply, OctetStream);
     }
 }

@@ -337,8 +337,10 @@ Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what wor
 - [~] **1. Version detection:** the build is kept on the session (`ClientBuild`). b20140624 logs in with
       today's client-info line and works with protocol 19 as sent today; picking 18 for older builds
       waits until one is tested.
-- [~] **2. Outgoing translation:** not needed for b20140624 (it reads today's packets, 16-slot matches
-      included). Dropping unknown packets, capping pp and 8-slot matches wait for an older build that needs them.
+- [x] **2. Outgoing translation:** `LegacyPackets` (after Lekuruu's chio): packets a build doesn't know
+      are left out (104, 105, 106, 107 by build), rooms have 8 slots for builds before b20140528; pp is
+      already a signed 16-bit number; beatmap info (69) isn't sent. Chat: old builds are told they're in
+      the auto-join channels at login. 2026-10-02
 - [~] **3. Incoming translation:** frames in the older layout get today's fields (`LegacyFrames`);
       b20140624 already sends today's layout. Multiplayer and spectating today's client: untested (needs
       a second PC).

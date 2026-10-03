@@ -40,7 +40,7 @@ public sealed class JoinMatchHandler : IClientPacketHandler
                 return Task.CompletedTask;
             }
 
-            var slot = match.FirstOpenSlot();
+            var slot = match.FirstOpenSlot(context.Player.Build.MatchSlots);
             if (slot < 0)
             {
                 context.Response.WritePacket(ServerPacketId.MatchJoinFail, null);

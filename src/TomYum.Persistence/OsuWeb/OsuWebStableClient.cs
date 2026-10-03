@@ -50,6 +50,26 @@ public sealed class OsuWebStableClient
             .ToListAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>The known difficulties among <paramref name="beatmapIds"/> (old clients' beatmap info asks by id too).</summary>
+    public async Task<IReadOnlyList<FileMap>> FindByIdsAsync(IReadOnlyCollection<int> beatmapIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(beatmapIds);
+        var ids = beatmapIds.Where(id => id > 0).Select(id => (uint)id).Distinct().ToList();
+        if (ids.Count == 0)
+            return [];
+        return await _db.Beatmaps.AsNoTracking()
+            .Where(b => ids.Contains(b.BeatmapId))
+            .Select(b => new FileMap
+            {
+                Filename = b.Filename ?? string.Empty,
+                BeatmapId = b.BeatmapId,
+                BeatmapsetId = b.BeatmapsetId ?? 0,
+                Checksum = b.Checksum ?? string.Empty,
+                Approved = b.Approved,
+            })
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>The player's best grade per difficulty and ruleset (passes only; empty for none).</summary>
     public async Task<IReadOnlyDictionary<(uint BeatmapId, int Ruleset), string>> BestGradesAsync(int userId, IReadOnlyCollection<uint> beatmapIds, CancellationToken cancellationToken = default)
     {
