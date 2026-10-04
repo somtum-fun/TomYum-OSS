@@ -31,6 +31,7 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<LoadedPluginRegistry>();
         services.AddSingleton<IHostPlayerView, HostPlayerView>();
         services.AddSingleton<IHostOnlineCounts, HostOnlineCountsView>();
+        services.AddSingleton<IHostMessenger, HostMessenger>();
 
         services.AddHostedService<PluginHostService>();
 
