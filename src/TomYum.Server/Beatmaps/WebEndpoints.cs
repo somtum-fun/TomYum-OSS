@@ -101,10 +101,6 @@ public static class WebEndpoints
             mode = 0;
         }
 
-        // The client sends its active mods; Relax/Autopilot select that variant's leaderboard so
-        // relax scores never mix with vanilla. The combined mode also picks the sort (pp vs score).
-        _ = int.TryParse(context.Request.Query["mods"].ToString(), out var modsArg);
-        var gameMode = ((Mods)modsArg).ToGameMode(mode);
 
         // The requesting player. osu!stable sends its username as `us` and its password's md5 as `ha`;
         // builds before 2013 send only their user id as `u`. Personal bests are public (they're on the
@@ -114,6 +110,11 @@ public static class WebEndpoints
         Score? personalBest = null;
         var requesterId = await ResolveRequesterIdAsync(context.Request.Query["us"].ToString(), registry, users, cancellationToken).ConfigureAwait(false)
             ?? await RequesterByIdAsync(context.Request.Query["u"].ToString(), users, cancellationToken).ConfigureAwait(false);
+
+        // The client's active mods; Relax/Autopilot select that variant's leaderboard so relax
+        // scores never mix with vanilla. The combined mode also picks the sort (pp vs score).
+        var modsArg = BoardMods(context.Request, requesterId, registry);
+        var gameMode = ((Mods)modsArg).ToGameMode(mode);
         if (requesterId is { } requester && restricted.Contains(requester)
             && (await users.GetByIdAsync(requester, cancellationToken).ConfigureAwait(false) is not { } requesterUser
                 || context.Request.Query["ha"].ToString() is not { Length: > 0 } passwordMd5
@@ -354,6 +355,22 @@ public static class WebEndpoints
     }
 
     private const int SelectedModsBoard = 2;
+
+    /// <summary>
+    /// The mods a leaderboard request is for: the ones it sends (`mods`, from b20130329). Older builds
+    /// don't send them, so the Relax/Autopilot board is the one the player's game last told bancho
+    /// it's on (its status carries the mods); only those two bits, which pick the board.
+    /// </summary>
+    internal static int BoardMods(HttpRequest request, int? requesterId, PlayerRegistry registry)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(registry);
+        if (int.TryParse(request.Query["mods"].ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var mods))
+            return mods;
+        return requesterId is { } id && registry.GetByUserId(id) is { } player
+            ? (int)(player.Presence.Mods & (Mods.Relax | Mods.Autopilot))
+            : 0;
+    }
     private const int FriendsBoard = 3;
     private const int CountryBoard = 4;
 

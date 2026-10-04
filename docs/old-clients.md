@@ -102,6 +102,8 @@ stats-only form).
   `vv=3` ranked is 4 and qualified 2, before `vv=4` there's no loved (sent as approved) and no
   replay flag, and `vv=1` has the date as text. (The client reads a status it doesn't know as ranked.)
   Builds before 2013 send the player as `u=<id>` with no `us`; their personal best is found by that id.
+  Builds before b20130329 don't send their mods (`mods`), so the Relax or Autopilot leaderboard is
+  the one the player's last bancho status says they're on (`WebEndpoints.BoardMods`).
 - **Leaderboards of 2008–2012 builds**, each version in its own reply: `osu-getscores2.php` (b337,
   b370: status line, then scores with perfect as `True`/`False` and the avatar file in place of the
   rank; approved, qualified and loved go as ranked), `osu-getscores3.php` (b394a, the same with approved),

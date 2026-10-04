@@ -120,6 +120,24 @@ public class EarlyWebEndpointsTests
         Assert.False(DirectEndpoints.HasNoMania(Request("u=someone&h=x", plainHttp: true), registry));
     }
 
+    [Fact]
+    public void Leaderboard_WithoutMods_IsTheBoardTheGameIsOn()
+    {
+        var registry = new PlayerRegistry();
+        registry.Add(new BanchoPresence { UserId = 2, Username = "Relaxing", Mods = Mods.Relax | Mods.Hidden });
+        registry.Add(new BanchoPresence { UserId = 3, Username = "Autopiloting", Mods = Mods.Autopilot });
+
+        // Sent mods are the request's own (b20130329 on).
+        Assert.Equal((int)(Mods.Hidden | Mods.DoubleTime), WebEndpoints.BoardMods(Request("mods=72"), 2, registry));
+        Assert.Equal(0, WebEndpoints.BoardMods(Request("mods=0"), 2, registry));
+        // Older builds send none: Relax/Autopilot from the player's last status, nothing else.
+        Assert.Equal((int)Mods.Relax, WebEndpoints.BoardMods(Request("u=2"), 2, registry));
+        Assert.Equal((int)Mods.Autopilot, WebEndpoints.BoardMods(Request("u=3"), 3, registry));
+        // Nobody known, or not online: vanilla.
+        Assert.Equal(0, WebEndpoints.BoardMods(Request("u=9"), 9, registry));
+        Assert.Equal(0, WebEndpoints.BoardMods(Request(""), null, registry));
+    }
+
     [Theory]
     [InlineData("[{\"Mode\":3},{\"Mode\":3}]", true)]
     [InlineData("[{\"Mode\":3},{\"Mode\":0}]", false)] // mixed sets stay listed
