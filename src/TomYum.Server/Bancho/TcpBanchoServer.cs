@@ -101,12 +101,20 @@ internal sealed class TcpBanchoSession : IDisposable
     private static readonly TimeSpan LoginTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PushInterval = TimeSpan.FromMilliseconds(50);
 
+    /// <summary>
+    /// TCP builds give up on a bancho that's said nothing for a while (b1122 after 30 s) and log in
+    /// again; bancho kept them with a ping (id 8, empty) when there was nothing else to send.
+    /// </summary>
+    private static readonly TimeSpan KeepAlive = TimeSpan.FromSeconds(10);
+    private static readonly byte[] PingPacket = [8, 0, 0, 0, 0, 0, 0];
+
     private readonly TcpClient _client;
     private readonly bool _proxyProtocol;
     private readonly IServiceProvider _services;
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _writeLock = new(1, 1);
     private NetworkStream? _stream;
+    private long _lastWriteTicks = Environment.TickCount64;
 
     public TcpBanchoSession(TcpClient client, bool proxyProtocol, IServiceProvider services, ILogger logger)
     {
@@ -264,17 +272,17 @@ internal sealed class TcpBanchoSession : IDisposable
                 return;
             }
             player.LastActivityUtc = DateTimeOffset.UtcNow; // an open connection is a live player
-            if (player.HasQueued)
+            try
             {
-                try
-                {
+                if (player.HasQueued)
                     await ExchangeAsync(player, [], cancellationToken).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
-                {
-                    _client.Close();
-                    return;
-                }
+                else if (Environment.TickCount64 - Interlocked.Read(ref _lastWriteTicks) >= (long)KeepAlive.TotalMilliseconds)
+                    await WriteAsync(PingPacket, cancellationToken).ConfigureAwait(false); // they answer with a pong
+            }
+            catch (Exception ex) when (ex is IOException or SocketException or ObjectDisposedException)
+            {
+                _client.Close();
+                return;
             }
         }
     }
@@ -287,6 +295,7 @@ internal sealed class TcpBanchoSession : IDisposable
         try
         {
             await _stream.WriteAsync(data, cancellationToken).ConfigureAwait(false);
+            Interlocked.Exchange(ref _lastWriteTicks, Environment.TickCount64);
         }
         finally
         {
