@@ -3,7 +3,7 @@
 > **Docs convention.** `docs/` holds the documentation (contributors, operators): one page per
 > feature, plus this checklist.
 
-_Last updated: 2026-10-03 (version 0.3.0-dev)._ .NET 10; production at example.com (stable, lazer and the website), sundei.eu as the test server._
+_Last updated: 2026-10-04 (version 0.3.0-dev)._ .NET 10; production at example.com (stable, lazer and the website), sundei.eu as the test server._
 
 This is the living checklist for the big feature wave requested on 2026-07-07: `.osu` cache →
 plugin host → moderation/HWID → spectating → DAN/Session ports → custom beatmaps → **osu!lazer
@@ -415,6 +415,28 @@ MIT, a clean-room loader instead of Titanic! Hook):
     open source) and every build needs its own patches. If ever done, ship a patcher for the player's
     own copy, never patched binaries.
   - Use Titanic! Hook as docs/old-clients.md describes, and only keep TomYum's server side compatible.
+
+### production, 2026-10-04 (example.com): old clients playable with Relax/Autopilot
+Played on b1553 (a non-Titanic, obfuscated copy) through the production hook (example-org/private-repo 1.3.3,
+the Titanic! Hook fork; test builds on dl.example.com/hook/):
+- **Relax/Autopilot:** misses show, combo breaks sound, local scores kept; b452–b1844 submit them
+  (their ranked mods check refused them); builds before b20130329 send `&mods=` with the leaderboard
+  (their bancho status has the mods only while playing). Server side, `WebEndpoints.BoardMods` falls
+  back to the player's last status when there are none. Scores land on the Relax/Autopilot boards.
+- **Screen mode, set ids, song switch** as the decompiled clients' prod patcher (steps 6–9); the hook
+  finds each by its IL shape, also in exes with control flow obfuscation and encrypted strings
+  (`OldClientShapes.Flow`, `ShapeCode`), checked against all 76 Titanic builds and that b1553.
+- **Old sets import again:** sets repacked in 2014 say zip 6.3 in their local headers, which old
+  osu!'s SharpZipLib refuses; `OszVersionFixStream` corrects them on old clients' downloads.
+- [ ] One hook .exe for every build (today: a .NET 2 build and a .NET 4 build).
+- [ ] Prod-Anticheat-Hook `no-anticheat` doesn't have any of the above yet.
+- [ ] The decompiled clients' patcher doesn't send `&mods=` with the leaderboard yet.
+
+### Relax/Autopilot on the website, 2026-10-04
+- [x] Stable mode's beatmap boards have only stable plays (each player's best stable one); lazer mode
+  both, as the vanilla board.
+- [x] Profile and rankings Top Plays leave out RX/AP plays (a lazer one carries its Akatsuki pp);
+  Rankings Top Plays has Relax/Autopilot variants (TomYum's `/admin/mode-scores/top-plays/{mode}`).
 
 ## Bot accounts 🔒 (none) — done 2026-10-01
 - [x] Admins/developers make bots in the panel (`/panel/bots`): `bot` group, an owner, an IRC key.
