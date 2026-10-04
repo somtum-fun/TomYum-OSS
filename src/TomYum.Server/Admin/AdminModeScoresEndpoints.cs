@@ -39,6 +39,7 @@ public static class AdminModeScoresEndpoints
         ArgumentNullException.ThrowIfNull(admin);
         admin.MapGet("/users/{userId:int}/mode-scores/{mode:int}", GetAsync);
         admin.MapGet("/mode-scores/{scoreId:long}", GetOneAsync);
+        admin.MapGet("/mode-scores/top-plays/{mode:int}", TopPlaysAsync);
         admin.MapGet("/beatmaps/{beatmapId:int}/mode-scores/{mode:int}", LeaderboardAsync);
         admin.MapPost("/beatmaps/{beatmapId:int}/mode-scores/{mode:int}", PlayersLeaderboardAsync);
         admin.MapGet("/replays/mode-score/{scoreId:long}", ReplayAsync);
@@ -206,6 +207,23 @@ public static class AdminModeScoresEndpoints
             board = board.Where(s => (s.Mods & ~ModeMods) == want);
         }
         return board;
+    }
+
+    /// <summary>
+    /// A mode's top plays for the website's rankings (its "Top Plays" with the Relax/Autopilot variant):
+    /// every player's best on each map, stable or lazer, by pp; restricted players left out.
+    /// </summary>
+    internal static async Task<IResult> TopPlaysAsync(int mode, int? limit, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken)
+    {
+        if (mode is < GameMode.RelaxOffset or > GameMode.AutopilotOffset + 3)
+            return Results.BadRequest(new { error = "Only Relax (4-6) and Autopilot (8) are kept here." });
+        var hidden = restricted.Ids.ToList();
+        var top = await db.Scores.AsNoTracking()
+            .Where(s => s.Mode == mode && s.Status == ScoreStatus.Best && s.Passed && s.Pp > 0 && !hidden.Contains(s.UserId))
+            .OrderByDescending(s => s.Pp).ThenBy(s => s.Id)
+            .Take(Math.Clamp(limit ?? 1000, 1, 1000))
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return Results.Ok(new ModeLeaderboard([.. top.Select((s, i) => new ModeLeaderboardEntry(i + 1, s.UserId, Describe(s, mode, configuration)))], null));
     }
 
     /// <summary>One Relax/Autopilot play for its page: who, which mode, its place on the map's leaderboard, whether there's a replay.</summary>

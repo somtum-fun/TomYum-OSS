@@ -140,6 +140,26 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task TopPlays_AreEveryonesBests_ByPp_WithoutRestrictedPlayers()
+    {
+        var db = await NewTomYumContextAsync();
+        db.Scores.AddRange(
+            new Score { UserId = 1, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 300 },
+            new Score { UserId = 1, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Submitted, Passed = true, Pp = 250 },
+            new Score { UserId = 2, BeatmapId = 11, BeatmapMd5 = "b", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 400, FromLazer = true, OsuWebScoreId = 5 },
+            new Score { UserId = 3, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 900 },
+            new Score { UserId = 4, BeatmapId = 10, BeatmapMd5 = "a", Mode = 8, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 800 });
+        await db.SaveChangesAsync();
+        var restricted = new RestrictedUsers();
+        restricted.Set(3, true);
+
+        var json = await Body(await AdminModeScoresEndpoints.TopPlaysAsync(4, null, NewTomYumContext(), restricted, new ConfigurationBuilder().Build(), CancellationToken.None));
+        var plays = string.Join(",", json.GetProperty("scores").EnumerateArray()
+            .Select(e => $"{e.GetProperty("position").GetInt32()}:{e.GetProperty("userId").GetInt32()}:{e.GetProperty("score").GetProperty("pp").GetDouble()}"));
+        Assert.Equal("1:2:400,2:1:300", plays);   // bests only, lazer too, no restricted player, Relax only
+    }
+
+    [MySqlFact]
     public async Task RankHistory_IsSnapshotted_AndShownAsTheGraph()
     {
         var db = await NewTomYumContextAsync();
