@@ -129,8 +129,9 @@ http://osu.{$DOMAIN} {
 
 	# /beatmap-submission: lazer's beatmap submission (its default, under the API URL).
 	# /ss: stable's uploaded screenshots; /difficulty-rating: stable's star ratings with mods;
-	# /release: old clients' update checks (docs/old-clients.md).
-	@tomyum path /web/* /d/* /beatmap-submission/* /ss/* /difficulty-rating /release/*
+	# /release: old clients' update checks; /rating/ingame-rate2.php: numbered builds' beatmap rating
+	# (docs/old-clients.md).
+	@tomyum path /web/* /d/* /beatmap-submission/* /ss/* /difficulty-rating /release/* /rating/ingame-rate2.php
 	handle @tomyum {
 		import tomyum
 	}

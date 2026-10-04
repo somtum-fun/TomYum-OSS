@@ -23,6 +23,9 @@ public static class WebEndpoints
         // The 1-10 rating after playing a map (kept with the website's ratings).
         app.MapGet("/web/osu-rate.php", HandleRateAsync)
             .RequireHost(hosts);
+        // Numbered builds (b1122) rate on the results screen here, with the same query and replies.
+        app.MapGet("/rating/ingame-rate2.php", HandleRateAsync)
+            .RequireHost(hosts);
 
         app.MapGet("/web/osu-getreplay.php", HandleGetReplayAsync)
             .RequireHost(hosts);
