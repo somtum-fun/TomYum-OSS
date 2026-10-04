@@ -37,4 +37,15 @@ public sealed class PersonalBestLookupTests
     {
         Assert.Null(await WebEndpoints.ResolveRequesterIdAsync(username, new PlayerRegistry(), new InMemoryUserRepository(), CancellationToken.None));
     }
+
+    [Fact]
+    public async Task OldBuilds_AreFoundByTheirUserId()
+    {
+        var users = new InMemoryUserRepository();
+        var user = await users.AddAsync(new User { Username = "Blue Sky", Email = "b@tomyum.dev" });
+
+        Assert.Equal(user.Id, await WebEndpoints.RequesterByIdAsync(user.Id.ToString(System.Globalization.CultureInfo.InvariantCulture), users, CancellationToken.None));
+        Assert.Null(await WebEndpoints.RequesterByIdAsync("999", users, CancellationToken.None));
+        Assert.Null(await WebEndpoints.RequesterByIdAsync("Blue Sky", users, CancellationToken.None));
+    }
 }

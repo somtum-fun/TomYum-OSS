@@ -622,9 +622,12 @@ app.Logger.LogInformation("Bancho hosts bound to domain: {Domain}", domain);
 // osu!stable bancho surface: POST / login + poll, GET / status page (c./c4./ce./cho.).
 app.MapBancho(BanchoHosts.Bancho(domain));
 
-// IRC connections the gateway relays (docs/gateway.md); off without Gateway:Key.
+// TCP bancho and IRC connections the gateway relays (docs/gateway.md); off without Gateway:Key.
 if (gatewayOptions.Enabled)
+{
+    app.MapGatewayBancho(BanchoHosts.Bancho(domain));
     app.MapGatewayIrc(BanchoHosts.Bancho(domain));
+}
 
 // osu!stable in-game registration: POST /users (osu. host).
 app.MapRegistration(BanchoHosts.Web(domain));

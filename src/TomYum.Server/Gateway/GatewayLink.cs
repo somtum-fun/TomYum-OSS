@@ -22,9 +22,9 @@ public sealed class GatewayOptions
 
 /// <summary>
 /// The main server's side of TomYum.Gateway, the edge that takes raw TCP (pre-2014 bancho on
-/// <c>server.&lt;domain&gt;</c>, IRC) so the main server only ever needs HTTPS. The gateway turns TCP
-/// bancho into ordinary HTTP bancho requests and carries IRC connections over a WebSocket; this
-/// trusts the player address it passes on (when its key checks out) and runs those IRC connections.
+/// <c>server.&lt;domain&gt;</c>, IRC) so the main server only ever needs HTTPS. The gateway carries
+/// each connection over a WebSocket; this trusts the player address it passes on (when its key
+/// checks out) and runs the connections: bancho as TCP bancho's sessions, IRC as IRC sessions.
 /// </summary>
 public static class GatewayLink
 {
@@ -71,6 +71,31 @@ public static class GatewayLink
     }
 
     /// <summary>
+    /// <c>/_gateway/bancho</c> on the bancho hosts: one TCP bancho connection the gateway accepted, as
+    /// a WebSocket carrying its bytes both ways, run like a connection on the TCP bancho ports
+    /// (<see cref="TomYum.Server.Bancho.TcpBanchoServer"/>). Only for the gateway (404 otherwise).
+    /// </summary>
+    public static void MapGatewayBancho(this IEndpointRouteBuilder app, string[] hosts)
+    {
+        app.Map("/_gateway/bancho", async (HttpContext context, GatewayOptions options, IServiceProvider services,
+            ILogger<TomYum.Server.Bancho.TcpBanchoServer> logger, IHostApplicationLifetime lifetime) =>
+        {
+            if (!IsGateway(context, options) || !context.WebSockets.IsWebSocketRequest)
+                return Results.NotFound();
+
+            // The gateway's player address, put in X-Real-IP by UseGatewayLink.
+            var player = IPAddress.TryParse(TomYum.Server.Bancho.LoginIps.ClientAddress(context), out var parsed) ? parsed : null;
+            using var socket = await context.WebSockets.AcceptWebSocketAsync().ConfigureAwait(false);
+            await using var stream = WebSocketStream.Create(socket, WebSocketMessageType.Binary, ownsWebSocket: false);
+            using var session = new TomYum.Server.Bancho.TcpBanchoSession(stream, player, services, logger);
+            using var stopping = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, lifetime.ApplicationStopping);
+            await session.RunAsync(stopping.Token).ConfigureAwait(false);
+            await CloseAsync(socket).ConfigureAwait(false);
+            return Results.Empty;
+        }).RequireHost(hosts);
+    }
+
+    /// <summary>
     /// <c>/_gateway/irc</c> on the bancho hosts: one IRC connection the gateway accepted, as a
     /// WebSocket carrying the IRC bytes both ways. Only for the gateway (404 otherwise).
     /// </summary>
@@ -86,17 +111,21 @@ public static class GatewayLink
             using var session = ActivatorUtilities.CreateInstance<IrcSession>(services, (Stream)stream);
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, lifetime.ApplicationStopping);
             await session.RunAsync(stopping.Token).ConfigureAwait(false);
-            if (socket.State == WebSocketState.Open)
-            {
-                try
-                {
-                    await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).ConfigureAwait(false);
-                }
-                catch (Exception ex) when (ex is WebSocketException or IOException or ObjectDisposedException)
-                {
-                }
-            }
+            await CloseAsync(socket).ConfigureAwait(false);
             return Results.Empty;
         }).RequireHost(hosts);
+    }
+
+    private static async Task CloseAsync(WebSocket socket)
+    {
+        if (socket.State != WebSocketState.Open)
+            return;
+        try
+        {
+            await socket.CloseAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is WebSocketException or IOException or ObjectDisposedException)
+        {
+        }
     }
 }

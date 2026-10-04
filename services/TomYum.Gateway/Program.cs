@@ -1,8 +1,8 @@
 using TomYum.Gateway;
 
 // TomYum.Gateway (docs/gateway.md): the edge for raw TCP. pre-2014 osu! builds' bancho
-// (server.<domain>) and IRC are taken here and passed to the main server over HTTP(S), so the main
-// server only needs HTTPS, and this can run on another box that's the only one exposed for them.
+// (server.<domain>) and IRC are taken here and relayed to the main server over WebSockets (HTTPS),
+// so the main server only needs HTTPS, and this can run on another box that's the only one exposed for them.
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration.AddEnvironmentVariables(prefix: "TOMYUM_");
 

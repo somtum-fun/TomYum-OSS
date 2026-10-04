@@ -1,13 +1,15 @@
 using System.Buffers.Binary;
+using System.IO.Compression;
 
 namespace TomYum.Bancho;
 
 /// <summary>
 /// Bancho packets for old builds (docs/old-clients.md), following Lekuruu's per-build protocol notes
 /// (chio): packets a build doesn't know yet are left out of what it's sent, and builds before
-/// b20140528 get multiplayer rooms with 8 slots (and send them), where today's have 16. Numbered
-/// builds (2011 and before) speak an older protocol still: <see cref="EarlyPackets"/>. Today's
-/// clients' traffic is passed through as it is.
+/// b20140528 get multiplayer rooms with 8 slots (and send them), where today's have 16. Builds from
+/// b1807 to b20130513 (read from their decompiled clients) also have older layouts in the middle of
+/// some packets (<see cref="BanchoFeature"/>), and numbered builds before b1807 speak an older
+/// protocol still: <see cref="EarlyPackets"/>. Today's clients' traffic is passed through as it is.
 /// </summary>
 public static class LegacyPackets
 {
@@ -33,13 +35,20 @@ public static class LegacyPackets
         if (!build.IsLegacy || stream.Length == 0)
             return stream;
         if (build.HasEarlyPackets)
-            return EarlyPackets.Outgoing(stream);
+            return EarlyPackets.Outgoing(stream, build);
         return Rewrite(stream, (id, payload, writer) =>
         {
             if (!build.Knows((ServerPacketId)id))
                 return; // left out
             if (build.MatchSlots != 16 && SlotOf(id, payload) is { } slot && slot >= build.MatchSlots)
                 return; // a slot this build doesn't have
+            if (Older((ServerPacketId)id, payload, build) is { } older)
+            {
+                // A layout that changed before b20130513 (docs/old-clients.md), or left out (empty).
+                if (older.Length != 0)
+                    writer.WritePacket((ServerPacketId)id, w => w.WriteRaw(older));
+                return;
+            }
             switch ((ServerPacketId)id)
             {
                 case ServerPacketId.MainMenuIcon when payload is [0]:
@@ -59,20 +68,147 @@ public static class LegacyPackets
         });
     }
 
+    /// <summary>
+    /// A server packet in the layout of a build with today's ids from before b20130513 (b1807 on),
+    /// where it differs: null when it's today's, empty when the build is better off without it.
+    /// (The login reply's refusals are the ones the build knows up to b20130915.)
+    /// </summary>
+    private static byte[]? Older(ServerPacketId id, byte[] payload, ClientBuild build)
+    {
+        if (id is ServerPacketId.UserId && payload.Length >= 4)
+            return new BanchoPacketWriter(4).WriteInt32(build.LoginCode(BinaryPrimitives.ReadInt32LittleEndian(payload))).ToArray();
+        if (build.Has(BanchoFeature.FrameBundleExtra))
+            return null; // today's layouts from b20130513, apart from what Outgoing does for every old build
+        switch (id)
+        {
+            case ServerPacketId.UserStats when !build.Has(BanchoFeature.Mania):
+                // 16-bit mods before b20120916, no pp before b20120812, no osu!mania before b20121003.
+                return LegacyLayouts.Stats.Read(payload) is { } stats ? LegacyLayouts.StatsFor(stats, build) : [];
+            case ServerPacketId.UserPresence when !build.Has(BanchoFeature.TodaysPresence):
+                return LegacyLayouts.Presence.Read(payload) is { } presence ? LegacyLayouts.PresenceFor(presence, build) : [];
+            case ServerPacketId.SpectateFrames:
+                return LegacyLayouts.FramesOut(payload, build);
+            case ServerPacketId.UpdateMatch or ServerPacketId.NewMatch or ServerPacketId.MatchJoinSuccess or ServerPacketId.MatchStart:
+                return LegacyRoom.ReadToday(payload, 16)?.WriteFor(build) ?? [];
+            case ServerPacketId.BeatmapInfoReply when !build.Has(BanchoFeature.FourGrades):
+                return LegacyLayouts.BeatmapInfo(payload, build) ?? [];
+            case ServerPacketId.Privileges when payload.Length >= 4 && build.PrivilegeMask != ~0:
+                return new BanchoPacketWriter(4).WriteInt32(BinaryPrimitives.ReadInt32LittleEndian(payload) & build.PrivilegeMask).ToArray();
+            case ServerPacketId.MainMenuIcon when !build.Has(BanchoFeature.MenuIconLink):
+                // No payload before b20120916 (it re-downloads the title image: left out); then an image URL only.
+                return !build.Has(BanchoFeature.WideMods) ? [] : MenuImage(payload);
+            default:
+                return null;
+        }
+    }
+
+    /// <summary>The image part of today's "image|url" menu icon, as b20120916-b20121203 read it (none: 0x00).</summary>
+    private static byte[] MenuImage(byte[] payload)
+    {
+        try
+        {
+            var icon = new BanchoPacketReader(payload).ReadString();
+            var image = icon.Split('|')[0];
+            return new BanchoPacketWriter(image.Length + 8).WriteString(image).ToArray();
+        }
+        catch (InvalidDataException)
+        {
+            return [0];
+        }
+    }
+
     /// <summary>What <paramref name="build"/> sent (framed client packets), in today's layout for the handlers.</summary>
     public static byte[] Incoming(byte[] stream, ClientBuild build)
     {
         ArgumentNullException.ThrowIfNull(stream);
         ArgumentNullException.ThrowIfNull(build);
         if (build.HasEarlyPackets)
-            return EarlyPackets.Incoming(stream);
+            return EarlyPackets.Incoming(stream, build);
         if (build.MatchSlots == 16 || stream.Length == 0)
             return stream;
         return Rewrite(stream, (id, payload, writer) =>
         {
-            var converted = ClientMatchPackets.Contains(id) ? Room(payload, build.MatchSlots, 16) : null;
+            byte[]? converted;
+            if (!build.Has(BanchoFeature.FrameBundleExtra))
+            {
+                // Builds with today's ids from before b20130513 (b1807 on): older layouts.
+                converted = (ClientPacketId)id switch
+                {
+                    ClientPacketId.ChangeAction when !build.Has(BanchoFeature.WideMods) => LegacyLayouts.Status(payload, build, out _) ?? [],
+                    ClientPacketId.SendPublicMessage or ClientPacketId.SendPrivateMessage or ClientPacketId.SetAwayMessage
+                        => LegacyLayouts.MessageIn(payload, build),
+                    ClientPacketId.SpectateFrames => LegacyLayouts.FramesIn(payload, build),
+                    ClientPacketId.CreateMatch or ClientPacketId.MatchChangeSettings or ClientPacketId.MatchChangePassword
+                        => LegacyRoom.ReadFrom(payload, build)?.WriteToday(16) ?? [],
+                    _ => null,
+                };
+                if (converted is [])
+                    return; // not in the build's layout either: left out
+            }
+            else
+            {
+                converted = ClientMatchPackets.Contains(id) ? Room(payload, build.MatchSlots, 16) : null;
+            }
             writer.WritePacket((ServerPacketId)id, w => w.WriteRaw(converted ?? payload));
         });
+    }
+
+    /// <summary>
+    /// <paramref name="stream"/> (framed client packets) with every gzip-compressed payload (header byte 2
+    /// set) unpacked: builds up to 2013 compress what they send when it's 150 bytes or more. The stream
+    /// itself when nothing is compressed; a payload that doesn't unpack is left out.
+    /// </summary>
+    public static byte[] Decompress(byte[] stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        long offset = 0;
+        var compressed = false;
+        while (offset + 7 <= stream.Length)
+        {
+            compressed |= stream[offset + 2] != 0;
+            offset += 7L + BinaryPrimitives.ReadUInt32LittleEndian(stream.AsSpan((int)offset + 3));
+        }
+        if (!compressed || offset != stream.Length)
+            return stream;
+
+        var writer = new BanchoPacketWriter(stream.Length * 2);
+        var at = 0;
+        while (at + 7 <= stream.Length)
+        {
+            var id = BinaryPrimitives.ReadUInt16LittleEndian(stream.AsSpan(at));
+            var length = (int)BinaryPrimitives.ReadUInt32LittleEndian(stream.AsSpan(at + 3));
+            var payload = stream.AsSpan(at + 7, length).ToArray();
+            var unpacked = stream[at + 2] == 0 ? payload : Gunzip(payload);
+            if (unpacked is not null)
+                writer.WritePacket((ServerPacketId)id, w => w.WriteRaw(unpacked));
+            at += 7 + length;
+        }
+        return writer.ToArray();
+    }
+
+    /// <summary>A gzip stream's content; null when it isn't one (or unpacks to more than a packet should be).</summary>
+    private static byte[]? Gunzip(byte[] payload)
+    {
+        const int MaxBytes = 8 * 1024 * 1024;
+        try
+        {
+            using var input = new MemoryStream(payload);
+            using var gzip = new GZipStream(input, CompressionMode.Decompress);
+            using var output = new MemoryStream();
+            var buffer = new byte[16 * 1024];
+            int read;
+            while ((read = gzip.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                output.Write(buffer, 0, read);
+                if (output.Length > MaxBytes)
+                    return null;
+            }
+            return output.ToArray();
+        }
+        catch (InvalidDataException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

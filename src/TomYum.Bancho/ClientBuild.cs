@@ -15,10 +15,11 @@ public sealed partial record ClientBuild(string Version, DateOnly? Date)
     public int? Number { get; init; }
 
     /// <summary>
-    /// Whether this is a numbered build (2011 and earlier; b1122 checked): the packet ids from 11 up
+    /// Whether this is a numbered build before b1807 (b337 to b1704, 2008 to 2011): the packet ids from 11 up
     /// are one higher than today's, and a user's stats and presence are one packet (<see cref="EarlyPackets"/>).
+    /// b1807 to b1844 already use today's ids, with older layouts (<see cref="LegacyPackets"/>).
     /// </summary>
-    public bool HasEarlyPackets => Number is not null;
+    public bool HasEarlyPackets => Number is not null && !Has(BanchoFeature.TodaysIds);
 
     /// <summary>The build's date for the checks below: numbered builds are older than any dated one.</summary>
     private DateOnly? Era => Date ?? (Number is null ? null : DateOnly.MinValue);
@@ -45,7 +46,16 @@ public sealed partial record ClientBuild(string Version, DateOnly? Date)
     }
 
     /// <summary>A build from before <see cref="ModernFrom"/> (an unknown date counts as today's client).</summary>
-    public bool IsLegacy => Era is { } date && date < ModernFrom;
+    public bool IsLegacy => IsBefore(ModernFrom);
+
+    /// <summary>Whether this build is older than <paramref name="date"/>: numbered builds always are, an unknown one never.</summary>
+    public bool IsBefore(DateOnly date) => Era is { } era && era < date;
+
+    /// <summary>osu!mania came with this build (b20121003shine.test); older builds can't play mania maps.</summary>
+    public static readonly DateOnly ManiaFrom = new(2012, 10, 3);
+
+    /// <summary>Whether this build has osu!mania (today's does).</summary>
+    public bool HasMania => !IsBefore(ManiaFrom);
 
     /// <summary>Score frames end with a ScoreV2 flag (and its extra numbers when set) from this build on.</summary>
     public static readonly DateOnly ScoreV2FramesFrom = new(2015, 11, 6);

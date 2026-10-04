@@ -38,14 +38,57 @@
 	}
 }
 
+# Old clients' avatars at <host>/<path with the user id> (docs/old-clients.md): the website's avatar,
+# the guest one when there's none. {args[0]} is the placeholder holding the id.
+(old-avatar) {
+	rewrite * /uploads/avatar/{args[0]}
+	reverse_proxy osu-web:8080 {
+		header_down Content-Type image/png
+		@missing status 404
+		handle_response @missing {
+			rewrite * /images/layout/avatar-guest@2x.png
+			reverse_proxy osu-web:8080
+		}
+	}
+}
+
+# Old clients' osu!direct thumbnails (<set>, <set>l) and previews (<set>.mp3): TomYum's beatmap
+# assets on b.<domain>. {args[0]} is the path TomYum knows them by.
+(old-beatmap-asset) {
+	rewrite * {args[0]}
+	reverse_proxy server:8080 {
+		header_up Host b.{$DOMAIN}
+	}
+}
+
 # Game endpoints (bancho, beatmap assets, medal icons); s. is osu!'s old static host (old clients'
 # medal images, docs/old-clients.md). Old clients reach all of these over plain HTTP: Cloudflare must
 # not redirect them to HTTPS ("Always Use HTTPS" off, or a rule exempting these hosts).
-http://c.{$DOMAIN}, http://c1.{$DOMAIN}, http://c2.{$DOMAIN}, http://c3.{$DOMAIN}, http://c4.{$DOMAIN}, http://c5.{$DOMAIN}, http://c6.{$DOMAIN}, http://ce.{$DOMAIN}, http://cho.{$DOMAIN}, http://b.{$DOMAIN}, http://assets.{$DOMAIN}, http://s.{$DOMAIN} {
+http://c.{$DOMAIN}, http://c1.{$DOMAIN}, http://c2.{$DOMAIN}, http://c3.{$DOMAIN}, http://c4.{$DOMAIN}, http://c5.{$DOMAIN}, http://c6.{$DOMAIN}, http://ce.{$DOMAIN}, http://cho.{$DOMAIN}, http://b.{$DOMAIN}, http://assets.{$DOMAIN} {
 	request_body {
 		max_size 20MB
 	}
 	import tomyum
+}
+
+# s.<domain>: old osu!'s static host (medal images, TomYum's). 2012-14 builds also take osu!direct
+# thumbnails (/mt/<set>[l]), previews (/mp3/preview/<set>.mp3) and avatars (/a/<id>) from it.
+http://s.{$DOMAIN} {
+	@thumb path_regexp thumb ^/mt/([0-9]+)(l?)$
+	handle @thumb {
+		import old-beatmap-asset /thumb/{re.thumb.1}{re.thumb.2}.jpg
+	}
+	@preview path_regexp preview ^/mp3/preview/([0-9]+)\.mp3$
+	handle @preview {
+		import old-beatmap-asset /preview/{re.preview.1}.mp3
+	}
+	@avatar path_regexp avatar ^/a/([0-9]+)
+	handle @avatar {
+		import old-avatar {re.avatar.1}
+	}
+	handle {
+		import tomyum
+	}
 }
 
 # Avatars (a.<domain>/<user id>): the website's uploads; users without one get its guest avatar.
@@ -99,39 +142,37 @@ http://osu.{$DOMAIN} {
 		vars_regexp avatar {query.avatar} ^([0-9]+)
 	}
 	handle @old-avatar {
-		rewrite * /uploads/avatar/{re.avatar.1}
-		reverse_proxy osu-web:8080 {
-			header_down Content-Type image/png
-			@missing status 404
-			handle_response @missing {
-				rewrite * /images/layout/avatar-guest@2x.png
-				reverse_proxy osu-web:8080
-			}
-		}
+		import old-avatar {re.avatar.1}
+	}
+	# 2010-14 builds: /a/<id>.
+	@old-avatar-path path_regexp old-avatar-path ^/a/([0-9]+)
+	handle @old-avatar-path {
+		import old-avatar {re.old-avatar-path.1}
 	}
 
-	# Numbered builds' osu!direct (b1122): thumbnails (/images/map-thumb/<set>[l]) and previews
+	# Old builds' osu!direct: thumbnails (/images/map-thumb/<set>[l], /mt/<set>[l]) and previews
 	# (/mp3/preview/<set>.mp3), served by TomYum's beatmap assets (b.<domain>).
-	@old-thumb path_regexp old-thumb ^/images/map-thumb/([0-9]+)(l?)$
+	@old-thumb path_regexp old-thumb ^/(?:images/map-thumb|mt)/([0-9]+)(l?)$
 	handle @old-thumb {
-		rewrite * /thumb/{re.old-thumb.1}{re.old-thumb.2}.jpg
-		reverse_proxy server:8080 {
-			header_up Host b.{$DOMAIN}
-		}
+		import old-beatmap-asset /thumb/{re.old-thumb.1}{re.old-thumb.2}.jpg
 	}
 	@old-preview path_regexp old-preview ^/mp3/preview/([0-9]+)\.mp3$
 	handle @old-preview {
-		rewrite * /preview/{re.old-preview.1}.mp3
+		import old-beatmap-asset /preview/{re.old-preview.1}.mp3
+	}
+
+	# 2009-12 builds' medal images (/images/achievements/<file>): TomYum's, as on s.<domain>.
+	handle /images/achievements/* {
 		reverse_proxy server:8080 {
-			header_up Host b.{$DOMAIN}
+			header_up Host s.{$DOMAIN}
+			header_up X-Real-IP {client_ip}
 		}
 	}
 
 	# /beatmap-submission: lazer's beatmap submission (its default, under the API URL).
 	# /ss: stable's uploaded screenshots; /difficulty-rating: stable's star ratings with mods;
-	# /release: old clients' update checks; /rating/ingame-rate2.php: numbered builds' beatmap rating
-	# (docs/old-clients.md).
-	@tomyum path /web/* /d/* /beatmap-submission/* /ss/* /difficulty-rating /release/* /rating/ingame-rate2.php
+	# /release: old clients' update checks; /rating: old clients' beatmap ratings (docs/old-clients.md).
+	@tomyum path /web/* /d/* /beatmap-submission/* /ss/* /difficulty-rating /release/* /rating/*
 	handle @tomyum {
 		import tomyum
 	}

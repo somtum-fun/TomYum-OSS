@@ -108,7 +108,7 @@ public static class BanchoEndpoints
         {
             await ips.RecordAsync(player.UserId, LoginIps.ClientAddress(context)).ConfigureAwait(false);
         }
-        var reply = BanchoExchange.LoginReply(outcome.Body,
+        var reply = BanchoExchange.LoginReply(outcome.Body, body,
             outcome.Token is { } loggedIn ? context.RequestServices.GetService<PlayerRegistry>()?.GetByToken(loggedIn) : null,
             context.RequestServices);
 

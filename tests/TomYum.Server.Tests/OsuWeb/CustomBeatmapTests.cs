@@ -16,6 +16,7 @@ using TomYum.Performance;
 using TomYum.Persistence;
 using TomYum.Persistence.OsuWeb;
 using TomYum.Persistence.Repositories;
+using TomYum.Server.Bancho;
 using TomYum.Server.Beatmaps;
 using Xunit;
 
@@ -280,18 +281,18 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
         Assert.Contains("⭐] Hard {cs: 4 / od: 8 / ar: 9 / hp: 5}@0", line, StringComparison.Ordinal);
 
         var info = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
-            Context(Invariant($"b={set.Difficulties[1].BeatmapId}")), new NoHttp(), options, catalog, CancellationToken.None));
+            Context(Invariant($"b={set.Difficulties[1].BeatmapId}")), new NoHttp(), options, catalog, new PlayerRegistry(), CancellationToken.None));
         Assert.StartsWith(Invariant($"{set.SetId}.osz|Artist|Song|Mapper|0|"), info.ResponseContent, StringComparison.Ordinal);
         var byChecksum = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
-            Context("c=" + set.Difficulties[0].Md5), new NoHttp(), options, catalog, CancellationToken.None));
+            Context("c=" + set.Difficulties[0].Md5), new NoHttp(), options, catalog, new PlayerRegistry(), CancellationToken.None));
         Assert.Equal(info.ResponseContent, byChecksum.ResponseContent);
         var missing = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
-            Context(Invariant($"s={set.SetId + 5}")), new NoHttp(), options, catalog, CancellationToken.None));
+            Context(Invariant($"s={set.SetId + 5}")), new NoHttp(), options, catalog, new PlayerRegistry(), CancellationToken.None));
         Assert.Equal(string.Empty, missing.ResponseContent);
 
         // Listed first even when the mirror is down.
         var search = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchAsync(
-            Context("q=Song&r=4&m=-1&p=0"), new NoHttp(), options, catalog, CancellationToken.None));
+            Context("q=Song&r=4&m=-1&p=0"), new NoHttp(), options, catalog, new PlayerRegistry(), CancellationToken.None));
         Assert.StartsWith(Invariant($"1\n{set.SetId}.osz|Artist|Song"), search.ResponseContent!.ReplaceLineEndings("\n"), StringComparison.Ordinal);
     }
 
