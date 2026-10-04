@@ -143,11 +143,26 @@ public static partial class DirectEndpoints
             qs.Append(mirrorStatus.Value.ToString(CultureInfo.InvariantCulture));
         }
 
+        // Numbered builds (b1122) send no player (u/h): they get only the sets this server has, its
+        // own and the osu! ones it has imported, not the mirror's (for now: what's here is known to
+        // work there). They show one page of up to 100.
+        if (!context.Request.Query.ContainsKey("u"))
+        {
+            IReadOnlyList<CustomSet> local = await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, includeImported: true, cancellationToken).ConfigureAwait(false);
+            if (withoutMania)
+                local = local.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();
+            var localLines = new StringBuilder();
+            localLines.AppendLine(local.Count.ToString(CultureInfo.InvariantCulture));
+            foreach (var set in local)
+                localLines.AppendLine(custom.ToDirectLine(set));
+            return Results.Text(localLines.ToString(), "text/plain");
+        }
+
         var url = cfg.MirrorBaseUrl + cfg.SearchPath + qs;
 
         // This server's own sets come first, on the first page.
         IReadOnlyList<CustomSet> customSets = page == 0
-            ? await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, cancellationToken).ConfigureAwait(false)
+            ? await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, cancellationToken: cancellationToken).ConfigureAwait(false)
             : [];
         if (withoutMania)
             customSets = customSets.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();

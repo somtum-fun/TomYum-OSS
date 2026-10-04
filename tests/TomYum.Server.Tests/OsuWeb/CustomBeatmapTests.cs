@@ -269,6 +269,13 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
         Assert.Empty(await catalog.SearchAsync("nothing like it", null, null, 100));
         Assert.Empty(await catalog.SearchAsync(null, 3, null, 100));
         Assert.Empty(await catalog.SearchAsync(null, null, 1, 100));
+
+        // Imported osu! sets: only with includeImported (numbered builds' osu!direct).
+        tomyum.Beatmaps.Add(new Beatmap { Id = 4242, SetId = 4240, Md5 = new string('4', 32), Artist = "Imported", Title = "Tune", Version = "Easy", Creator = "Someone", Status = RankedStatus.Ranked });
+        await tomyum.SaveChangesAsync();
+        Assert.Empty(await catalog.SearchAsync("imported tune", null, null, 100));
+        Assert.Equal(4240, Assert.Single(await catalog.SearchAsync("imported tune", null, null, 100, includeImported: true)).SetId);
+
         var line = catalog.ToDirectLine(found);
         Assert.StartsWith(Invariant($"{set.SetId}.osz|Artist|Song|Mapper|0|10.0|"), line, StringComparison.Ordinal);
         Assert.Contains("⭐] Hard {cs: 4 / od: 8 / ar: 9 / hp: 5}@0", line, StringComparison.Ordinal);
