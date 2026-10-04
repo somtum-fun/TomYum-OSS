@@ -166,6 +166,12 @@ served everywhere (docs/custom-beatmaps.md)._
 - [x] **`.osz` upload in the BN panel** — new custom set or a new version of one (difficulties keep
       their ids by name), ids written into the files, mapper owns it, pending status, covers made from
       the background. 2026-09-28
+- [ ] **osu!direct shows this server's statuses for osu! sets** (checked 2026-10-04). Uploaded sets are
+      fine (listed first on page 1, set info works), but osu! sets that staff ranked or loved here
+      (`StatusFrozen`, e.g. 971400 MariannE ranked, 2593652 MEGAMIX 2 loved) show the mirror's status
+      (graveyard) in search and in `osu-search-set.php`, and don't come up under the Ranked/Loved filters.
+      To do: overlay the frozen statuses (set's best, as `CustomBeatmapCatalog.ToSet`) on mirror results,
+      and with a Ranked/Loved filter add the matching frozen sets on page 1 (as uploaded sets are).
 
 ## Phase 6 — Command framework refactor (polish, optional)
 - [x] Sunrise-style `[ChatCommand(name, Usage, Help, Access, Hidden)]` on BanchoBot's command methods,
