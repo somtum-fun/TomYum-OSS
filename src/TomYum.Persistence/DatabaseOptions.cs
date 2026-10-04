@@ -63,6 +63,9 @@ public sealed class DatabaseOptions
     /// <summary>osu-web's chat database (its <c>DB_DATABASE_CHAT</c>), where private messages are.</summary>
     public string OsuWebChatName { get; set; } = "osu_chat";
 
+    /// <summary>osu-web's multiplayer database (its <c>DB_DATABASE_MP</c>), where match history is.</summary>
+    public string OsuWebMpName { get; set; } = "osu_mp";
+
     /// <summary>Whether accounts are stored in osu-web's database (database enabled and <see cref="OsuWebName"/> set).</summary>
     public bool UseOsuWebAccounts => Enabled && !string.IsNullOrWhiteSpace(OsuWebName);
 

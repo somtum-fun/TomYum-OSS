@@ -90,6 +90,7 @@ public sealed class MatchModeration
             }
         }
 
+        match.History?.GameAborted(match);
         MatchBroadcast.ToMatch(match, players, new BanchoPacketWriter(16).WritePacket(ServerPacketId.MatchAbort, null).ToArray());
         MatchBroadcast.UpdateMatch(match, players);
         Post(match, "Match aborted.");
@@ -144,6 +145,7 @@ public sealed class MatchModeration
         if (!disbanded)
         {
             _matches.Remove(match.Id);
+            match.History?.Disbanded(match);
             MatchBroadcast.ToLobby(_players, new BanchoPacketWriter(16).WriteInt32Packet(ServerPacketId.DisposeMatch, match.Id).ToArray());
         }
 

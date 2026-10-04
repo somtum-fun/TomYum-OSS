@@ -14,6 +14,9 @@ public sealed class MatchRegistry
     private readonly ConcurrentDictionary<ushort, Match> _matches = new();
     private int _nextId = 1;
 
+    /// <summary>Where new rooms' history is written; none in tests.</summary>
+    public MatchHistory? History { get; init; }
+
     /// <summary>Number of active matches.</summary>
     public int Count => _matches.Count;
 
@@ -28,7 +31,7 @@ public sealed class MatchRegistry
     {
         var id = (ushort)Interlocked.Increment(ref _nextId);
         var match = new Match(id, hostUserId, name, password, mapName, mapId, mapMd5,
-            mode, winCondition, teamType, freeMods, mods, seed);
+            mode, winCondition, teamType, freeMods, mods, seed) { History = History };
         _matches[id] = match;
         return match;
     }

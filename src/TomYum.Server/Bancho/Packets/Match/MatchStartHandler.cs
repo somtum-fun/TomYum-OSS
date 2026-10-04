@@ -28,6 +28,8 @@ public sealed class MatchStartHandler : IClientPacketHandler
             }
         }
 
+        match.History?.GameStarted(match);
+
         var startBytes = MatchBroadcast.EncodeMatch(ServerPacketId.MatchStart, match, sendPassword: true);
         MatchBroadcast.ToMatch(match, context.Registry, startBytes);
 

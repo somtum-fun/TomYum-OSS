@@ -29,6 +29,7 @@ public sealed class MatchTransferHostHandler : IClientPacketHandler
             match.HostUserId = newHostId;
         }
 
+        match.History?.HostChanged(match, newHostId);
         var newHost = context.Registry.GetByUserId(newHostId);
         newHost?.Enqueue(new BanchoPacketWriter(16)
             .WritePacket(ServerPacketId.MatchTransferHost, null)

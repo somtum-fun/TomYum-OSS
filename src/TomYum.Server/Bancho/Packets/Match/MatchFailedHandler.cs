@@ -29,6 +29,7 @@ public sealed class MatchFailedHandler : IClientPacketHandler
             allDone = match.InProgress && match.AllComplete();
         }
 
+        match.History?.Failed(match, slotIdx);
         var bytes = new BanchoPacketWriter(16)
             .WriteInt32Packet(ServerPacketId.MatchPlayerFailed, slotIdx)
             .ToArray();
