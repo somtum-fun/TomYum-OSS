@@ -26,14 +26,20 @@ public sealed class CustomBeatmapCatalog
         _files = files;
     }
 
-    /// <summary>Custom sets whose artist, title, creator or difficulty names contain every word of <paramref name="text"/>, newest first.</summary>
-    public async Task<IReadOnlyList<CustomSet>> SearchAsync(string? text, int? mode, int? apiStatus, int limit, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Custom sets (with <paramref name="includeImported"/>, also the osu! sets this server has
+    /// imported) whose artist, title, creator or difficulty names contain every word of
+    /// <paramref name="text"/>, newest first.
+    /// </summary>
+    public async Task<IReadOnlyList<CustomSet>> SearchAsync(string? text, int? mode, int? apiStatus, int limit, bool includeImported = false, CancellationToken cancellationToken = default)
     {
         await using var scope = _scopes.CreateAsyncScope();
         if (scope.ServiceProvider.GetService<TomYumDbContext>() is not { } db)
             return [];
 
-        var query = db.Beatmaps.AsNoTracking().Where(b => b.SetId >= Beatmap.CustomIdFloor);
+        var query = db.Beatmaps.AsNoTracking();
+        if (!includeImported)
+            query = query.Where(b => b.SetId >= Beatmap.CustomIdFloor);
         if (mode is { } m and >= 0 and <= 3)
             query = query.Where(b => b.Mode == m);
         if (apiStatus is { } api)
