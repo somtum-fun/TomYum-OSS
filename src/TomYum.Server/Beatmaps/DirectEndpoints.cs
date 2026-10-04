@@ -382,7 +382,8 @@ public static partial class DirectEndpoints
         var name = upstream.Content.Headers.ContentDisposition?.FileNameStar?.Trim('"')
             ?? upstream.Content.Headers.ContentDisposition?.FileName?.Trim('"')
             ?? string.Create(CultureInfo.InvariantCulture, $"{id}.osz");
-        var body = await upstream.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        // Sets repacked in 2014 say zip 6.3 in their local headers, which old osu! refuses (OszVersionFixStream).
+        var body = new OszVersionFixStream(await upstream.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false));
         return Results.Stream(body, "application/x-osu-beatmap-archive", name);
     }
 
