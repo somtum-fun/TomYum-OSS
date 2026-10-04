@@ -97,21 +97,23 @@ public static class AdminModeScoresEndpoints
     /// restricted players left out), plus the viewer's best when <paramref name="viewerId"/> is given.
     /// <paramref name="mods"/> keeps plays with exactly those mods, like the in-game "Selected Mods"
     /// board; the Relax/Autopilot bit itself is ignored (the mode already says it). <paramref name="sort"/>
-    /// "score" orders the same plays (each player's best) by score instead of pp.
+    /// "score" orders the same plays (each player's best) by score instead of pp. <paramref name="stableOnly"/>
+    /// is the website's stable mode (not lazer's): each player's best stable play, as the in-game board,
+    /// with no lazer plays (whose mods, like a custom DT speed, stable doesn't have).
     /// </summary>
     internal static Task<IResult> LeaderboardAsync(
-        int beatmapId, int mode, int? limit, int? viewerId, int? mods, string? sort,
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods, string? sort, bool? stableOnly,
         TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken) =>
-        BoardAsync(beatmapId, mode, limit, viewerId, mods, sort == "score", null, beatmaps, db, restricted, configuration, cancellationToken);
+        BoardAsync(beatmapId, mode, limit, viewerId, mods, sort == "score", stableOnly == true, null, beatmaps, db, restricted, configuration, cancellationToken);
 
     /// <summary>The same leaderboard with only <see cref="ModeLeaderboardPlayers.UserIds"/>'s plays (country, friends, team).</summary>
     internal static Task<IResult> PlayersLeaderboardAsync(
-        int beatmapId, int mode, int? limit, int? viewerId, int? mods, string? sort, ModeLeaderboardPlayers players,
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods, string? sort, bool? stableOnly, ModeLeaderboardPlayers players,
         TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken) =>
-        BoardAsync(beatmapId, mode, limit, viewerId, mods, sort == "score", players.UserIds ?? [], beatmaps, db, restricted, configuration, cancellationToken);
+        BoardAsync(beatmapId, mode, limit, viewerId, mods, sort == "score", stableOnly == true, players.UserIds ?? [], beatmaps, db, restricted, configuration, cancellationToken);
 
     private static async Task<IResult> BoardAsync(
-        int beatmapId, int mode, int? limit, int? viewerId, int? mods, bool byScore, IReadOnlyList<int>? userIds,
+        int beatmapId, int mode, int? limit, int? viewerId, int? mods, bool byScore, bool stableOnly, IReadOnlyList<int>? userIds,
         TomYum.Domain.Repositories.IBeatmapRepository beatmaps, TomYumDbContext db, RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken)
     {
         if (mode is < GameMode.RelaxOffset or > GameMode.AutopilotOffset + 3)
@@ -119,6 +121,8 @@ public static class AdminModeScoresEndpoints
         var beatmap = await beatmaps.GetByIdAsync(beatmapId, cancellationToken).ConfigureAwait(false);
         if (beatmap is null)
             return Results.Ok(new ModeLeaderboard([], null));
+        if (stableOnly)
+            return Results.Ok(await StableBoardAsync(db, beatmap.Md5, mode, limit, viewerId, mods, byScore, userIds, restricted, configuration, cancellationToken).ConfigureAwait(false));
 
         // As the in-game board (ScoreRepository.GetLeaderboardAsync): by pp (or by score when asked),
         // restricted players left out except to themselves.
@@ -144,6 +148,41 @@ public static class AdminModeScoresEndpoints
             }
         }
         return Results.Ok(new ModeLeaderboard(entries, mine));
+    }
+
+    /// <summary>
+    /// The stable board (the website's stable mode): each player's best stable play, which is their
+    /// Best unless that's a lazer play, then their best earlier stable one (ScoreRepository's stable boards).
+    /// </summary>
+    private static async Task<ModeLeaderboard> StableBoardAsync(
+        TomYumDbContext db, string md5, int mode, int? limit, int? viewerId, int? mods, bool byScore, IReadOnlyList<int>? userIds,
+        RestrictedUsers restricted, IConfiguration configuration, CancellationToken cancellationToken)
+    {
+        var plays = db.Scores.AsNoTracking().Where(s => s.BeatmapMd5 == md5 && s.Mode == mode && s.Passed && !s.FromLazer
+                                                         && (s.Status == ScoreStatus.Best || s.Status == ScoreStatus.Submitted));
+        if (userIds is not null)
+        {
+            var ids = userIds.ToList();
+            plays = plays.Where(s => ids.Contains(s.UserId));
+        }
+        if (mods is { } wanted)
+        {
+            var want = wanted & ~ModeMods;
+            plays = plays.Where(s => (s.Mods & ~ModeMods) == want);
+        }
+        var ordered = byScore
+            ? plays.OrderByDescending(s => s.ScoreValue).ThenByDescending(s => s.Pp).ThenBy(s => s.Id)
+            : plays.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue).ThenBy(s => s.Id);
+        var bests = (await ordered.ToListAsync(cancellationToken).ConfigureAwait(false)).DistinctBy(s => s.UserId).ToList();
+
+        var hiddenFromBoard = restricted.Ids.Where(id => id != viewerId).ToHashSet();
+        var board = bests.Where(s => !hiddenFromBoard.Contains(s.UserId)).ToList();
+        var entries = board.Take(Math.Clamp(limit ?? 50, 1, 100))
+            .Select((s, i) => new ModeLeaderboardEntry(i + 1, s.UserId, Describe(s, mode, configuration))).ToList();
+        ModeLeaderboardEntry? mine = entries.FirstOrDefault(e => e.UserId == viewerId);
+        if (mine is null && viewerId is { } viewer && board.FindIndex(s => s.UserId == viewer) is var at and >= 0)
+            mine = new ModeLeaderboardEntry(at + 1, viewer, Describe(board[at], mode, configuration));
+        return new ModeLeaderboard(entries, mine);
     }
 
     /// <summary>Relax (128) and Autopilot (8192): implied by the mode, so a mods filter leaves them out.</summary>
