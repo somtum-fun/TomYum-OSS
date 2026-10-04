@@ -166,12 +166,10 @@ served everywhere (docs/custom-beatmaps.md)._
 - [x] **`.osz` upload in the BN panel** — new custom set or a new version of one (difficulties keep
       their ids by name), ids written into the files, mapper owns it, pending status, covers made from
       the background. 2026-09-28
-- [ ] **osu!direct shows this server's statuses for osu! sets** (checked 2026-10-04). Uploaded sets are
-      fine (listed first on page 1, set info works), but osu! sets that staff ranked or loved here
-      (`StatusFrozen`, e.g. 971400 MariannE ranked, 2593652 MEGAMIX 2 loved) show the mirror's status
-      (graveyard) in search and in `osu-search-set.php`, and don't come up under the Ranked/Loved filters.
-      To do: overlay the frozen statuses (set's best, as `CustomBeatmapCatalog.ToSet`) on mirror results,
-      and with a Ranked/Loved filter add the matching frozen sets on page 1 (as uploaded sets are).
+- [x] **osu!direct shows this server's statuses for osu! sets** — osu! sets staff ranked or loved here
+      (`StatusFrozen`) show the set's best status here in search and `osu-search-set.php`; with a
+      Ranked/Loved/Qualified filter they're listed on page 1 (as uploaded sets are), and mirror results
+      whose status here is another one are left out. 2026-10-04
 
 ## Phase 6 — Command framework refactor (polish, optional)
 - [x] Sunrise-style `[ChatCommand(name, Usage, Help, Access, Hidden)]` on BanchoBot's command methods,
@@ -264,6 +262,10 @@ uses its tables. Human doc: `docs/osu-web.md`._
 - [x] Phase 7 rescope: osu-web serves `/api/v2` + `/oauth/token`, ppy's spectator server the realtime hubs.
 - [x] **Daily challenge** — osu-web opens the room each day; TomYum keeps its queue filled and the
       Discord bot announces and settles it (docs/lazer.md). 2026-09-29
+- [x] **Multiplayer match history** — stable rooms are written to osu-web's `osu_mp` (`MatchHistory`):
+      created, joins, leaves, kicks, host changes, each map with everyone's final score, disbanded. The
+      website shows them at `/community/matches/{id}`, and BanchoBot posts "Match history available
+      here." in the room's chat, as on osu!. 2026-10-04
 - [x] **Stable matches the website** — the stable panel shows the website's combined numbers (so level,
       ranked score and pp match lazer and the profile); stable and lazer plays both get "achieved rank
       #N" activity entries (top 1000) and #1s in `#announce`. 2026-09-29

@@ -28,17 +28,20 @@ public sealed class CustomBeatmapCatalog
 
     /// <summary>
     /// Custom sets (with <paramref name="includeImported"/>, also the osu! sets this server has
-    /// imported) whose artist, title, creator or difficulty names contain every word of
-    /// <paramref name="text"/>, newest first.
+    /// imported; with <paramref name="frozenOnly"/>, only the osu! sets staff gave a status here)
+    /// whose artist, title, creator or difficulty names contain every word of <paramref name="text"/>,
+    /// newest first.
     /// </summary>
-    public async Task<IReadOnlyList<CustomSet>> SearchAsync(string? text, int? mode, int? apiStatus, int limit, bool includeImported = false, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CustomSet>> SearchAsync(string? text, int? mode, int? apiStatus, int limit, bool includeImported = false, bool frozenOnly = false, CancellationToken cancellationToken = default)
     {
         await using var scope = _scopes.CreateAsyncScope();
         if (scope.ServiceProvider.GetService<TomYumDbContext>() is not { } db)
             return [];
 
         var query = db.Beatmaps.AsNoTracking();
-        if (!includeImported)
+        if (frozenOnly)
+            query = query.Where(b => b.SetId < Beatmap.CustomIdFloor && b.StatusFrozen);
+        else if (!includeImported)
             query = query.Where(b => b.SetId >= Beatmap.CustomIdFloor);
         if (mode is { } m and >= 0 and <= 3)
             query = query.Where(b => b.Mode == m);
@@ -64,6 +67,34 @@ public sealed class CustomBeatmapCatalog
 
         var maps = await db.Beatmaps.AsNoTracking().Where(b => setIds.Contains(b.SetId)).ToListAsync(cancellationToken).ConfigureAwait(false);
         return setIds.Select(id => ToSet(maps.Where(b => b.SetId == id).ToList())).ToList();
+    }
+
+    /// <summary>
+    /// The statuses staff gave osu! sets here (any of the set's maps frozen), as the set shows them
+    /// (its best), for the mirror's results: the mirror only knows osu!'s status.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<int, RankedStatus>> FrozenStatusesAsync(IReadOnlyCollection<int> setIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(setIds);
+        var ids = setIds.Where(id => id is > 0 and < Beatmap.CustomIdFloor).Distinct().ToList();
+        if (ids.Count == 0)
+            return new Dictionary<int, RankedStatus>();
+
+        await using var scope = _scopes.CreateAsyncScope();
+        if (scope.ServiceProvider.GetService<TomYumDbContext>() is not { } db)
+            return new Dictionary<int, RankedStatus>();
+
+        var frozen = await db.Beatmaps.AsNoTracking()
+            .Where(b => ids.Contains(b.SetId) && b.StatusFrozen)
+            .Select(b => b.SetId)
+            .Distinct()
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (frozen.Count == 0)
+            return new Dictionary<int, RankedStatus>();
+
+        var maps = await db.Beatmaps.AsNoTracking().Where(b => frozen.Contains(b.SetId)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return maps.GroupBy(b => b.SetId).ToDictionary(g => g.Key, g => ToSet(g.ToList()).Status);
     }
 
     /// <summary>The custom set with id <paramref name="setId"/>, or of beatmap <paramref name="beatmapId"/>, or of the map with checksum <paramref name="md5"/>.</summary>

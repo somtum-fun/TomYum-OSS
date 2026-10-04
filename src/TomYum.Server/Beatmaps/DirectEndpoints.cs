@@ -148,7 +148,7 @@ public static partial class DirectEndpoints
         // work there). They show one page of up to 100.
         if (!context.Request.Query.ContainsKey("u"))
         {
-            IReadOnlyList<CustomSet> local = await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, includeImported: true, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<CustomSet> local = await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, includeImported: true, cancellationToken: cancellationToken).ConfigureAwait(false);
             if (withoutMania)
                 local = local.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();
             var localLines = new StringBuilder();
@@ -160,10 +160,16 @@ public static partial class DirectEndpoints
 
         var url = cfg.MirrorBaseUrl + cfg.SearchPath + qs;
 
-        // This server's own sets come first, on the first page.
+        // This server's own sets come first, on the first page; with a status filter (ranked, loved,
+        // qualified) so do the osu! sets staff gave that status here, which the mirror files elsewhere.
         IReadOnlyList<CustomSet> customSets = page == 0
             ? await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, cancellationToken: cancellationToken).ConfigureAwait(false)
             : [];
+        if (page == 0 && mirrorStatus is > 0)
+        {
+            var frozenSets = await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, frozenOnly: true, cancellationToken: cancellationToken).ConfigureAwait(false);
+            customSets = [.. customSets, .. frozenSets.Where(set => CustomBeatmapCatalog.ToApiStatus(set.Status) == mirrorStatus)];
+        }
         if (withoutMania)
             customSets = customSets.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();
 
@@ -189,11 +195,24 @@ public static partial class DirectEndpoints
         foreach (var set in customSets)
             lines.AppendLine(custom.ToDirectLine(set));
 
+        // The mirror knows osu!'s status; sets staff ranked or loved here show this server's.
+        var listed = customSets.Select(set => set.SetId).ToHashSet();
+        var frozen = await custom.FrozenStatusesAsync(
+            sets.Select(set => set.TryGetProperty("SetID", out var id) && id.ValueKind == JsonValueKind.Number ? id.GetInt32() : 0).ToList(),
+            cancellationToken).ConfigureAwait(false);
+
         foreach (var set in sets)
         {
             if (!set.TryGetProperty("ChildrenBeatmaps", out var children) || children.ValueKind == JsonValueKind.Null)
                 continue;
             if (withoutMania && IsManiaOnly(set))
+                continue;
+            var mirrorSetId = set.TryGetProperty("SetID", out var msid) && msid.ValueKind == JsonValueKind.Number ? msid.GetInt32() : 0;
+            if (listed.Contains(mirrorSetId))
+                continue;
+            int? localStatus = frozen.TryGetValue(mirrorSetId, out var frozenStatus) ? CustomBeatmapCatalog.ToApiStatus(frozenStatus) : null;
+            // Filtered by status: a set whose status here isn't that one doesn't belong.
+            if (localStatus is { } here && mirrorStatus is { } wanted && here != wanted)
                 continue;
             shown++;
 
@@ -221,7 +240,7 @@ public static partial class DirectEndpoints
             // the osu!stable client renders the icon from this field directly (1=ranked,
             // 4=loved, 3=qualified, 0=pending, -2=graveyard). ToDirectStatus() was incorrectly
             // remapping it to the *filter* codes (r= query param), which is a different domain.
-            var ranked  = set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0;
+            var ranked  = localStatus ?? (set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0);
             var updated = set.TryGetProperty("LastUpdate",   out var lu)   ? lu.GetString() ?? "" : "";
             var hasVideo = set.TryGetProperty("HasVideo",    out var hv)
                 ? (hv.ValueKind == JsonValueKind.True ? 1 : hv.ValueKind == JsonValueKind.False ? 0 : hv.GetInt32())
@@ -326,6 +345,9 @@ public static partial class DirectEndpoints
         // not the search filter's codes (ranked is 7 there, which every old build shows as pending).
         var status  = set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0;
         var updated = set.TryGetProperty("LastUpdate",   out var lu)  ? lu.GetString() ?? "" : "";
+        // A set staff ranked or loved here shows this server's status.
+        if ((await custom.FrozenStatusesAsync([sid], cancellationToken).ConfigureAwait(false)).TryGetValue(sid, out var frozen))
+            status = CustomBeatmapCatalog.ToApiStatus(frozen);
 
         // Wire format (bancho.py osu-search-set response):
         // {set_id}.osz|{artist}|{title}|{creator}|{status}|10.0|{last_update}|{set_id}|0|0|0|0|0
