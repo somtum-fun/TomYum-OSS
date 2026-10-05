@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -148,102 +148,20 @@ public static partial class DirectEndpoints
             qs.Append(mirrorStatus.Value.ToString(CultureInfo.InvariantCulture));
         }
 
-        // Numbered builds (b1122) send no player (u/h): they get only the sets this server has, its
-        // own and the osu! ones it has imported, not the mirror's (for now: what's here is known to
-        // work there). They show one page of up to 100.
-        if (!context.Request.Query.ContainsKey("u"))
-        {
-            IReadOnlyList<CustomSet> local = await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, includeImported: true, cancellationToken).ConfigureAwait(false);
-            if (withoutMania)
-                local = local.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();
-            var localLines = new StringBuilder();
-            localLines.AppendLine(local.Count.ToString(CultureInfo.InvariantCulture));
-            foreach (var set in local)
-                localLines.AppendLine(custom.ToDirectLine(set));
-            return Results.Text(localLines.ToString(), "text/plain");
-        }
-
-        var url = cfg.MirrorBaseUrl + cfg.SearchPath + qs;
-
-        // This server's own sets come first, on the first page.
-        IReadOnlyList<CustomSet> customSets = page == 0
-            ? await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 100, cancellationToken: cancellationToken).ConfigureAwait(false)
-            : [];
+        // Like the game's beatmap listing (the website's): only the sets this server has, its own and the osu! ones it
+        // has imported, not the whole mirror's. 100 a page; 101 tells the client there are more.
+        IReadOnlyList<CustomSet> local = await custom.SearchAsync(isTab ? null : query, mode == -1 ? null : mode, mirrorStatus, 101,
+            includeImported: true, skip: page * 100, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var more = local.Count > 100;
+        local = local.Take(100).ToList();
         if (withoutMania)
-            customSets = customSets.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();
-
-        JsonElement[] sets;
-        try
-        {
-            using var http = factory.CreateClient(HttpClientName);
-            using var response = await http.GetAsync(url, cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
-                return MirrorFailed(customSets, custom);
-
-            var json = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            using var doc = JsonDocument.Parse(json);
-            sets = doc.RootElement.EnumerateArray().Select(e => e.Clone()).ToArray();
-        }
-        catch (Exception)
-        {
-            return MirrorFailed(customSets, custom);
-        }
+            local = local.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();
 
         var lines = new StringBuilder();
-        var shown = customSets.Count;
-        foreach (var set in customSets)
+        lines.AppendLine((more ? 101 : local.Count).ToString(CultureInfo.InvariantCulture));
+        foreach (var set in local)
             lines.AppendLine(custom.ToDirectLine(set));
-
-        foreach (var set in sets)
-        {
-            if (!set.TryGetProperty("ChildrenBeatmaps", out var children) || children.ValueKind == JsonValueKind.Null)
-                continue;
-            if (withoutMania && IsManiaOnly(set))
-                continue;
-            shown++;
-
-            var diffs = children.EnumerateArray()
-                .OrderBy(d => d.TryGetProperty("DifficultyRating", out var dr) ? dr.GetDouble() : 0)
-                .Select(d =>
-                {
-                    var sr = d.TryGetProperty("DifficultyRating", out var drp) ? drp.GetDouble() : 0.0;
-                    var name = SanitisePipeChar(d.TryGetProperty("DiffName", out var dn) ? dn.GetString() ?? "" : "");
-                    var cs = d.TryGetProperty("CS", out var csp) ? csp.GetDouble() : 0.0;
-                    var od = d.TryGetProperty("OD", out var odp) ? odp.GetDouble() : 0.0;
-                    var ar = d.TryGetProperty("AR", out var arp) ? arp.GetDouble() : 0.0;
-                    var hp = d.TryGetProperty("HP", out var hpp) ? hpp.GetDouble() : 0.0;
-                    var m = d.TryGetProperty("Mode", out var mp) ? mp.GetInt32() : 0;
-                    // :.2f is Python syntax; the C# equivalent is :F2.
-                    return string.Create(CultureInfo.InvariantCulture,
-                        $"[{sr:F2}⭐] {name} {{cs: {cs} / od: {od} / ar: {ar} / hp: {hp}}}@{m}");
-                });
-
-            var setId   = set.TryGetProperty("SetID",        out var sid)  ? sid.GetInt32()    : 0;
-            var artist  = SanitisePipeChar(set.TryGetProperty("Artist",       out var art)  ? art.GetString() ?? "" : "");
-            var title   = SanitisePipeChar(set.TryGetProperty("Title",        out var tit)  ? tit.GetString() ?? "" : "");
-            var creator = SanitisePipeChar(set.TryGetProperty("Creator", out var cre) ? cre.GetString() ?? "" : "");
-            // Pass the mirror's RankedStatus value through as-is. bancho.py sends it raw and
-            // the osu!stable client renders the icon from this field directly (1=ranked,
-            // 4=loved, 3=qualified, 0=pending, -2=graveyard). ToDirectStatus() was incorrectly
-            // remapping it to the *filter* codes (r= query param), which is a different domain.
-            var ranked  = set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0;
-            var updated = set.TryGetProperty("LastUpdate",   out var lu)   ? lu.GetString() ?? "" : "";
-            var hasVideo = set.TryGetProperty("HasVideo",    out var hv)
-                ? (hv.ValueKind == JsonValueKind.True ? 1 : hv.ValueKind == JsonValueKind.False ? 0 : hv.GetInt32())
-                : 0;
-
-            // Wire format (bancho.py DIRECT_SET_INFO_FMTSTR):
-            // {SetID}.osz|{Artist}|{Title}|{Creator}|{RankedStatus}|10.0|{LastUpdate}|{SetID}|
-            // 0|{HasVideo}|0|0|0|{diffs}
-            lines.AppendLine(string.Create(CultureInfo.InvariantCulture,
-                $"{setId}.osz|{artist}|{title}|{creator}|{ranked}|10.0|{updated}|{setId}|0|{hasVideo}|0|0|0|{string.Join(",", diffs)}"));
-        }
-
-        // If exactly 100 results are returned, signal "more pages available" by sending 101.
-        var sb = new StringBuilder();
-        sb.AppendLine(sets.Length == 100 ? "101" : shown.ToString(CultureInfo.InvariantCulture));
-        sb.Append(lines);
-        return Results.Text(sb.ToString(), "text/plain");
+        return Results.Text(lines.ToString(), "text/plain");
     }
 
     /// <summary>The mirror is down: this server's own sets still show, else the client's error.</summary>

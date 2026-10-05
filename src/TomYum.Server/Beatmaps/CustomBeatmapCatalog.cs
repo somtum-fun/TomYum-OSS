@@ -31,7 +31,7 @@ public sealed class CustomBeatmapCatalog
     /// imported) whose artist, title, creator or difficulty names contain every word of
     /// <paramref name="text"/>, newest first.
     /// </summary>
-    public async Task<IReadOnlyList<CustomSet>> SearchAsync(string? text, int? mode, int? apiStatus, int limit, bool includeImported = false, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CustomSet>> SearchAsync(string? text, int? mode, int? apiStatus, int limit, bool includeImported = false, int skip = 0, CancellationToken cancellationToken = default)
     {
         await using var scope = _scopes.CreateAsyncScope();
         if (scope.ServiceProvider.GetService<TomYumDbContext>() is not { } db)
@@ -64,6 +64,7 @@ public sealed class CustomBeatmapCatalog
             .GroupBy(b => b.SetId)
             .OrderByDescending(g => g.Max(b => b.LastUpdate))
             .Select(g => g.Key)
+            .Skip(skip)
             .Take(limit)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
