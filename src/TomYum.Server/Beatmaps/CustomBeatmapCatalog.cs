@@ -40,6 +40,14 @@ public sealed class CustomBeatmapCatalog
         var query = db.Beatmaps.AsNoTracking();
         if (!includeImported)
             query = query.Where(b => b.SetId >= Beatmap.CustomIdFloor);
+
+        // Sets deleted on the website (an upload replaced by a new one) aren't offered.
+        if (scope.ServiceProvider.GetService<TomYum.Persistence.OsuWeb.OsuWebCustomSets>() is { } website)
+        {
+            var deleted = await website.DeletedAsync(cancellationToken).ConfigureAwait(false);
+            if (deleted.Count > 0)
+                query = query.Where(b => !deleted.Contains(b.SetId));
+        }
         if (mode is { } m and >= 0 and <= 3)
             query = query.Where(b => b.Mode == m);
         if (apiStatus is { } api)

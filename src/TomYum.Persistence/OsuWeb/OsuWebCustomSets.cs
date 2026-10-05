@@ -24,6 +24,16 @@ public sealed class OsuWebCustomSets
         return owner.Count == 0 ? null : (int)owner[0];
     }
 
+    /// <summary>Custom sets deleted on the website (osu!direct leaves them out).</summary>
+    public async Task<HashSet<int>> DeletedAsync(CancellationToken cancellationToken = default)
+    {
+        var sets = await _db.Database
+            .SqlQuery<uint>($"SELECT beatmapset_id AS Value FROM osu_beatmapsets WHERE beatmapset_id >= {TomYum.Domain.Entities.Beatmap.CustomIdFloor} AND deleted_at IS NOT NULL")
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return sets.Select(s => (int)s).ToHashSet();
+    }
+
     /// <summary>Whether the set is in the graveyard on the website (false when it isn't there).</summary>
     public async Task<bool> IsGraveyardedAsync(int setId, CancellationToken cancellationToken = default)
     {
