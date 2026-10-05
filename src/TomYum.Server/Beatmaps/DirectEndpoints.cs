@@ -45,8 +45,13 @@ public static partial class DirectEndpoints
         // official sets' covers are on ppy's asset server).
         app.MapGet("/uploads/default/beatmaps/{setId:int}/covers/{file}", HandleCover);
         // …and their audio preview (the website's player; the fork links custom sets here).
-        app.MapGet("/uploads/default/beatmaps/{setId:int}/preview.mp3", (int setId, CustomBeatmapStore store) =>
-            setId >= Beatmap.CustomIdFloor && store.PreviewPath(setId) is { } path ? Results.File(path, "audio/mpeg") : Results.NotFound());
+        app.MapGet("/uploads/default/beatmaps/{setId:int}/preview.mp3", (int setId, CustomBeatmapStore store, HttpContext context) =>
+        {
+            if (setId < Beatmap.CustomIdFloor || store.PreviewPath(setId) is not { } path)
+                return Results.NotFound();
+            NoCache(context);
+            return Results.File(path, "audio/mpeg", enableRangeProcessing: true);
+        });
     }
 
     internal static IResult HandleCover(int setId, string file, CustomBeatmapStore store)
@@ -431,7 +436,11 @@ public static partial class DirectEndpoints
             if (setId >= Beatmap.CustomIdFloor)
             {
                 var path = preview ? store.PreviewPath(setId) : store.CoverPath(setId, local.Groups["large"].Success ? "thumbl" : "thumb");
-                return path is null ? Results.NotFound() : Results.File(path, preview ? "audio/mpeg" : "image/jpeg", enableRangeProcessing: preview);
+                if (path is null)
+                    return Results.NotFound();
+                if (preview)
+                    NoCache(context);
+                return Results.File(path, preview ? "audio/mpeg" : "image/jpeg", enableRangeProcessing: preview);
             }
 
             // osu! sets' previews are kept here too (AudioPreviews), so players see their length.
@@ -484,6 +493,10 @@ public static partial class DirectEndpoints
     /// causes the set line to be silently ignored. bancho.py applies the same fix.
     /// </summary>
     private static string SanitisePipeChar(string s) => s.Replace("|", "I");
+
+    // Custom sets' previews change when their sets are uploaded again: Cloudflare (and browsers) ask each time
+    // instead of keeping an old one (it kept a whole song for hours after its preview was cut).
+    private static void NoCache(HttpContext context) => context.Response.Headers.CacheControl = "no-cache";
 
     [GeneratedRegex(@"^/(?<kind>thumb|preview)/(?<id>[0-9]+)(?<large>l)?\.(jpg|mp3)$")]
     private static partial Regex CustomAsset();
