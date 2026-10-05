@@ -18,6 +18,8 @@ RUN dotnet publish "$PROJECT" -c Release -o /app --no-restore
 FROM mcr.microsoft.com/dotnet/aspnet:${DOTNET_VERSION} AS runtime
 WORKDIR /app
 COPY --from=build /app ./
+# ffmpeg cuts custom sets' audio previews (30 s from their preview point, PreviewClips).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 # data/ (replays, .osu cache, local storage) must be writable by the non-root user; /app is root's.
 RUN mkdir -p /app/data && chown "$APP_UID" /app/data
 # Run as the non-root user shipped in the base image.

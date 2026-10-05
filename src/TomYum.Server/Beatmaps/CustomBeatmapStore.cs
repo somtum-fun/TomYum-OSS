@@ -6,7 +6,7 @@ namespace TomYum.Server.Beatmaps;
 /// <summary>
 /// Files of custom beatmap sets (ids from <see cref="TomYum.Domain.Entities.Beatmap.CustomIdFloor"/>),
 /// which exist only on this server: the <c>.osz</c> players download, the background and the
-/// preview audio. Covers and thumbnails are made from the background on first use and kept. Lives
+/// preview audio (30 seconds from the song's preview point, <see cref="PreviewClips"/>). Covers and thumbnails are made from the background on first use and kept. Lives
 /// in <c>Beatmaps:Path</c> (default <c>data/beatmaps</c>).
 /// </summary>
 public sealed class CustomBeatmapStore
@@ -28,10 +28,27 @@ public sealed class CustomBeatmapStore
 
     private readonly string _root;
 
+    /// <summary>The ffmpeg previews are made with.</summary>
+    public string Ffmpeg { get; }
+
     public CustomBeatmapStore(IConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         _root = Path.GetFullPath(configuration[PathKey] ?? DefaultPath);
+        Ffmpeg = configuration[PreviewClips.FfmpegKey] ?? "ffmpeg";
+    }
+
+    /// <summary>The custom sets stored here.</summary>
+    public IEnumerable<int> SetIds()
+    {
+        var directory = Path.Combine(_root, "osz");
+        if (!Directory.Exists(directory))
+            yield break;
+        foreach (var file in Directory.EnumerateFiles(directory, "*.osz"))
+        {
+            if (int.TryParse(Path.GetFileNameWithoutExtension(file), NumberStyles.None, CultureInfo.InvariantCulture, out var id))
+                yield return id;
+        }
     }
 
     public string OszPath(int setId) => Path.Combine(_root, "osz", Invariant(setId) + ".osz");
@@ -39,7 +56,7 @@ public sealed class CustomBeatmapStore
     public bool HasSet(int setId) => File.Exists(OszPath(setId));
 
     /// <summary>Stores a set's files, replacing earlier ones (covers and thumbnails are made again).</summary>
-    public async Task SaveAsync(int setId, byte[] osz, (string Extension, byte[] Bytes)? background, byte[]? previewMp3, CancellationToken cancellationToken = default)
+    public async Task SaveAsync(int setId, byte[] osz, (string Extension, byte[] Bytes)? background, PreviewSong? song, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(osz);
         await WriteAsync(OszPath(setId), osz, cancellationToken).ConfigureAwait(false);
@@ -49,14 +66,34 @@ public sealed class CustomBeatmapStore
         if (background is { } bg && ImageExtensions.Contains(bg.Extension))
             await WriteAsync(Path.Combine(_root, "bg", Invariant(setId) + bg.Extension), bg.Bytes, cancellationToken).ConfigureAwait(false);
 
-        var preview = Path.Combine(_root, "preview", Invariant(setId) + ".mp3");
-        DeleteIfExists(preview);
-        if (previewMp3 is not null)
-            await WriteAsync(preview, previewMp3, cancellationToken).ConfigureAwait(false);
+        await SavePreviewAsync(setId, song, cancellationToken).ConfigureAwait(false);
 
         var covers = Path.Combine(_root, "covers", Invariant(setId));
         if (Directory.Exists(covers))
             Directory.Delete(covers, recursive: true);
+    }
+
+    /// <summary>
+    /// Makes and stores a set's preview from its song (<see cref="PreviewClips"/>); without ffmpeg an MP3
+    /// song is kept whole, as before. Whether a clip was made.
+    /// </summary>
+    public async Task<bool> SavePreviewAsync(int setId, PreviewSong? song, CancellationToken cancellationToken = default)
+    {
+        var preview = Path.Combine(_root, "preview", Invariant(setId) + ".mp3");
+        DeleteIfExists(preview);
+        if (song is null)
+            return false;
+
+        var clip = await PreviewClips.MakeAsync(song.Bytes, song.Extension, song.PreviewTime, Ffmpeg, cancellationToken).ConfigureAwait(false);
+        if (clip is not null)
+        {
+            await WriteAsync(preview, clip, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
+        if (song.Extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase))
+            await WriteAsync(preview, song.Bytes, cancellationToken).ConfigureAwait(false);
+        return false;
     }
 
     /// <summary>The preview audio, or null.</summary>
@@ -135,3 +172,6 @@ public sealed class CustomBeatmapStore
 
     private static string Invariant(int id) => id.ToString(CultureInfo.InvariantCulture);
 }
+
+/// <summary>A set's song for its preview: the file's bytes, its extension and the map's preview point (ms, -1 without).</summary>
+public sealed record PreviewSong(byte[] Bytes, string Extension, int PreviewTime);
