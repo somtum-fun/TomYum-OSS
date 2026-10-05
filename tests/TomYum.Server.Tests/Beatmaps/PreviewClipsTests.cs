@@ -91,3 +91,26 @@ public sealed class DirectOsuFilesTests
     public void MirrorUrlIsCatboys() =>
         Assert.Equal("https://catboy.best/osu/123", CustomBeatmapCatalog.MirrorOsuUrl(123));
 }
+
+public sealed class OsuFileBpmTests
+{
+    private static OsuFileText File(string timingPoints, string hitObjects) => OsuFileText.Parse(System.Text.Encoding.UTF8.GetBytes(
+        "osu file format v14\n\n[General]\nMode: 0\n\n[TimingPoints]\n" + timingPoints + "\n\n[HitObjects]\n" + hitObjects + "\n"));
+
+    [Fact]
+    public void TheBpmItsAtTheLongest_NotTheFirst()
+    {
+        // A 154 BPM intro (10 s), then 200 BPM until the last object at 200 s; a green line in between doesn't count.
+        var file = File("0,389.61,4,2,1,60,1,0\n10000,300,4,2,1,60,1,0\n50000,-50,4,2,1,60,0,0", "256,192,200000,1,0,0:0:0:0:");
+        Assert.Equal(200, file.Bpm);
+    }
+
+    [Fact]
+    public void OneTimingPoint()
+    {
+        Assert.Equal(180, File("500,333.333333,4,2,1,60,1,0", "256,192,90000,1,0,0:0:0:0:").Bpm);
+    }
+
+    [Fact]
+    public void NoTimingPoints() => Assert.Null(File(string.Empty, "256,192,1000,1,0,0:0:0:0:").Bpm);
+}
