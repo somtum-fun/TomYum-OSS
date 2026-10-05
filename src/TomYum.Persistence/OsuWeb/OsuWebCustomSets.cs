@@ -106,6 +106,8 @@ public sealed class OsuWebCustomSets
             """,
             cancellationToken).ConfigureAwait(false);
 #pragma warning restore EF1002
+
+        await OsuWebBeatmapsetUpdates.QueueAsync(_db, setId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -122,6 +124,7 @@ public sealed class OsuWebCustomSets
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE osu_beatmaps SET approved = {approved} WHERE beatmapset_id = {setId} AND deleted_at IS NULL AND approved IN (-2, -1, 0)",
             cancellationToken).ConfigureAwait(false);
+        await OsuWebBeatmapsetUpdates.QueueAsync(_db, setId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -140,6 +143,7 @@ public sealed class OsuWebCustomSets
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE osu_beatmaps SET approved = -2 WHERE beatmapset_id = {set} AND deleted_at IS NULL AND approved IN (-1, 0)", cancellationToken).ConfigureAwait(false);
         }
+        await OsuWebBeatmapsetUpdates.QueueAsync(_db, sets.Select(s => (int)s), cancellationToken).ConfigureAwait(false);
         return sets;
     }
 

@@ -25,14 +25,21 @@ public sealed class OsuWebBeatmapMirror
     {
         ArgumentNullException.ThrowIfNull(beatmap);
 
-        if (!Apply(beatmap, await LoadSetAsync(beatmap, cancellationToken).ConfigureAwait(false),
-                await _db.Beatmaps.FirstOrDefaultAsync(b => b.BeatmapId == (uint)beatmap.Id, cancellationToken).ConfigureAwait(false)))
-        {
+        var set = await LoadSetAsync(beatmap, cancellationToken).ConfigureAwait(false);
+        var map = await _db.Beatmaps.FirstOrDefaultAsync(b => b.BeatmapId == (uint)beatmap.Id, cancellationToken).ConfigureAwait(false);
+        sbyte? setStatus = set?.Approved, mapStatus = map?.Approved;
+
+        if (!Apply(beatmap, set, map))
             return;
-        }
+
+        // A new map or a status that changed (an osu! set's status refreshed, say): lazer looks it up again.
+        bool changed = set is null || map is null || set.Approved != setStatus || map.Approved != mapStatus;
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
+
+        if (changed)
+            await OsuWebBeatmapsetUpdates.QueueAsync(_db, beatmap.SetId, cancellationToken).ConfigureAwait(false);
 
         if (beatmap.Details?.PackTags is { } packTags)
             await SyncPacksAsync(beatmap.SetId, packTags, cancellationToken).ConfigureAwait(false);
@@ -123,6 +130,9 @@ public sealed class OsuWebBeatmapMirror
             await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
         _db.ChangeTracker.Clear();
+
+        // Its difficulties changed even when the set's status stayed.
+        await OsuWebBeatmapsetUpdates.QueueAsync(_db, setId, cancellationToken).ConfigureAwait(false);
     }
 
     private async Task<OsuWebBeatmapset?> LoadSetAsync(Beatmap beatmap, CancellationToken cancellationToken)

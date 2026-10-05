@@ -871,6 +871,19 @@ CREATE TABLE beatmap_owners (
   PRIMARY KEY (beatmap_id, user_id)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- osu-web migration 2022_08_04_220851_create_bss_process_queue: sets lazer should look up again (the spectator server announces them).
+DROP TABLE IF EXISTS bss_process_queue;
+CREATE TABLE bss_process_queue (
+  queue_id int unsigned NOT NULL AUTO_INCREMENT,
+  beatmapset_id int unsigned NOT NULL,
+  start_time timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  status tinyint NOT NULL DEFAULT 0,
+  update_time timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (queue_id),
+  KEY status (status),
+  KEY beatmapset_id (beatmapset_id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
 -- osu-web migration 2023_04_07_051227_create_user_ircauth: IRC keys from the account settings.
 DROP TABLE IF EXISTS osu_user_ircauth;
 CREATE TABLE osu_user_ircauth (
