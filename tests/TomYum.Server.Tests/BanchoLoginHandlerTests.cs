@@ -128,4 +128,58 @@ public class BanchoLoginHandlerTests
 
         Assert.NotNull(outcome.Token);
     }
+
+    [Fact]
+    public async Task SecondClient_WhileTheFirstIsActive_IsRefused()
+    {
+        var (handler, registry) = NewHandler(out var users);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+        var first = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+
+        var second = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+
+        Assert.Null(second.Token);
+        Assert.Contains((ushort)ServerPacketId.Notification, PacketIds(second.Body));
+        Assert.NotNull(registry.GetByToken(first.Token!)); // the first client stays online
+    }
+
+    [Fact]
+    public async Task SecondClient_AfterTheFirstWentQuiet_ReplacesIt()
+    {
+        var (handler, registry) = NewHandler(out var users);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+        var first = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+        registry.GetByToken(first.Token!)!.LastActivityUtc = DateTimeOffset.UtcNow - BanchoLoginHandler.ActiveSessionWindow - TimeSpan.FromSeconds(1);
+
+        var second = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+
+        Assert.NotNull(second.Token);
+        Assert.Null(registry.GetByToken(first.Token!));
+        Assert.Equal(second.Token, registry.GetByUserId(registry.GetByToken(second.Token!)!.UserId)!.Token);
+    }
+
+    [Fact]
+    public async Task TournamentClient_WhileThePlayerIsOnline_LogsIn()
+    {
+        var (handler, _) = NewHandler(out var users);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+        await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+
+        var window = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass", "b20231228.1tourney"), "TH", CancellationToken.None);
+
+        Assert.NotNull(window.Token);
+    }
+
+    [Fact]
+    public async Task GameClient_WhileOnIrc_LogsIn()
+    {
+        var (handler, registry) = NewHandler(out var users);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+        var user = await users.GetBySafeNameAsync("bluesky", CancellationToken.None);
+        registry.Add(new BanchoPresence { UserId = user!.Id, Username = "BlueSky" }).IsIrc = true;
+
+        var game = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+
+        Assert.NotNull(game.Token);
+    }
 }

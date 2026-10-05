@@ -54,6 +54,7 @@ public sealed class BanchoLoginHandler
     private readonly TomYum.Persistence.OsuWeb.OsuWebAccountFlags? _accountFlags;
     private readonly TomYum.Server.Admin.RestrictionNotices? _restrictionNotices;
     private readonly TomYum.Server.Admin.Maintenance? _maintenance;
+    private readonly IServiceProvider? _services;
 
     /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
     public const int UnreadLimit = 50;
@@ -69,6 +70,12 @@ public sealed class BanchoLoginHandler
 
     /// <summary>Shown to a bot account trying the game: bots chat over IRC (port 6667) instead.</summary>
     public const string BotNotice = "Bot accounts can't log in to the game. Connect over IRC instead.";
+
+    /// <summary>Shown to a second client logging in while the account's session is still active (bancho.py's wording).</summary>
+    public const string AlreadyOnlineNotice = "User already logged in.";
+
+    /// <summary>A session heard from this recently is active, and a second login is refused (bancho.py's 10 seconds).</summary>
+    public static readonly TimeSpan ActiveSessionWindow = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// What a held-for-verification login is told: today's clients open <c>/p/verify</c> on their
@@ -107,8 +114,10 @@ public sealed class BanchoLoginHandler
         TomYum.Persistence.OsuWeb.OsuWebClientVerification? clientVerification = null,
         TomYum.Persistence.OsuWeb.OsuWebAccountFlags? accountFlags = null,
         TomYum.Server.Admin.RestrictionNotices? restrictionNotices = null,
-        TomYum.Server.Admin.Maintenance? maintenance = null)
+        TomYum.Server.Admin.Maintenance? maintenance = null,
+        IServiceProvider? services = null)
     {
+        _services = services;
         _maintenance = maintenance;
         _restrictionNotices = restrictionNotices;
         _accountFlags = accountFlags;
@@ -229,6 +238,26 @@ public sealed class BanchoLoginHandler
             }
         }
 
+        // osu!'s tournament client (version "…tourney") logs in once per player it shows, with the
+        // same account: those windows are extra sessions, not the player moving to another client.
+        var tournament = request.OsuVersion.EndsWith("tourney", StringComparison.OrdinalIgnoreCase);
+
+        // One game client per account, as bancho.py does: while the session already online is still
+        // talking (heard from in the last 10 seconds) this login is refused; a quiet one (crashed,
+        // closed without logging out) is logged out to make room. IRC sessions give way as before.
+        if (!tournament && _registry.GetByUserId(user.Id) is { IsIrc: false } online && user.Id != BanchoBot.UserId)
+        {
+            if (DateTimeOffset.UtcNow - online.LastActivityUtc < ActiveSessionWindow)
+            {
+                _logger.LogInformation("Login refused: {Username} (id {UserId}) is already online.", user.Username, user.Id);
+                await RecordLoginAsync(user.Id, "already_online", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, AlreadyOnlineNotice), null);
+            }
+
+            _logger.LogInformation("Login: {Username} (id {UserId})'s previous session was quiet; logging it out.", user.Username, user.Id);
+            await LogOutAsync(online).ConfigureAwait(false);
+        }
+
         // Resolve the country for this session: prefer the live CF-IPCountry header, fall back
         // to the stored user country. If the stored country is "xx" and we have a real one
         // now, persist it so future logins don't need the header to show the correct flag.
@@ -249,9 +278,6 @@ public sealed class BanchoLoginHandler
 
         await (_presenceStats ?? new PresenceStats(_userStats)).FillAsync(presence, user.Id, presence.Mode, cancellationToken: cancellationToken).ConfigureAwait(false);
 
-        // osu!'s tournament client (version "…tourney") logs in once per player it shows, with the
-        // same account: those windows are extra sessions, not the player moving to another client.
-        var tournament = request.OsuVersion.EndsWith("tourney", StringComparison.OrdinalIgnoreCase);
         var player = tournament ? _registry.AddTournamentClient(presence) : _registry.Add(presence);
         player.Build = ClientBuild.Parse(request.OsuVersion);
         player.IsRestricted = user.IsRestricted;
@@ -351,6 +377,29 @@ public sealed class BanchoLoginHandler
     }
 
     /// <summary>The login in the account's history (the admin panel); a failure to record never fails the login.</summary>
+    /// <summary>
+    /// Logs <paramref name="player"/>'s session out as its own LOGOUT packet would (match, spectators,
+    /// channels, everyone's user list). Without the packet handlers (tests), the new session just
+    /// replaces it in the registry.
+    /// </summary>
+    private async Task LogOutAsync(OnlinePlayer player)
+    {
+        if (_services?.GetService<Packets.BanchoPacketDispatcher>() is not { } dispatcher)
+            return;
+        try
+        {
+            var logout = new BanchoPacketWriter(16).WritePacket((ServerPacketId)ClientPacketId.Logout, w => w.WriteInt32(0)).ToArray();
+            await dispatcher.DispatchAsync(player, _registry, _channels,
+                _services.GetRequiredService<MatchRegistry>(), _services, logout).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // the new login replaces the session in the registry either way
+        catch (Exception ex)
+#pragma warning restore CA1031
+        {
+            _logger.LogWarning(ex, "Couldn't log out {UserId}'s previous session.", player.UserId);
+        }
+    }
+
     private async Task RecordLoginAsync(int userId, string result, string? address, string country, string version, CancellationToken cancellationToken)
     {
         if (_accountFlags is null)
