@@ -76,3 +76,18 @@ public sealed class PreviewClipsTests : IDisposable
         return memory.ToArray();
     }
 }
+
+public sealed class DirectOsuFilesTests
+{
+    [Theory]
+    [InlineData("osu file format v14\n[General]", true)]
+    [InlineData("﻿osu file format v14\n[General]", true)]
+    [InlineData("<html><body>not found</body></html>", false)]
+    [InlineData("", false)]
+    public void OnlyRealOsuFilesAreKept(string text, bool kept) =>
+        Assert.Equal(kept, CustomBeatmapCatalog.IsOsuFile(System.Text.Encoding.UTF8.GetBytes(text)));
+
+    [Fact]
+    public void MirrorUrlIsCatboys() =>
+        Assert.Equal("https://catboy.best/osu/123", CustomBeatmapCatalog.MirrorOsuUrl(123));
+}

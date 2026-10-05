@@ -157,6 +157,9 @@ public static partial class DirectEndpoints
         if (withoutMania)
             local = local.Where(set => !IsManiaOnly(set.Maps.Select(b => b.Mode))).ToList();
 
+        // Their maps' difficulty settings come from their .osu files: fetched for those not kept here yet.
+        await custom.FetchMissingFilesAsync(local, TimeSpan.FromSeconds(3), cancellationToken).ConfigureAwait(false);
+
         var lines = new StringBuilder();
         lines.AppendLine((more ? 101 : local.Count).ToString(CultureInfo.InvariantCulture));
         foreach (var set in local)
