@@ -37,7 +37,7 @@ public interface IPlugin
 ```
 
 The `Id` in your manifest is your identity **and** your config key. Keep it stable and unique
-(e.g. `tomyum.dan-mode`). Dispose in `ShutdownAsync` exactly what you registered in `InitializeAsync`
+(e.g. `tomyum.dan`). Dispose in `ShutdownAsync` exactly what you registered in `InitializeAsync`
 so the plugin can be cleanly unloaded.
 
 ## What you get: `IPluginContext`
@@ -49,7 +49,7 @@ so the plugin can be cleanly unloaded.
 | `Commands` | `Register(name, description, handler)` — adds a `!`command. Returns an `IDisposable`; dispose it on shutdown. |
 | `Events` | `Subscribe<TEvent>(handler)` — react to server events. Some are **vetoable** (you can reject the operation). |
 | `Http` | `Map(method, pattern, handler, requireAuth, subdomain)` — serve HTTP, optionally on your own subdomain. |
-| `GetHostService<T>()` | Inspect live state. Today: `IHostPlayerView` (who's online, action, map, mods) and `IHostOnlineCounts` (players online by client: stable, IRC, lazer; open multiplayer rooms). |
+| `GetHostService<T>()` | Inspect live state and reach players. Today: `IHostPlayerView` (who's online, action, map, mods), `IHostOnlineCounts` (players online by client: stable, IRC, lazer; open multiplayer rooms) and `IHostMessenger` (a BanchoBot message or a notification to an online osu!(stable) player) and `IHostSpectating` (BanchoBot spectates an osu!stable player, so their client streams frames and `SpectateFrameEvent` fires without a human spectator; nothing is queued for the bot, and it can watch many players at once). |
 | `Data` | Raw ADO.NET `DbConnection` — **only** if the operator lists your id under `Plugins:Trusted`. Otherwise `null`. |
 
 ### Events you can subscribe to
@@ -60,9 +60,15 @@ to reject the score):
 - `PlayerLoginEvent` — a player logged in.
 - `PlayerLoginRefusedEvent` — an osu!stable login was refused (`Held` when it's only for now: maintenance, or a device to verify).
 - `ChatMessageEvent` — a player sent a message.
-- `ActionChangedEvent` — a player's status changed (idle/playing/…, with map + mods).
-- `SpectateFrameEvent` — a raw replay-frame bundle from a spectated host.
-- `ScoreSubmittingEvent` *(vetoable)* — a score is about to be persisted.
+- `ActionChangedEvent` — a player's status changed (idle/playing/…, with map + mods). `ClientVersion` is the client's
+  build; `CanCheckFrames` says whether the server can read its spectator frames (osu!stable from b20130513 on).
+- `SpectateFrameEvent` — a raw replay-frame bundle from a spectated host. `Action` is the bundle's replay action
+  (`ReplayActions.Pause`, `NewSong`, …) read by the server whatever the build's layout, or null when it couldn't.
+- `ScoreSubmittingEvent` *(vetoable)* — a score is about to be persisted (with `BeatmapId`, `BeatmapSetId` and
+  `BeatmapVersion`, the difficulty name).
+- `ScoreSubmittedEvent` — an osu!stable score was stored (failed plays too): its score id, map, mods, accuracy,
+  grade, misses, pp, client version and whether the player is restricted. Not raised for a vetoed or refused score,
+  nor for osu!lazer (scores go to the website).
 
 > Some raise-sites are wired as their consuming features land (`ActionChanged` is live today;
 > score-veto and spectate-frame arrive with DAN/spectating). Subscribing is always safe.

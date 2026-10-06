@@ -35,6 +35,9 @@ public sealed class Match
             Slots[i] = new MatchSlot();
     }
 
+    /// <summary>Where the room's history is written (osu-web's match pages); none in tests.</summary>
+    public MatchHistory? History { get; set; }
+
     /// <summary>Lock object for atomic read-then-modify operations.</summary>
     public object SyncRoot { get; } = new();
 

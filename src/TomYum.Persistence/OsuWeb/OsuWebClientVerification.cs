@@ -38,12 +38,34 @@ public sealed class OsuWebClientVerification
             "SELECT 1 AS Value FROM osu_user_security WHERE user_id = {0} LIMIT 1",
             userId).AnyAsync(cancellationToken).ConfigureAwait(false);
 
-        // The account's first device is trusted; any other waits for the player to confirm it.
+        // The account's first device is trusted; any other waits for the player to confirm it. A device
+        // already waiting is stamped again: the website's verify page, opened without the client's
+        // details, offers the account's device that tried most recently (in the last day).
         await _db.Database.ExecuteSqlRawAsync(
-            "INSERT IGNORE INTO osu_user_security (user_id, osu_md5, unique_md5, disk_md5, mac_md5, verified) VALUES ({0}, {1}, {2}, {3}, {4}, {5})",
+            "INSERT INTO osu_user_security (user_id, osu_md5, unique_md5, disk_md5, mac_md5, verified) VALUES ({0}, {1}, {2}, {3}, {4}, {5}) "
+            + "ON DUPLICATE KEY UPDATE timestamp = CURRENT_TIMESTAMP",
             [userId, osu, unique, disk, mac, known ? 0 : 1], cancellationToken).ConfigureAwait(false);
         return !known;
     }
+
+    /// <summary>
+    /// Whether these hashes name a device that can be checked (md5 hex, as builds from b20120812 on send them,
+    /// and older ones patched for device verification);
+    /// <see cref="IsVerifiedAsync"/> lets any other in.
+    /// </summary>
+    /// <param name="osuMd5">The client's osu! path md5.</param>
+    /// <param name="uniqueMd5">The client's uninstall id md5.</param>
+    /// <param name="diskMd5">The client's disk signature md5.</param>
+    public static bool IsDevice(string osuMd5, string uniqueMd5, string diskMd5) =>
+        Md5(osuMd5) is not null && Md5(uniqueMd5) is not null && Md5(diskMd5) is not null;
+
+    /// <summary>Whether the account has any device on record (verified or waiting).</summary>
+    /// <param name="userId">The account.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public async Task<bool> HasDevicesAsync(int userId, CancellationToken cancellationToken = default) =>
+        await _db.Database.SqlQueryRaw<int>(
+            "SELECT 1 AS Value FROM osu_user_security WHERE user_id = {0} LIMIT 1",
+            userId).AnyAsync(cancellationToken).ConfigureAwait(false);
 
     /// <summary>
     /// Whether this device is still waiting for the player to confirm it on the website (a login from

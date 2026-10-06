@@ -52,6 +52,7 @@ public sealed class JoinMatchHandler : IClientPacketHandler
 
         match.Channel.Join(context.Player);
         context.Player.JoinChannel("#multiplayer");
+        match.History?.Joined(match, context.Player.UserId);
 
         MatchEncoder.WriteMatchPacket(context.Response, ServerPacketId.MatchJoinSuccess, match, sendPassword: true);
         context.Response.WriteStringPacket(ServerPacketId.ChannelJoinSuccess, "#multiplayer");

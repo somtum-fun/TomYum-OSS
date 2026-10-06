@@ -124,7 +124,7 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
     {
         await using var tomyum = await NewTomYumContextAsync();
         await ExecuteAsync("INSERT INTO osu_beatmappacks (url, name, author, tag) VALUES ('https://x', 'Existing', 'peppy', 'S1')");
-        var repository = NewRepository(tomyum);
+        var repository = NewRepository(tomyum, importPacks: true);
         var map = Map(600, 60, RankedStatus.Ranked, api: 1);
         map.Details = new BeatmapDetails { PackTags = ["S1", "P304"] };
         await repository.UpsertAsync(map);
@@ -144,6 +144,21 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
         await repository.UpsertAsync(map);
 
         Assert.Equal(1L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_beatmappacks_items WHERE beatmapset_id = 60"));
+    }
+
+    [MySqlFact]
+    public async Task PackTags_AreIgnored_WhenStaffManageThePacks()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        await ExecuteAsync("INSERT INTO osu_beatmappacks (url, name, author, tag) VALUES ('', 'Staff pack', 'staff', 'S1')");
+        await ExecuteAsync("INSERT INTO osu_beatmappacks_items (pack_id, beatmapset_id) SELECT pack_id, 61 FROM osu_beatmappacks WHERE tag = 'S1'");
+        var map = Map(610, 61, RankedStatus.Ranked, api: 1);
+        map.Details = new BeatmapDetails { PackTags = ["P304"] };
+
+        await NewRepository(tomyum).UpsertAsync(map);
+
+        Assert.Equal(1L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_beatmappacks"));
+        Assert.Equal(1L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_beatmappacks_items WHERE beatmapset_id = 61"));
     }
 
     [Theory]
@@ -200,6 +215,48 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
         Assert.Equal([700, 701], (await repository.GetBySetAsync(70)).Select(b => b.Id).Order());
     }
 
+    [MySqlFact]
+    public async Task StaffQualified_EntersTheRankingQueue_AndPendingLeavesIt()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        var repository = NewRepository(tomyum);
+        await repository.UpsertAsync(Map(800, 80, RankedStatus.Pending, api: -2, version: "Easy"));
+        await repository.UpsertAsync(Map(801, 80, RankedStatus.Pending, api: -2, version: "Hard"));
+        // osu!'s own statuses never queue a set here.
+        Assert.Null(await ScalarAsync<DateTime?>("SELECT queued_at FROM osu_beatmapsets WHERE beatmapset_id = 80"));
+
+        // The BN panel, !map qualify and /qualify all end here: modding:rank then ranks it in time.
+        Assert.True(await repository.SetStatusAsync(800, RankedStatus.Qualified));
+        Assert.True(await repository.SetStatusAsync(801, RankedStatus.Qualified));
+        Assert.Equal(3, await ScalarAsync<int>("SELECT approved FROM osu_beatmapsets WHERE beatmapset_id = 80"));
+        var queued = await ScalarAsync<DateTime?>("SELECT queued_at FROM osu_beatmapsets WHERE beatmapset_id = 80");
+        Assert.NotNull(queued);
+        Assert.True(DateTime.UtcNow - queued!.Value < TimeSpan.FromMinutes(5));
+
+        // Back to pending: out of the queue.
+        Assert.True(await repository.SetStatusAsync(800, RankedStatus.Pending));
+        Assert.True(await repository.SetStatusAsync(801, RankedStatus.Pending));
+        Assert.Null(await ScalarAsync<DateTime?>("SELECT queued_at FROM osu_beatmapsets WHERE beatmapset_id = 80"));
+    }
+
+    [MySqlFact]
+    public async Task StaffQualified_OneDifficulty_KeepsItsQueueDate_OnRefreshes()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        var repository = NewRepository(tomyum);
+        await repository.UpsertAsync(Map(810, 81, RankedStatus.Pending, api: -2, version: "Easy"));
+        await repository.UpsertAsync(Map(811, 81, RankedStatus.Pending, api: -2, version: "Hard"));
+        Assert.True(await repository.SetStatusAsync(811, RankedStatus.Qualified));
+        Assert.Equal(3, await ScalarAsync<int>("SELECT approved FROM osu_beatmapsets WHERE beatmapset_id = 81"));
+        await ExecuteAsync("UPDATE osu_beatmapsets SET queued_at = '2026-01-01 00:00:00' WHERE beatmapset_id = 81");
+
+        // The other difficulty's osu! refresh (and the qualified one's) don't push the set back in the queue.
+        await repository.UpsertAsync(Map(810, 81, RankedStatus.Pending, api: -2, version: "Easy"));
+        await repository.UpsertAsync(Map(811, 81, RankedStatus.Pending, api: -2, version: "Hard"));
+        Assert.Equal(3, await ScalarAsync<int>("SELECT approved FROM osu_beatmapsets WHERE beatmapset_id = 81"));
+        Assert.Equal(new DateTime(2026, 1, 1), await ScalarAsync<DateTime?>("SELECT queued_at FROM osu_beatmapsets WHERE beatmapset_id = 81"));
+    }
+
     [Theory]
     [InlineData(new sbyte[] { -2, 4, 0 }, 4)]
     [InlineData(new sbyte[] { 3, 1 }, 1)]
@@ -244,10 +301,10 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
             () => mirror.WriteAsync(Map(OsuWebBeatmaps.MaxId + 1, 1, RankedStatus.Ranked, api: 1)));
     }
 
-    private OsuWebMirroringBeatmapRepository NewRepository(TomYumDbContext tomyum)
+    private OsuWebMirroringBeatmapRepository NewRepository(TomYumDbContext tomyum, bool importPacks = false)
     {
         var osuWeb = NewOsuWebContext();
-        return new OsuWebMirroringBeatmapRepository(new BeatmapRepository(tomyum), new OsuWebBeatmapMirror(osuWeb), osuWeb);
+        return new OsuWebMirroringBeatmapRepository(new BeatmapRepository(tomyum), new OsuWebBeatmapMirror(osuWeb, importPacks), osuWeb);
     }
 
     private static Beatmap Map(int id, int setId, RankedStatus status, int? api, string version = "Normal", int mode = 0, int maxCombo = 500) => new()

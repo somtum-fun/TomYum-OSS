@@ -102,7 +102,11 @@ public partial class OldBanchoTests
     [InlineData("b20121223", -6, -6)]
     [InlineData("b20130915.4", -7, -1)]
     [InlineData("b20130915.4", 7, 7)]
-    [InlineData("b20140624", -8, -8)]
+    [InlineData("b20140624", -8, -1)]   // -7 and -8 came with b20151228
+    [InlineData("b20151026.3fallback", -8, -1)]
+    [InlineData("b20151026.3fallback", -7, -1)]
+    [InlineData("b20151228.3", -8, -8)]
+    [InlineData("b20151228.3", -7, -7)]
     [InlineData("b20250101", -8, -8)]
     public void LoginRefusals_AreOnesTheBuildKnows(string version, int code, int expected)
     {
@@ -122,6 +126,63 @@ public partial class OldBanchoTests
     [InlineData("nonsense", "")]
     public void TheBuild_IsReadFromTheLogin(string body, string version) =>
         Assert.Equal(version, ClientBuild.FromLogin(body).Version);
+
+    [Theory]
+    [InlineData("a\nb\nb20140624|7|0|h:a:m:u:d:|0|tomyum-verify\n", true)]
+    [InlineData("a\nb\nb20120522|7|0|h:a:m:u:d:|0|tomyum-verify\n", true)]
+    [InlineData("a\nb\nb20140624|7|0|h:a:m:u:d:|0|something,TOMYUM-VERIFY\n", true)]
+    [InlineData("a\nb\nb20140624|7|0|h:a:m:u:d:|0\n", false)]
+    [InlineData("a\nb\nb20140624|7|0|tomyum-verify\n", false)]   // only after the pm field
+    public void APatchedBuild_IsAskedToVerifyItsDevice(string body, bool patched)
+    {
+        var build = ClientBuild.FromLogin(body);
+
+        Assert.Equal(patched, build.HandlesVerification);
+        Assert.Equal(patched, build.CanVerifyDevices);
+        Assert.True(LoginRequest.TryParse(body, out var request));
+        Assert.Equal(patched, request!.HandlesVerification);
+        var refusal = LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired, "Confirm it.");
+        var reply = Packets(LegacyPackets.Outgoing(refusal, build));
+        Assert.Equal(patched ? -8 : -1, BitConverter.ToInt32(Assert.Single(reply, p => p.Id == 5).Payload));
+        Assert.Equal(-1, build.LoginCode(-7));   // only -8 is patched in
+    }
+
+    // The login lines of builds before b20120812 as the prod patcher (step 12) makes them: the install's
+    // whole device (osu! md5, adapters, their md5, md5(md5(UninstallID)), disk md5) and the capability, in
+    // each era's form (b337 had no city, b1122 to b1652 no client hash, b1700 to b20120529 an incomplete one).
+    private const string PatchedDevice =
+        "0123456789abcdef0123456789abcdef:001122334455.:11111111111111111111111111111111:22222222222222222222222222222222:33333333333333333333333333333333";
+
+    [Theory]
+    [InlineData("b337.test", "0")]   // TCP, first era: today's ids + 1 from 11, -1/-2 only
+    [InlineData("b1122", "1")]       // TCP, -1 to -3
+    [InlineData("b1218", "0")]
+    [InlineData("b1818", "1")]       // today's ids, -1 to -6
+    [InlineData("b20120522", "0")]   // sent a 4-part hash unpatched
+    public void APatchedOldBuild_SendsItsDeviceAndIsAskedToVerify(string version, string city)
+    {
+        var body = $"Player\n5f4dcc3b5aa765d61d8327deb882cf99\n{version}|7|{city}|{PatchedDevice}|0|tomyum-verify\n";
+
+        Assert.True(LoginRequest.TryParse(body, out var request));
+        Assert.True(request!.HandlesVerification);
+        Assert.Equal(version, request.OsuVersion);
+        Assert.Equal(city == "1", request.DisplayCity);
+        Assert.Equal("22222222222222222222222222222222", request.ClientHashes.UninstallMd5);
+        Assert.Equal("33333333333333333333333333333333", request.ClientHashes.DiskSignatureMd5);
+        Assert.Equal("001122334455.", request.ClientHashes.AdaptersStr);
+
+        var build = ClientBuild.FromLogin(body);
+        Assert.True(build.CanVerifyDevices);
+        var refusal = LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired, "Confirm it.");
+        var reply = Packets(LegacyPackets.Outgoing(refusal, build));
+        Assert.Equal(-8, BitConverter.ToInt32(Assert.Single(reply, p => p.Id == 5).Payload));
+        Assert.Contains(reply, p => p.Id == (IsShifted(version) ? 25 : 24));   // the notice, in the build's own ids
+
+        // The same build unpatched (no device, no capability) is never sent -8: it would read it as a login.
+        var unpatched = ClientBuild.FromLogin($"Player\nx\n{version}|7|{city}\n");
+        Assert.False(unpatched.CanVerifyDevices);
+        Assert.Equal(-1, BitConverter.ToInt32(Assert.Single(Packets(LegacyPackets.Outgoing(refusal, unpatched)), p => p.Id == 5).Payload));
+    }
 
     // ---- chat ----
 

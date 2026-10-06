@@ -148,6 +148,42 @@ stats-only form).
   clients (`LegacyFrames`); `b20140624` already sends today's layout. The server logs, once per
   session, what an old build's frames looked like.
 
+## Device verification
+
+With `ClientVerification:Enabled`, a new device must be confirmed on the website before it logs in
+(`osu.<domain>/p/verify`; an account's first device is trusted). Bancho asks with login reply -8,
+which only b20151228 and later understand: every earlier build reads an unknown refusal as a
+successful login, so TomYum never sends it -8 (it goes out as -1). What those builds get instead is
+`ClientVerification:OldClients` (`TOMYUM_CLIENTVERIFICATION__OLDCLIENTS`):
+
+- `Unverified` (the default): they log in without the check. The device is recorded unverified, so a
+  newer client on it is still asked.
+- `Refuse`: they're refused (-1) **only when the device needs verifying**: a verified device, or an
+  account's first, still gets in. The message links the website's verify page (which can confirm the
+  account's newest waiting device without the game's details) and `ClientVerification:DownloadsUrl`
+  (default `https://osu.<domain>/home/download`). Builds before b20120812 send no complete hardware
+  hashes (b20120522 and b20120529 have no disk signature), so for them any account that already has
+  a device counts as a new device.
+
+Today's clients (b20160101 on) always send their hardware hashes, so one that doesn't is refused
+for an account that already has a device, whatever `OldClients` says (it would otherwise skip the check).
+The website's verify page opened without the game's details (`ch`) offers the account's device that
+tried to log in most recently, in the last day.
+
+A patched old client can verify like today's: it adds a last field to its login line,
+`version|utc|city|hashes|pm|tomyum-verify` (a comma-separated capability list), and is then sent
+-8 and handles it itself (it opens `osu.<domain>/p/verify?u=<name>&ch=<hashes>` once and retries the
+login until the device is confirmed). The decompiled clients' patcher does this for b20120812 to
+b20151026.3 (step 11; the builds that send a whole device) and for b337 to b20120529 (step 12): those sent
+no client hash, or one without the uninstall id or disk, so the patched build sends its install's whole
+device instead, as later builds do (`md5(osu!.exe):adapters:md5(adapters):md5(md5(UninstallID)):md5(disk serial)`,
+with the same `UninstallID` registry value osu! keeps, so it's the same device for every build on a PC).
+The login line is the same in every era once patched (b337 sent only `version|utc`, b370 to b1652
+`version|utc|city`): `version|utc|city|hashes|0|tomyum-verify`, over TCP bancho for builds up to
+b20130815. Its -8 goes out as -8 in the build's own packet ids; the build retries through its own
+"connection failed" retry every 15 s. b20151228.3 handles -8 already and only gets `ch` added to its verify link.
+The hook (original builds) follows `OldClients`.
+
 ## Testing locally
 
 `deploy/caddy/Caddyfile.local` serves the plain-HTTP hosts for `localtest.me`; Hook's `ServerName`

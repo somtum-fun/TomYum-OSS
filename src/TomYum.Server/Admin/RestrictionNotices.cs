@@ -20,6 +20,10 @@ public sealed class RestrictionNotices
 {
     private const string KeyPrefix = "tomyum:restriction-notice:";
 
+    /// <summary>What BanchoBot tells a player who was restricted (osu!'s own wording).</summary>
+    public const string RestrictedText =
+        "Your account is currently in restricted mode. Please visit the osu! website for more information.";
+
     private readonly IServiceScopeFactory _scopes;
     private readonly PlayerRegistry _players;
     private readonly IConnectionMultiplexer? _redis;
@@ -65,9 +69,7 @@ public sealed class RestrictionNotices
                 state = string.Create(CultureInfo.InvariantCulture, $"r:{latest?.BanId ?? 0}");
                 if (told == state)
                     return;
-                var reason = string.IsNullOrWhiteSpace(latest?.Reason) ? "no reason was given" : latest!.Reason!.Trim();
-                text = string.Create(CultureInfo.InvariantCulture,
-                    $"Your account has been restricted. Reason: {reason}. While restricted you can still play, but other players can't see you, your scores don't count on leaderboards or rankings, and you can't chat in public channels. Your account standing: {_site}/users/{userId} — if you think this is a mistake, please contact a staff member.");
+                text = RestrictedText;
             }
             else
             {

@@ -471,6 +471,8 @@ public sealed class BanchoBotCommands
             }
         }
 
+        match.History?.GameStarted(match);
+
         var startBytes = MatchBroadcast.EncodeMatch(ServerPacketId.MatchStart, match, sendPassword: true);
         MatchBroadcast.ToMatch(match, _players, startBytes);
 
@@ -497,6 +499,7 @@ public sealed class BanchoBotCommands
             match.HostUserId = target.UserId;
         }
 
+        match.History?.HostChanged(match, target.UserId);
         MatchBroadcast.UpdateMatch(match, _players);
         return string.Create(CultureInfo.InvariantCulture, $"{target.Presence.Username} is now the host.");
     }
@@ -537,6 +540,7 @@ public sealed class BanchoBotCommands
             match.Slots[slotIdx].Reset();
         }
 
+        match.History?.Kicked(match, target.UserId);
         match.Channel.Leave(target.UserId);
         target.LeaveChannel("#multiplayer");
 

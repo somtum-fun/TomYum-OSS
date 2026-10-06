@@ -50,27 +50,52 @@ public static class RegistrationEndpoints
         // check == 0 means "create the account"; any non-zero value is validate-only.
         var create = int.TryParse(checkRaw, out var check) && check == 0;
 
+        var ip = LoginIps.ClientAddress(context);
         var header = context.Request.Headers["CF-IPCountry"].ToString();
         var countryIso = IpCountry.FromHeader(header)
-                         ?? context.RequestServices.GetService<IpCountry>()?.Lookup(LoginIps.ClientAddress(context))
+                         ?? context.RequestServices.GetService<IpCountry>()?.Lookup(ip)
                          ?? "xx";
+        var country = countryIso.ToLowerInvariant();
 
+        // bancho.py's field rules first, then the website's sign-up rules (IP bans, one account per
+        // network a day, no VPN, proxy or hosting network; osu-web's TomYumRegistrationGuard, the same
+        // rules lazer's sign-up goes through), then the account.
         var result = await registration
-            .RegisterAsync(username, email, password, create, country: countryIso.ToLowerInvariant(), cancellationToken)
+            .RegisterAsync(username, email, password, create: false, country, cancellationToken)
             .ConfigureAwait(false);
-
         if (!result.IsValid)
+            return FormErrors(result.Errors);
+
+        var blocked = await osuWebSync
+            .CheckRegistrationAsync(ip, username, countryIso, quick: !create, cancellationToken)
+            .ConfigureAwait(false);
+        if (blocked is not null)
         {
-            // bancho.py shape: {"form_error": {"user": {"<field>": ["<joined messages>"]}}}.
-            var fields = result.Errors.ToDictionary(kvp => kvp.Key, kvp => new[] { kvp.Value });
-            return Results.Json(
-                new { form_error = new { user = fields } },
-                statusCode: 400);
+            // Not about one field: on the last one, as bancho.py put "registration disabled".
+            return FormErrors(new Dictionary<string, string> { ["password"] = blocked });
         }
 
-        // Website search (osu-web mode). Best-effort: the account exists either way.
+        if (create)
+        {
+            result = await registration
+                .RegisterAsync(username, email, password, create: true, country, cancellationToken, ip)
+                .ConfigureAwait(false);
+            if (!result.IsValid)
+                return FormErrors(result.Errors);
+        }
+
+        // Website search and the sign-up rules' count (osu-web mode). Best-effort: the account exists either way.
         if (result.Created is { } created)
         {
+            try
+            {
+                await osuWebSync.RegistrationCreatedAsync(created.Id, created.Username, ip, countryIso, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Telling osu-web's sign-up rules about new account {UserId} failed", created.Id);
+            }
+
             try
             {
                 await osuWebSync.AccountCreatedAsync(created.Id, cancellationToken).ConfigureAwait(false);
@@ -83,5 +108,12 @@ public static class RegistrationEndpoints
 
         // The client only proceeds when the body is exactly "ok" (both validate and create).
         return Results.Text("ok", "text/plain");
+    }
+
+    /// <summary>bancho.py's shape: <c>{"form_error": {"user": {"&lt;field&gt;": ["&lt;joined messages&gt;"]}}}</c>, HTTP 400.</summary>
+    private static IResult FormErrors(IReadOnlyDictionary<string, string> errors)
+    {
+        var fields = errors.ToDictionary(kvp => kvp.Key, kvp => new[] { kvp.Value });
+        return Results.Json(new { form_error = new { user = fields } }, statusCode: 400);
     }
 }

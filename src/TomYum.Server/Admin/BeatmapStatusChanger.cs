@@ -12,17 +12,26 @@ namespace TomYum.Server.Admin;
 /// <param name="Status">The new status (API name, e.g. <c>ranked</c>).</param>
 /// <param name="Changed">Difficulty names that changed.</param>
 /// <param name="Scores">What recalculating the scores on the changed difficulties did.</param>
-public sealed record BeatmapStatusChangeResult(int SetId, string Status, IReadOnlyList<string> Changed, ScoreRecalculationResult? Scores = null);
+/// <param name="Cleared">What clearing the leaderboards of the difficulties that just got ranked did (null: none were).</param>
+public sealed record BeatmapStatusChangeResult(int SetId, string Status, IReadOnlyList<string> Changed, ScoreRecalculationResult? Scores = null, LeaderboardClearResult? Cleared = null);
 
 /// <summary>
 /// Staff status changes (BN panel): sets a whole set or some of its difficulties to ranked, approved,
 /// qualified, loved or pending on this server. The status is frozen in the database (osu! API
 /// refreshes keep it), applied in-game at once (leaderboards/pp), mirrored to the website and logged.
+/// A difficulty that becomes ranked or approved (from any other status) starts with an empty
+/// leaderboard, as on the old server: its scores are deleted (<see cref="ClearScoresOnRankKey"/>).
 /// </summary>
 public sealed class BeatmapStatusChanger
 {
     /// <summary>Staff log action for status changes.</summary>
     public const string LogAction = "beatmapset.status";
+
+    /// <summary>
+    /// Config (<c>Ranking:ClearScoresOnRank</c>, env <c>TOMYUM_RANKING__CLEARSCORESONRANK</c>): delete
+    /// a difficulty's scores when it becomes ranked or approved. On unless set to false.
+    /// </summary>
+    public const string ClearScoresOnRankKey = "Ranking:ClearScoresOnRank";
 
     /// <summary>The statuses staff can choose, by the name the panel sends.</summary>
     public static readonly IReadOnlyDictionary<string, RankedStatus> Statuses = new Dictionary<string, RankedStatus>(StringComparer.OrdinalIgnoreCase)
@@ -41,6 +50,7 @@ public sealed class BeatmapStatusChanger
     private readonly ILogger<BeatmapStatusChanger> _logger;
     private readonly ScoreRecalculation? _recalculation;
     private readonly OsuWebInterop? _interop;
+    private readonly bool _clearScoresOnRank;
 
     public BeatmapStatusChanger(
         BeatmapService beatmaps,
@@ -49,8 +59,10 @@ public sealed class BeatmapStatusChanger
         TimeProvider time,
         ILogger<BeatmapStatusChanger> logger,
         ScoreRecalculation? recalculation = null,
-        OsuWebInterop? interop = null)
+        OsuWebInterop? interop = null,
+        IConfiguration? configuration = null)
     {
+        _clearScoresOnRank = configuration?.GetValue<bool?>(ClearScoresOnRankKey) ?? true;
         _beatmaps = beatmaps;
         _repository = repository;
         _log = log;
@@ -72,20 +84,24 @@ public sealed class BeatmapStatusChanger
             return null;
 
         var changed = new List<Beatmap>();
+        var newlyRanked = new List<Beatmap>();
         foreach (var beatmap in Targets(set, beatmapIds))
         {
             // Already set by staff to this status: nothing to do (no log entry, recalculation or announcement).
             if (beatmap.StatusFrozen && beatmap.Status == status)
                 continue;
+            var before = _beatmaps.GetStatusOverride(beatmap.Id) ?? beatmap.Status;
             if (await _repository.SetStatusAsync(beatmap.Id, status, cancellationToken).ConfigureAwait(false))
             {
                 _beatmaps.SetStatusOverride(beatmap.Id, status);
                 beatmap.Status = status;
                 changed.Add(beatmap);
+                if (IsRanked(status) && !IsRanked(before))
+                    newlyRanked.Add(beatmap);
             }
         }
 
-        return await FinishAsync(set, changed, Statuses.First(s => s.Value == status).Key, actorId, cancellationToken).ConfigureAwait(false);
+        return await FinishAsync(set, changed, Statuses.First(s => s.Value == status).Key, actorId, newlyRanked, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -123,21 +139,31 @@ public sealed class BeatmapStatusChanger
         foreach (var (id, status) in overrides.Where(o => !fromApi.ContainsKey(o.Id) && o.Status is not null))
             _beatmaps.SetStatusOverride(id, status!.Value);
 
-        return await FinishAsync(set, changed, UnlockName, actorId, cancellationToken).ConfigureAwait(false);
+        return await FinishAsync(set, changed, UnlockName, actorId, null, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The name the panel sends (and the log shows) for giving difficulties bancho's status back.</summary>
     public const string UnlockName = "bancho";
 
+    /// <summary>Ranked or approved: the statuses whose leaderboards start empty.</summary>
+    private static bool IsRanked(RankedStatus status) => status is RankedStatus.Ranked or RankedStatus.Approved;
+
     private static List<Beatmap> Targets(IReadOnlyList<Beatmap> set, IReadOnlyCollection<int>? beatmapIds) =>
         beatmapIds is { Count: > 0 } ? set.Where(b => beatmapIds.Contains(b.Id)).ToList() : set.ToList();
 
     /// <summary>After a change: recalculate scores, re-index the set on the website and log it.</summary>
-    private async Task<BeatmapStatusChangeResult> FinishAsync(IReadOnlyList<Beatmap> set, List<Beatmap> changed, string name, int actorId, CancellationToken cancellationToken)
+    private async Task<BeatmapStatusChangeResult> FinishAsync(IReadOnlyList<Beatmap> set, List<Beatmap> changed, string name, int actorId, List<Beatmap>? newlyRanked, CancellationToken cancellationToken)
     {
         var setId = set[0].SetId;
         if (changed.Count == 0)
             return new BeatmapStatusChangeResult(setId, name, []);
+
+        // Newly ranked difficulties start with an empty leaderboard (the old server's rule). Not
+        // cancelled with the request (osu-web gives up after 30 s): a clear stopped halfway would
+        // leave the game and the website disagreeing, with the players' stats not redone.
+        LeaderboardClearResult? cleared = null;
+        if (_clearScoresOnRank && _recalculation is not null && newlyRanked is { Count: > 0 })
+            cleared = await _recalculation.ClearLeaderboardsAsync(newlyRanked, CancellationToken.None).ConfigureAwait(false);
 
         ScoreRecalculationResult? scores = null;
         if (_recalculation is not null)
@@ -149,6 +175,8 @@ public sealed class BeatmapStatusChanger
         var summary = string.Create(CultureInfo.InvariantCulture, $"{set[0].Artist} - {set[0].Title}: {which} → {target}");
         if (scores is { Changed: > 0 })
             summary += string.Create(CultureInfo.InvariantCulture, $" ({scores.Changed} score(s) recalculated, {scores.Players} player(s))");
+        if (cleared is { Scores: > 0 } or { WebsiteScores: > 0 })
+            summary += string.Create(CultureInfo.InvariantCulture, $" (leaderboard cleared: {cleared.Scores} score(s), {cleared.WebsiteScores} on the website)");
         await _log.AddAsync(new StaffLogEntry
         {
             CreatedAt = _time.GetUtcNow().UtcDateTime,
@@ -159,7 +187,7 @@ public sealed class BeatmapStatusChanger
             Result = name,
         }, cancellationToken).ConfigureAwait(false);
 
-        return new BeatmapStatusChangeResult(setId, name, changed.Select(b => b.Version).ToList(), scores);
+        return new BeatmapStatusChangeResult(setId, name, changed.Select(b => b.Version).ToList(), scores, cleared);
     }
 
     /// <summary>The set's stored difficulties; imports it from the osu! API first when the server doesn't have it.</summary>

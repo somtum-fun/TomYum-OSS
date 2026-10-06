@@ -343,6 +343,7 @@ public sealed class DiscordFakeGateway : IDiscordGateway
     public const ulong PublicLog = 13;
     public const ulong ServerLog = 14;
     public const ulong UserLog = 15;
+    public const ulong BnRequest = 16;
 
     private readonly Lock _lock = new();
     private readonly List<(ulong ChannelId, DiscordPost Post)> _posts = [];
@@ -369,6 +370,7 @@ public sealed class DiscordFakeGateway : IDiscordGateway
         PublicLogChannelId = PublicLog,
         ServerLogChannelId = ServerLog,
         UserLogChannelId = UserLog,
+        BnRequestChannelId = BnRequest,
         AdminRoleId = 21,
         GmtRoleId = 22,
         NatRoleId = 23,

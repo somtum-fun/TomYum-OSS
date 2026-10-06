@@ -972,5 +972,81 @@ CREATE TABLE messages (
   PRIMARY KEY (message_id, timestamp)
 ) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
 
+-- Beatmap discussions and the nomination history (the Discord bot's BN feed reads them):
+-- 2016_03_18 / 2017 discussions, posts and events, with the live enum of event types.
+CREATE TABLE beatmap_discussions (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  beatmapset_id mediumint unsigned NOT NULL,
+  beatmap_id mediumint unsigned DEFAULT NULL,
+  user_id int unsigned DEFAULT NULL,
+  message_type int DEFAULT NULL,
+  `timestamp` int DEFAULT NULL,
+  resolved tinyint(1) NOT NULL DEFAULT 0,
+  created_at timestamp NULL DEFAULT NULL,
+  updated_at timestamp NULL DEFAULT NULL,
+  deleted_at timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE beatmap_discussion_posts (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  beatmap_discussion_id bigint unsigned NOT NULL,
+  user_id int unsigned NOT NULL DEFAULT 0,
+  created_at timestamp NULL DEFAULT NULL,
+  updated_at timestamp NULL DEFAULT NULL,
+  message text NOT NULL,
+  `system` tinyint(1) NOT NULL DEFAULT 0,
+  deleted_at timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
+CREATE TABLE beatmapset_events (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  beatmapset_id mediumint unsigned NOT NULL,
+  user_id int unsigned DEFAULT NULL,
+  `type` enum('nominate','qualify','disqualify','approve','rank','kudosu_allow','kudosu_deny','kudosu_gain','kudosu_lost','issue_resolve','issue_reopen','discussion_delete','discussion_restore','discussion_post_delete','discussion_post_restore','kudosu_recalculate','nomination_reset','love','discussion_lock','discussion_unlock','genre_edit','language_edit','remove_from_loved','nsfw_toggle','beatmap_owner_change','nomination_reset_received','offset_edit','tags_edit') DEFAULT NULL,
+  comment text,
+  created_at timestamp NULL DEFAULT NULL,
+  updated_at timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (id)
+) DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci;
+
 -- Ids up to BanchoBot's (3) are reserved, like on a real server; players start at 4.
 ALTER TABLE phpbb_users AUTO_INCREMENT = 4;
+
+-- osu-web's osu_user_security (2015_01_01 base_tables, 2020_05_15 sync_structure): stable devices,
+-- verified on the website (OsuWebClientVerification).
+DROP TABLE IF EXISTS osu_user_security;
+CREATE TABLE osu_user_security (
+  user_id int unsigned NOT NULL DEFAULT 0,
+  osu_md5 binary(16) NOT NULL,
+  unique_md5 binary(16) NOT NULL,
+  disk_md5 binary(16) NOT NULL,
+  mac_md5 binary(16) NOT NULL DEFAULT '\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0',
+  timestamp timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  verified tinyint(1) NOT NULL DEFAULT 0,
+  PRIMARY KEY (user_id, osu_md5, unique_md5),
+  KEY disk_md5 (disk_md5),
+  KEY unique_md5 (unique_md5)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- TomYum's staff flags and game logins (osu-web migration 2026_09_30_000001).
+CREATE TABLE tomyum_account_flags (
+  user_id int unsigned NOT NULL,
+  locked_at datetime NULL,
+  whitelisted_at datetime NULL,
+  PRIMARY KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE tomyum_login_history (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  user_id int unsigned NOT NULL,
+  client varchar(16) NOT NULL,
+  result varchar(16) NOT NULL,
+  ip varchar(45) NULL,
+  country char(2) NULL,
+  agent varchar(255) NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY user_id_id (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -217,6 +217,13 @@ public sealed class DiscordWatch
         }, cancellationToken);
     }
 
+    /// <summary>A stable pass circleguard couldn't check (<paramref name="reason"/>: no replay, or a damaged one), to the circleguard channel.</summary>
+    public Task UncheckedAsync(ScoreCard score, string reason, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        return _gateway.PostAsync(_options.CircleguardChannel, SuspiciousPost(score, [reason]), cancellationToken);
+    }
+
     private IReadOnlyList<DiscordButton> CircleguardButtons(ScoreCard score, int risk, bool restricted) =>
         CircleguardEmbed.Buttons(_format, score, risk, restricted);
 

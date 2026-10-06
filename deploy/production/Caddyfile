@@ -210,11 +210,22 @@ http://osu.{$DOMAIN} {
 		}
 	}
 
+	# bancho.py's v1 API (tomyum-bpy-api plugin).
+	handle /bpy-api/* {
+		import tomyum
+	}
+
 	handle {
 		import osu-web
 	}
 
 	encode gzip zstd
+}
+
+# api.<domain>: bancho.py's v1 API (/v1/..., the tomyum-bpy-api plugin), for bancho.py tools and bots.
+http://api.{$DOMAIN} {
+	import access-log
+	import tomyum
 }
 
 # Lazer's multiplayer, spectating and online presence (SignalR over WebSockets).

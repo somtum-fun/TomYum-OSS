@@ -69,7 +69,11 @@ public sealed class ChangeActionHandler : IClientPacketHandler
                     presence.BeatmapMd5,
                     presence.BeatmapId,
                     (uint)presence.Mods,
-                    (byte)presence.GameMode),
+                    (byte)presence.GameMode)
+                {
+                    ClientVersion = context.Player.Build.Version,
+                    CanCheckFrames = !context.Player.IsIrc && context.Player.Build.HasCheckableFrames,
+                },
                 cancellationToken)
             .ConfigureAwait(false);
     }

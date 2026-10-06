@@ -29,6 +29,7 @@ public sealed class MatchScoreUpdateHandler : IClientPacketHandler
         if (payload.Length < 5) return Task.CompletedTask;
 
         // An old client's frame (docs/old-clients.md) gets the ScoreV2 flag today's clients read.
+        match.History?.ScoreFrame(match, slotIdx, payload);
         var frame = LegacyFrames.ScoreFrame(payload, context.Player.Build);
         frame[4] = (byte)slotIdx;
 

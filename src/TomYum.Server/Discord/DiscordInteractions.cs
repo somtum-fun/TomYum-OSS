@@ -11,7 +11,7 @@ namespace TomYum.Server.Discord;
 /// What the bot's buttons do. Every action runs as the presser's linked game account, with the same
 /// checks as the command it stands for:
 /// <list type="bullet">
-/// <item><c>status:{status}:{set}:{beatmap|0}</c>: confirms <c>/rankmap</c>, <c>/lovemap</c>, <c>/qualify</c> (BN, NAT, admins);</item>
+/// <item><c>status:{status}:{set}:{beatmap|0}</c>: confirms <c>/rankmap</c> (NAT, admins), <c>/lovemap</c>, <c>/qualify</c> (BN, NAT, admins);</item>
 /// <item><c>mod:{restrict|silence|unrestrict|dismiss}:{user}:{what}</c>: acts on a report, a suspicious play or a circleguard restriction (staff);</item>
 /// <item><c>rs:{user}:{ruleset}:{index}:{slot}</c> and <c>top:{user}:{ruleset}:{page}:{slot}</c>: page <c>/recent</c> and <c>/best</c> (anyone);</item>
 /// <item><c>cancel</c>: closes a confirmation.</item>
@@ -81,8 +81,8 @@ public sealed class DiscordInteractions
 
     private static async Task<DiscordButtonResult> StatusAsync(IServiceProvider services, User presser, string[] parts, CancellationToken cancellationToken)
     {
-        if (!await MapCommands.MayChangeStatusAsync(services, presser.Id, cancellationToken).ConfigureAwait(false))
-            return DiscordButtonResult.Say("That's for the Beatmap Nominators, NAT and admins.");
+        if (await MapCommands.StatusRefusalAsync(services, presser.Id, parts[1], cancellationToken).ConfigureAwait(false) is { } refusal)
+            return DiscordButtonResult.Say(refusal);
         if (!BeatmapStatusChanger.Statuses.TryGetValue(parts[1], out var status)
             || !int.TryParse(parts[2], NumberStyles.None, CultureInfo.InvariantCulture, out var setId)
             || !int.TryParse(parts[3], NumberStyles.None, CultureInfo.InvariantCulture, out var beatmapId))

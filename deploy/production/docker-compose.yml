@@ -32,8 +32,9 @@ x-osu-web: &osu-web
     USER_ACHIEVEMENT_ICON_PREFIX: https://assets.${DOMAIN}/medals/client/
     # Profile badges, the same way (osu!'s, and those added with the Discord bot).
     USER_BADGE_IMAGE_PREFIX: https://assets.${DOMAIN}/profile-badges/
-    # The changelog's streams, in order (changelog.sh fills them): Stable, Lazer, Server, Discord, Web, Wiki.
-    UPDATE_STREAMS: "5 6 10 11 1 12"
+    # The changelog's streams, in order (written on the changelog panel; changelog.sh imports commits):
+    # lazer-fork, Stable, Legacy clients, Server, Website, Discord, Wiki.
+    UPDATE_STREAMS: "6 5 13 10 1 11"
     # The red "development instance" banner: DEVELOPMENT_BANNER=true in .env shows it.
     IS_DEVELOPMENT_DEPLOY: ${DEVELOPMENT_BANNER:-false}
   volumes:

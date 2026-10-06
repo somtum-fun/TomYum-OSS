@@ -13,7 +13,9 @@ namespace TomYum.Server.Bancho;
 /// BanchoBot and <c>/np</c>: the reply to a <c>/np</c> sent to BanchoBot (the map, its status here
 /// and pp for full combos at 95–100%), and <c>!map &lt;status&gt; [set|map]</c>, which sets the
 /// status of the map the caller last <c>/np</c>'d exactly like the BN panel does (same log,
-/// recalculation, website and Discord). <c>!map</c> is for the website's BN, NAT and admins.
+/// recalculation, website and Discord). <c>!map</c> is for the website's BN, NAT and admins; only
+/// NAT and admins rank or approve directly (BNs nominate, or qualify, and the set ranks after the
+/// qualified period), and BNs on probation (<c>bng_limited</c>) only nominate on the website.
 /// </summary>
 public sealed class MapCommands
 {
@@ -35,7 +37,13 @@ public sealed class MapCommands
     };
 
     /// <summary>Website groups that may use <c>!map</c> (with administrators and developers).</summary>
-    private static readonly HashSet<string> MapperGroups = new(StringComparer.Ordinal) { "bng", "bng_limited", "nat", "admin" };
+    private static readonly HashSet<string> MapperGroups = new(StringComparer.Ordinal) { "bng", "nat", "admin" };
+
+    /// <summary>Website groups that may also rank or approve directly, skipping nominations and the qualified period.</summary>
+    private static readonly HashSet<string> RankerGroups = new(StringComparer.Ordinal) { "nat", "admin" };
+
+    /// <summary>Statuses (by the status changer's names) only <see cref="RankerGroups"/> may set.</summary>
+    private static readonly HashSet<string> RankingStatuses = new(StringComparer.OrdinalIgnoreCase) { "ranked", "approved" };
 
     private static readonly double[] Accuracies = [0.95, 0.98, 0.99, 1.0];
 
@@ -113,8 +121,8 @@ public sealed class MapCommands
 
         using var scope = _scopes.CreateScope();
         var services = scope.ServiceProvider;
-        if (!await MayChangeStatusAsync(services, caller.UserId, cancellationToken).ConfigureAwait(false))
-            return "That command is for the Beatmap Nominators, NAT and admins.";
+        if (await StatusRefusalAsync(services, caller.UserId, status, cancellationToken).ConfigureAwait(false) is { } refusal)
+            return refusal;
         if (services.GetService<BeatmapStatusChanger>() is not { } changer)
             return "Status changes need the website (osu-web mode).";
         if (_nowPlaying.Get(caller.UserId) is not { } np)
@@ -147,16 +155,40 @@ public sealed class MapCommands
         return $"{name}: {which} → {target}{recalculated}.";
     }
 
-    /// <summary>Administrators and developers, or members of the website's BN/NAT/admin groups.</summary>
-    public static async Task<bool> MayChangeStatusAsync(IServiceProvider services, int userId, CancellationToken cancellationToken)
+    /// <summary>Administrators and developers, or members of the website's BN (not probation)/NAT/admin groups.</summary>
+    public static async Task<bool> MayChangeStatusAsync(IServiceProvider services, int userId, CancellationToken cancellationToken) =>
+        await StatusRefusalAsync(services, userId, null, cancellationToken).ConfigureAwait(false) is null;
+
+    /// <summary>
+    /// Why <paramref name="userId"/> may not set <paramref name="status"/> (the status changer's name,
+    /// e.g. <c>ranked</c>, or <see cref="BeatmapStatusChanger.UnlockName"/>; null: any of the BN's), or
+    /// null when they may. Administrators and developers, NAT and the website's admins may set every
+    /// status; full BNs every one but ranked and approved.
+    /// </summary>
+    public static async Task<string?> StatusRefusalAsync(IServiceProvider services, int userId, string? status, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(services);
+        const string notStaff = "That command is for the Beatmap Nominators, NAT and admins.";
         var user = await services.GetRequiredService<IUserRepository>().GetByIdAsync(userId, cancellationToken).ConfigureAwait(false);
         if (user is null || user.IsRestricted)
-            return false;
+            return notStaff;
         if ((user.Privileges & (UserPrivileges.Administrator | UserPrivileges.Developer)) != 0)
-            return true;
-        return services.GetService<OsuWebCommunity>() is { } community
-            && (await community.GetGroupsAsync(userId, cancellationToken).ConfigureAwait(false)).Overlaps(MapperGroups);
+            return null;
+        if (services.GetService<OsuWebCommunity>() is not { } community)
+            return notStaff;
+
+        var groups = await community.GetGroupsAsync(userId, cancellationToken).ConfigureAwait(false);
+        if (groups.Overlaps(RankerGroups))
+            return null;
+        if (!groups.Overlaps(MapperGroups))
+        {
+            return groups.Contains("bng_limited")
+                ? "Probationary BNs nominate on the website: the set qualifies with enough nominations."
+                : notStaff;
+        }
+        return status is not null && RankingStatuses.Contains(status)
+            ? "Only the NAT and admins rank directly. Nominate it on the website (or qualify it): it ranks after the qualified period."
+            : null;
     }
 
     /// <summary>The /np'd difficulty (or the set's first one), from the server or, failing that, the osu! API.</summary>

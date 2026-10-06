@@ -71,7 +71,7 @@ public static class LegacyPackets
     /// <summary>
     /// A server packet in the layout of a build with today's ids from before b20130513 (b1807 on),
     /// where it differs: null when it's today's, empty when the build is better off without it.
-    /// (The login reply's refusals are the ones the build knows up to b20130915.)
+    /// (The login reply's refusals are the ones the build knows, up to b20151026.3.)
     /// </summary>
     private static byte[]? Older(ServerPacketId id, byte[] payload, ClientBuild build)
     {

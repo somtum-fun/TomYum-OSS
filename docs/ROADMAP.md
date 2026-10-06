@@ -3,7 +3,7 @@
 > **Docs convention.** `docs/` holds the documentation (contributors, operators): one page per
 > feature, plus this checklist.
 
-_Last updated: 2026-10-03 (version 0.3.0-dev)._ .NET 10; production at example.com (stable, lazer and the website), sundei.eu as the test server._
+_Last updated: 2026-10-04 (version 0.3.0-dev)._ .NET 10; production at example.com (stable, lazer and the website), sundei.eu as the test server._
 
 This is the living checklist for the big feature wave requested on 2026-07-07: `.osu` cache →
 plugin host → moderation/HWID → spectating → DAN/Session ports → custom beatmaps → **osu!lazer
@@ -126,13 +126,15 @@ _Core watch-and-relay done 2026-07-08 (`docs/spectating.md`). 143 tests. Chat ch
 - [x] Ephemeral `#spectator` chat channel (`SpectatorChannel` on `OnlinePlayer`, mirroring
       `Match.Channel`; hidden from the login channel-list; host joins on first spectator, all leave when
       empty) + `#spectator` routing in `SendPublicMessageHandler`. 2026-07-09; 6 tests.
-- [ ] Publish `SpectateFrameEvent` on the plugin bus (lands with the DAN plugin, Phase 4).
+- [x] Publish `SpectateFrameEvent` on the plugin bus, with the bundle's replay action read by the host. 2026-10-06.
 
 ## Phase 4 — DAN mode + Session plugins (ports) 🔒 Phase 1 + Phase 3
 _Clean-room reimplementations of the old server's DAN mode and session.py (that fork is GPL — behaviour only)._
 
-- [ ] ⏸ **DAN mode** plugin (not wanted for now, 2026-09-29) — mania clear validator: bot spectates on `CHANGE_ACTION`, taints on pause
-      frame, vetoes score submit; `is_dan` per-diff flag + set-granularity tag endpoint; transient per-login state.
+- [x] **osu!dan** plugin (wanted again, 2026-10-06): its own repo, `example-org/private-repo` (`tomyum.dan`). Host side:
+      `IHostSpectating` (BanchoBot spectates for plugins), `SpectateFrameEvent.Action`, `ActionChangedEvent.CanCheckFrames`,
+      `ScoreSubmittedEvent`, beatmap id/set/difficulty on `ScoreSubmittingEvent`. The plugin keeps courses and clears in
+      `plugin_dan_*`; a play that breaks a rule stays a normal score (no veto). The website's staff panel edits the courses.
 - [~] **Session** plugin — `session.<domain>` vhost, opaque web-session table (IP/UA binding).
   - [x] **Auth core** (loose source `plugins/tomyum-session/`): `/login` (bcrypt, mint token, cookie),
         `/check-session`, `/logout`, `GET`/`DELETE /user/sessions/web` (list + masked-suffix revoke),
@@ -166,6 +168,10 @@ served everywhere (docs/custom-beatmaps.md)._
 - [x] **`.osz` upload in the BN panel** — new custom set or a new version of one (difficulties keep
       their ids by name), ids written into the files, mapper owns it, pending status, covers made from
       the background. 2026-09-28
+- [x] **osu!direct shows this server's statuses for osu! sets** — osu! sets staff ranked or loved here
+      (`StatusFrozen`) show the set's best status here in search and `osu-search-set.php`; with a
+      Ranked/Loved/Qualified filter they're listed on page 1 (as uploaded sets are), and mirror results
+      whose status here is another one are left out. 2026-10-04
 
 ## Phase 6 — Command framework refactor (polish, optional)
 - [x] Sunrise-style `[ChatCommand(name, Usage, Help, Access, Hidden)]` on BanchoBot's command methods,
@@ -258,6 +264,10 @@ uses its tables. Human doc: `docs/osu-web.md`._
 - [x] Phase 7 rescope: osu-web serves `/api/v2` + `/oauth/token`, ppy's spectator server the realtime hubs.
 - [x] **Daily challenge** — osu-web opens the room each day; TomYum keeps its queue filled and the
       Discord bot announces and settles it (docs/lazer.md). 2026-09-29
+- [x] **Multiplayer match history** — stable rooms are written to osu-web's `osu_mp` (`MatchHistory`):
+      created, joins, leaves, kicks, host changes, each map with everyone's final score, disbanded. The
+      website shows them at `/community/matches/{id}`, and BanchoBot posts "Match history available
+      here." in the room's chat, as on osu!. 2026-10-04
 - [x] **Stable matches the website** — the stable panel shows the website's combined numbers (so level,
       ranked score and pp match lazer and the profile); stable and lazer plays both get "achieved rank
       #N" activity entries (top 1000) and #1s in `#announce`. 2026-09-29
@@ -415,6 +425,28 @@ MIT, a clean-room loader instead of Titanic! Hook):
     open source) and every build needs its own patches. If ever done, ship a patcher for the player's
     own copy, never patched binaries.
   - Use Titanic! Hook as docs/old-clients.md describes, and only keep TomYum's server side compatible.
+
+### production, 2026-10-04 (example.com): old clients playable with Relax/Autopilot
+Played on b1553 (a non-Titanic, obfuscated copy) through the production hook (example-org/private-repo 1.3.3,
+the Titanic! Hook fork; test builds on dl.example.com/hook/):
+- **Relax/Autopilot:** misses show, combo breaks sound, local scores kept; b452–b1844 submit them
+  (their ranked mods check refused them); builds before b20130329 send `&mods=` with the leaderboard
+  (their bancho status has the mods only while playing). Server side, `WebEndpoints.BoardMods` falls
+  back to the player's last status when there are none. Scores land on the Relax/Autopilot boards.
+- **Screen mode, set ids, song switch** as the decompiled clients' prod patcher (steps 6–9); the hook
+  finds each by its IL shape, also in exes with control flow obfuscation and encrypted strings
+  (`OldClientShapes.Flow`, `ShapeCode`), checked against all 76 Titanic builds and that b1553.
+- **Old sets import again:** sets repacked in 2014 say zip 6.3 in their local headers, which old
+  osu!'s SharpZipLib refuses; `OszVersionFixStream` corrects them on old clients' downloads.
+- [ ] One hook .exe for every build (today: a .NET 2 build and a .NET 4 build).
+- [ ] Prod-Anticheat-Hook `no-anticheat` doesn't have any of the above yet.
+- [ ] The decompiled clients' patcher doesn't send `&mods=` with the leaderboard yet.
+
+### Relax/Autopilot on the website, 2026-10-04
+- [x] Stable mode's beatmap boards have only stable plays (each player's best stable one); lazer mode
+  both, as the vanilla board.
+- [x] Profile and rankings Top Plays leave out RX/AP plays (a lazer one carries its Akatsuki pp);
+  Rankings Top Plays has Relax/Autopilot variants (TomYum's `/admin/mode-scores/top-plays/{mode}`).
 
 ## Bot accounts 🔒 (none) — done 2026-10-01
 - [x] Admins/developers make bots in the panel (`/panel/bots`): `bot` group, an owner, an IRC key.

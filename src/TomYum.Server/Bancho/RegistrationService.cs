@@ -61,6 +61,7 @@ public sealed partial class RegistrationService
     /// Validates the supplied fields and, when <paramref name="create"/> is <see langword="true"/>
     /// and validation passes, creates the account. <paramref name="create"/> corresponds to the
     /// client's <c>check == 0</c> final submit; <see langword="false"/> is a validate-only pass.
+    /// <paramref name="ip"/> is the address the player signs up from (kept as the account's sign-up IP).
     /// </summary>
     public async Task<RegistrationResult> RegisterAsync(
         string username,
@@ -68,7 +69,8 @@ public sealed partial class RegistrationService
         string plaintextPassword,
         bool create,
         string country,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? ip = null)
     {
         var errors = new Dictionary<string, List<string>>();
 
@@ -100,6 +102,7 @@ public sealed partial class RegistrationService
             Country = country,
             CreationTime = now,
             LatestActivity = now,
+            RegistrationIp = ip,
         };
 
         var created = await _users.AddAsync(user, cancellationToken).ConfigureAwait(false);

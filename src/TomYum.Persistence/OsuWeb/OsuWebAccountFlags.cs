@@ -37,6 +37,30 @@ public sealed class OsuWebAccountFlags
             cancellationToken);
     }
 
+    /// <summary>
+    /// The stable client build of the player's last successful stable login at or before <paramref name="at"/>
+    /// (UTC): 20260924 for b20260924.1, 1122 for the numbered b1122; null when none is known.
+    /// </summary>
+    public async Task<int?> StableBuildAtAsync(int userId, DateTime at, CancellationToken cancellationToken = default)
+    {
+        var agent = await _db.Database.SqlQueryRaw<string>(
+            "SELECT agent AS Value FROM tomyum_login_history WHERE user_id = {0} AND client = 'stable' AND result = 'ok' AND created_at <= {1} AND agent IS NOT NULL ORDER BY created_at DESC, id DESC LIMIT 1",
+            userId, at).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        return BuildOf(agent);
+    }
+
+    /// <summary>The build number in a stable version string ("b20260924.1" is 20260924); null when it has none.</summary>
+    public static int? BuildOf(string? version)
+    {
+        if (version is not { Length: > 1 } || version[0] != 'b')
+            return null;
+        var digits = version.AsSpan(1);
+        var end = 0;
+        while (end < digits.Length && char.IsAsciiDigit(digits[end]))
+            end++;
+        return end > 0 && int.TryParse(digits[..end], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var build) ? build : null;
+    }
+
     /// <summary>At most <paramref name="length"/> characters, or NULL when empty.</summary>
     private static string? Trim(string? value, int length) =>
         string.IsNullOrEmpty(value) ? null : value.Length > length ? value[..length] : value;

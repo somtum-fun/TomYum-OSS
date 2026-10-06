@@ -67,6 +67,8 @@ internal static class MatchBroadcast
                     s.Status = SlotStatus.NotReady;
         }
 
+        match.History?.GameEnded(match);
+
         var completeBytes = new BanchoPacketWriter(16)
             .WritePacket(ServerPacketId.MatchComplete, null)
             .ToArray();
@@ -93,11 +95,15 @@ internal static class MatchBroadcast
             .ToArray());
 
         bool matchEnded;
+        int? newHost = null;
         lock (match.SyncRoot)
         {
             var slotIdx = match.IndexOf(player.UserId);
             if (slotIdx >= 0)
+            {
                 match.Slots[slotIdx].Reset();
+                match.History?.Left(match, player.UserId);
+            }
 
             var remaining = match.PlayerIds();
             if (remaining.Count == 0)
@@ -106,6 +112,7 @@ internal static class MatchBroadcast
                 match.CountdownCts?.Cancel();
                 match.CountdownCts = null;
                 matches.Remove(match.Id);
+                match.History?.Disbanded(match);
 
                 var disposeBytes = new BanchoPacketWriter(16)
                     .WriteInt32Packet(ServerPacketId.DisposeMatch, match.Id)
@@ -116,11 +123,17 @@ internal static class MatchBroadcast
 
             // Transfer host if needed.
             if (match.HostUserId == player.UserId)
+            {
                 match.HostUserId = remaining[0];
+                newHost = remaining[0];
+            }
 
             // Check whether removing this player finishes the match; state reset is deferred to CompleteMatch.
             matchEnded = match.InProgress && match.AllComplete();
         }
+
+        if (newHost is { } host)
+            match.History?.HostChanged(match, host);
 
         if (matchEnded)
             CompleteMatch(match, registry);

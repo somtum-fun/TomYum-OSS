@@ -62,7 +62,7 @@ if (!builder.Environment.IsDevelopment())
 // cross-node online state (Redis, ADR-0003) replace the in-memory pieces in later slices.
 builder.Services.AddSingleton<PlayerRegistry>();
 builder.Services.AddSingleton<ChannelRegistry>();
-builder.Services.AddSingleton<MatchRegistry>();
+builder.Services.AddSingleton(sp => new MatchRegistry { History = sp.GetService<MatchHistory>() });
 builder.Services.AddSingleton<TomYum.Server.Admin.MatchModeration>();
 builder.Services.AddSingleton<TomYumVersion>();
 builder.Services.AddSingleton<ModerationCommands>();
@@ -109,6 +109,16 @@ else
 }
 // Friends live on the website with its accounts (phpbb_zebra); otherwise in memory.
 Microsoft.Extensions.DependencyInjection.Extensions.ServiceCollectionDescriptorExtensions.TryAddSingleton<IFriendRepository, InMemoryFriendRepository>(builder.Services);
+// Match history for the website's match pages (osu-web's osu_mp database).
+if (databaseOptions.UseOsuWebAccounts)
+{
+    builder.Services.AddSingleton(sp => new MatchHistory(
+        new MySqlConnector.MySqlConnectionStringBuilder(databaseOptions.BuildConnectionString()) { Database = databaseOptions.OsuWebMpName }.ConnectionString,
+        $"https://osu.{(BanchoHosts.ResolveDomain(builder.Configuration) is { Length: > 0 } mpDomain ? mpDomain : "localhost")}",
+        sp.GetRequiredService<PlayerRegistry>(), sp.GetRequiredService<ILogger<MatchHistory>>()));
+    builder.Services.AddHostedService(sp => sp.GetRequiredService<MatchHistory>());
+}
+
 // Website sync (docs/osu-web.md): mirrors scores/stats to osu-web when accounts live there.
 if (databaseOptions.UseOsuWebAccounts)
 {
@@ -277,6 +287,9 @@ builder.Services.AddHttpClient(AudioPreviews.HttpClientName, http =>
     http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0 (osu! private server; audio previews)");
 });
 builder.Services.AddSingleton<AudioPreviews>();
+// Beatmap pack downloads (/d/packs/{tag}): zips of a pack's sets, built from the mirror and kept on disk.
+builder.Services.Configure<PackArchiveOptions>(builder.Configuration.GetSection(PackArchiveOptions.Section));
+builder.Services.AddSingleton<PackArchives>();
 builder.Services.AddSingleton<AssetStore>();
 builder.Services.AddSingleton<MenuBanners>();
 
@@ -661,6 +674,8 @@ if (databaseOptions.UseOsuWebAccounts)
     app.MapCustomUploads(BanchoHosts.Web(domain));
     // Beatmap submission from the stable editor and lazer (docs/custom-beatmaps.md).
     app.MapSubmission(BanchoHosts.Web(domain));
+    // Beatmap pack downloads, linked from the website's pack pages.
+    app.MapPackDownloads();
 }
 
 app.Run();

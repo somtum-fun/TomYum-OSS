@@ -33,6 +33,12 @@ public sealed partial class DiscordOptions
     /// <summary>Ranked, qualified and loved maps.</summary>
     public ulong BeatmapsChannelId { get; set; }
 
+    /// <summary>
+    /// The BNs' channel (#bn-request): nominations, disqualifications, nomination resets, hypes (a
+    /// player asking for a set to be looked at) and sets opened for nominations (0: not posted).
+    /// </summary>
+    public ulong BnRequestChannelId { get; set; }
+
     /// <summary>Public announcements: #1s, big plays, medals, new players.</summary>
     public ulong PublicLogChannelId { get; set; }
 
@@ -117,6 +123,7 @@ public sealed partial class DiscordOptions
             GuildId = Id(nameof(GuildId)),
             ChatChannelId = Id(nameof(ChatChannelId)),
             BeatmapsChannelId = Id(nameof(BeatmapsChannelId)),
+            BnRequestChannelId = Id(nameof(BnRequestChannelId)),
             PublicLogChannelId = Id(nameof(PublicLogChannelId)),
             ServerLogChannelId = Id(nameof(ServerLogChannelId)),
             UserLogChannelId = Id(nameof(UserLogChannelId)),

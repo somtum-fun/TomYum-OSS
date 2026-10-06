@@ -173,8 +173,9 @@ public sealed class ModerationCommandTests : OsuWebDatabaseTest
         Assert.All(StaffCommandNames, name => Assert.True(specs[name].Staff));
         Assert.All(PlayerCommandNames, name => Assert.False(specs[name].Staff));
         Assert.DoesNotContain("staff", specs.Keys);
-        // Discord allows 100 commands, names of 1-32 lowercase characters and descriptions up to 100.
-        Assert.All(specs.Values, s => Assert.Matches("^[a-z]{1,32}$", s.Name));
+        // Discord allows 100 commands, names of 1-32 lowercase letters, digits, - and _ (like banner_add) and descriptions up to 100.
+        Assert.InRange(specs.Count, 1, 100);
+        Assert.All(specs.Values, s => Assert.Matches("^[-_a-z0-9]{1,32}$", s.Name));
         Assert.All(specs.Values, s => Assert.InRange(s.Description.Length, 1, 100));
         Assert.All(specs.Values.SelectMany(s => s.Options), o => Assert.InRange(o.Description.Length, 1, 100));
     }

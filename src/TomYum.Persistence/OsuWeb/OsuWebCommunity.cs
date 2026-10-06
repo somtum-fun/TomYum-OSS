@@ -76,6 +76,14 @@ public sealed record MedalUnlock(int UserId, string Username, int MedalId, strin
 /// <summary>A new account.</summary>
 public sealed record NewPlayer(int UserId, string Username, string Country, DateTime JoinedAt);
 
+/// <summary>
+/// A step of a set's way to ranked on the website, for the BNs' channel: a nomination, a
+/// disqualification, a nomination reset (<see cref="Type"/> is the <c>beatmapset_events</c> type) or
+/// a hype (<c>hype</c>), with the post that came with it (a disqualification's reason, a hype's
+/// message), if any.
+/// </summary>
+public sealed record ModdingEvent(ulong Id, string Type, int BeatmapsetId, int? UserId, string? Username, string? Message, DateTime CreatedAt);
+
 /// <summary>A beatmap set's headline details.</summary>
 public sealed record BeatmapsetCard(int BeatmapsetId, string Artist, string Title, string Creator, int Status, IReadOnlyList<string> Versions);
 
@@ -248,6 +256,70 @@ public sealed partial class OsuWebCommunity
         var versions = await _db.Beatmaps.AsNoTracking().Where(b => b.BeatmapsetId == (uint)beatmapsetId)
             .OrderBy(b => b.Difficultyrating).Select(b => b.Version).ToListAsync(cancellationToken).ConfigureAwait(false);
         return new BeatmapsetCard(beatmapsetId, set.Artist, set.Title, set.Creator, set.Approved, versions);
+    }
+
+    /// <summary>The <c>beatmapset_events</c> types announced to the BNs.</summary>
+    public static readonly IReadOnlyList<string> ModdingEventTypes = ["nominate", "disqualify", "nomination_reset"];
+
+    /// <summary>The newest <c>beatmapset_events</c> id and the newest hype's discussion id (where the BN feed starts).</summary>
+    public async Task<(ulong Event, ulong Hype)> GetLatestModdingIdsAsync(CancellationToken cancellationToken = default)
+    {
+        var events = (await _db.Database.SqlQueryRaw<ulong?>("SELECT MAX(id) AS Value FROM beatmapset_events")
+            .ToListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault() ?? 0;
+        var hypes = (await _db.Database.SqlQueryRaw<ulong?>("SELECT MAX(id) AS Value FROM beatmap_discussions WHERE message_type = 4")
+            .ToListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault() ?? 0;
+        return (events, hypes);
+    }
+
+    /// <summary>Nominations, disqualifications and nomination resets after event <paramref name="afterId"/>, oldest first.</summary>
+    public async Task<IReadOnlyList<ModdingEvent>> GetModdingEventsAfterAsync(ulong afterId, CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.Database.SqlQueryRaw<ModdingRow>(
+            """
+            SELECT e.id AS Id, CAST(e.type AS CHAR) AS Type, e.beatmapset_id AS BeatmapsetId, e.user_id AS UserId, u.username AS Username,
+              (SELECT p.message FROM beatmap_discussion_posts p
+               WHERE p.beatmap_discussion_id = CASE WHEN JSON_VALID(e.comment)
+                 THEN CAST(JSON_UNQUOTE(JSON_EXTRACT(e.comment, '$.beatmap_discussion_id')) AS UNSIGNED) END
+                 AND p.deleted_at IS NULL
+               ORDER BY p.id LIMIT 1) AS Message,
+              COALESCE(e.created_at, UTC_TIMESTAMP()) AS CreatedAt
+            FROM beatmapset_events e
+            LEFT JOIN phpbb_users u ON u.user_id = e.user_id
+            WHERE e.id > {0} AND e.type IN ('nominate', 'disqualify', 'nomination_reset')
+            ORDER BY e.id
+            LIMIT 100
+            """, afterId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Select(r => r.ToEvent()).ToList();
+    }
+
+    /// <summary>Hypes (by visible players) after discussion <paramref name="afterId"/>, oldest first.</summary>
+    public async Task<IReadOnlyList<ModdingEvent>> GetHypesAfterAsync(ulong afterId, CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.Database.SqlQueryRaw<ModdingRow>(
+            $$"""
+            SELECT d.id AS Id, 'hype' AS Type, d.beatmapset_id AS BeatmapsetId, d.user_id AS UserId, u.username AS Username,
+              (SELECT p.message FROM beatmap_discussion_posts p WHERE p.beatmap_discussion_id = d.id AND p.deleted_at IS NULL ORDER BY p.id LIMIT 1) AS Message,
+              COALESCE(d.created_at, UTC_TIMESTAMP()) AS CreatedAt
+            FROM beatmap_discussions d
+            JOIN phpbb_users u ON u.user_id = d.user_id
+            WHERE d.id > {0} AND d.message_type = 4 AND d.deleted_at IS NULL AND {{Visible}}
+            ORDER BY d.id
+            LIMIT 100
+            """, afterId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.Select(r => r.ToEvent()).ToList();
+    }
+
+    private sealed class ModdingRow
+    {
+        public ulong Id { get; set; }
+        public string Type { get; set; } = string.Empty;
+        public uint BeatmapsetId { get; set; }
+        public uint? UserId { get; set; }
+        public string? Username { get; set; }
+        public string? Message { get; set; }
+        public DateTime CreatedAt { get; set; }
+
+        public ModdingEvent ToEvent() => new(Id, Type, (int)BeatmapsetId, UserId is { } id ? (int)id : null, Username, Message, CreatedAt);
     }
 
     /// <summary>The newest website score id (where the announcement feed starts).</summary>

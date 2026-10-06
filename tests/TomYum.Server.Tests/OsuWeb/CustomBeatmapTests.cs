@@ -296,6 +296,43 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
         Assert.StartsWith(Invariant($"1\n{set.SetId}.osz|Artist|Song"), search.ResponseContent!.ReplaceLineEndings("\n"), StringComparison.Ordinal);
     }
 
+    [MySqlFact]
+    public async Task OsuSetsStaffGaveAStatus_ShowItInOsuDirect()
+    {
+        await using var tomyum = await NewTomYumContextAsync();
+        // Ranked here (graveyard on osu!), and ranked on osu! but unranked here.
+        tomyum.Beatmaps.Add(new Beatmap { Id = 971401, SetId = 971400, Md5 = new string('a', 32), Artist = "Some Artist", Title = "MariannE", Version = "Insane", Creator = "Mapper", Status = RankedStatus.Ranked, StatusFrozen = true });
+        tomyum.Beatmaps.Add(new Beatmap { Id = 971402, SetId = 971400, Md5 = new string('b', 32), Artist = "Some Artist", Title = "MariannE", Version = "Hard", Creator = "Mapper", Status = RankedStatus.Pending });
+        tomyum.Beatmaps.Add(new Beatmap { Id = 556, SetId = 555, Md5 = new string('c', 32), Artist = "Other", Title = "Unranked Here", Version = "Easy", Creator = "Mapper", Status = RankedStatus.Pending, StatusFrozen = true });
+        await tomyum.SaveChangesAsync();
+
+        var scopes = new ServiceCollection().AddScoped(_ => NewTomYumContext()).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+        var catalog = new CustomBeatmapCatalog(scopes);
+        var options = Options.Create(new DirectOptions());
+        var mirror = new Mirror(
+            """[{"SetID":971400,"Artist":"Some Artist","Title":"MariannE","Creator":"Mapper","RankedStatus":-2,"LastUpdate":"2020-01-01","ChildrenBeatmaps":[{"DiffName":"Insane","Mode":0}]},""" +
+            """{"SetID":555,"Artist":"Other","Title":"Unranked Here","Creator":"Mapper","RankedStatus":1,"LastUpdate":"2020-01-01","ChildrenBeatmaps":[{"DiffName":"Easy","Mode":0}]}]""",
+            """{"SetID":971400,"Artist":"Some Artist","Title":"MariannE","Creator":"Mapper","RankedStatus":-2,"LastUpdate":"2020-01-01"}""");
+
+        async Task<string> Search(string query) => Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchAsync(
+            Context("u=player&" + query), mirror, options, catalog, new PlayerRegistry(), CancellationToken.None)).ResponseContent!.ReplaceLineEndings("\n");
+
+        // Everything: the mirror's sets with this server's statuses.
+        var all = await Search("q=&r=4&m=-1&p=0");
+        Assert.Contains("971400.osz|Some Artist|MariannE|Mapper|1|", all, StringComparison.Ordinal);
+        Assert.Contains("555.osz|Other|Unranked Here|Mapper|0|", all, StringComparison.Ordinal);
+
+        // Ranked: the set ranked here (once), not the one unranked here.
+        var ranked = await Search("q=&r=0&m=-1&p=0");
+        Assert.Single(ranked.Split('\n'), l => l.StartsWith("971400.osz|", StringComparison.Ordinal));
+        Assert.DoesNotContain("555.osz", ranked, StringComparison.Ordinal);
+
+        // Set info.
+        var info = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
+            Context("s=971400"), mirror, options, catalog, new PlayerRegistry(), CancellationToken.None));
+        Assert.StartsWith("971400.osz|Some Artist|MariannE|Mapper|1|", info.ResponseContent, StringComparison.Ordinal);
+    }
+
     private (CustomBeatmapImporter Importer, IBeatmapRepository Repository, CustomBeatmapStore Store, OsuFileCache Files, BeatmapService Resolver) NewImporter(TomYumDbContext tomyum, IUserRepository users)
     {
         var osuWeb = NewOsuWebContext();
@@ -425,6 +462,18 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable));
+    }
+
+    /// <summary>The mirror: <paramref name="search"/> for searches, <paramref name="set"/> for set info.</summary>
+    private sealed class Mirror(string search, string set) : HttpMessageHandler, IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(this);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+            {
+                Content = new StringContent(request.RequestUri!.Query.Contains("amount=", StringComparison.Ordinal) ? search : set),
+            });
     }
 
     private sealed class NoMapsApi : IOsuApiClient

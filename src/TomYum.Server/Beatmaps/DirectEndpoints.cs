@@ -252,6 +252,9 @@ public static partial class DirectEndpoints
         // not the search filter's codes (ranked is 7 there, which every old build shows as pending).
         var status  = set.TryGetProperty("RankedStatus", out var rs) ? rs.GetInt32() : 0;
         var updated = set.TryGetProperty("LastUpdate",   out var lu)  ? lu.GetString() ?? "" : "";
+        // A set staff ranked or loved here shows this server's status.
+        if ((await custom.FrozenStatusesAsync([sid], cancellationToken).ConfigureAwait(false)).TryGetValue(sid, out var frozen))
+            status = CustomBeatmapCatalog.ToApiStatus(frozen);
 
         // Wire format (bancho.py osu-search-set response):
         // {set_id}.osz|{artist}|{title}|{creator}|{status}|10.0|{last_update}|{set_id}|0|0|0|0|0
@@ -308,7 +311,8 @@ public static partial class DirectEndpoints
         var name = upstream.Content.Headers.ContentDisposition?.FileNameStar?.Trim('"')
             ?? upstream.Content.Headers.ContentDisposition?.FileName?.Trim('"')
             ?? string.Create(CultureInfo.InvariantCulture, $"{id}.osz");
-        var body = await upstream.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        // Sets repacked in 2014 say zip 6.3 in their local headers, which old osu! refuses (OszVersionFixStream).
+        var body = new OszVersionFixStream(await upstream.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false));
         return Results.Stream(body, "application/x-osu-beatmap-archive", name);
     }
 

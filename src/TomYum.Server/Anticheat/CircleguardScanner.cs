@@ -73,7 +73,7 @@ public sealed class CircleguardScanner
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(community);
         ArgumentNullException.ThrowIfNull(score);
-        var replay = await PlayAsync(services, community, score, path, cancellationToken).ConfigureAwait(false);
+        var replay = await PlayAsync(services, community, score, path, cancellationToken, judged: true).ConfigureAwait(false);
         byte[]? beatmap = null;
         try
         {
@@ -121,9 +121,11 @@ public sealed class CircleguardScanner
 
     /// <summary>
     /// A score's replay as circleguard takes it: lazer's files are whole <c>.osr</c>s; stable's are the
-    /// frames the client uploaded, so their details come from TomYum's own score.
+    /// frames the client uploaded, so their details come from TomYum's own score. The play being
+    /// <paramref name="judged"/> (not a top play to compare with) also gets its map checksum and the
+    /// build of the client the player was logged in with.
     /// </summary>
-    private static async Task<CircleguardPlay> PlayAsync(IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, CancellationToken cancellationToken)
+    private static async Task<CircleguardPlay> PlayAsync(IServiceProvider services, OsuWebCommunity community, ScoreCard score, string path, CancellationToken cancellationToken, bool judged = false)
     {
         var data = await File.ReadAllBytesAsync(path, cancellationToken).ConfigureAwait(false);
         if (!score.IsStable
@@ -133,8 +135,12 @@ public sealed class CircleguardScanner
             // lazer's .osr says only "DT"/"HT"; the speed the player picked is in the score's mods.
             return new CircleguardPlay(data, FramesOnly: false, Rate: score.IsStable ? null : score.Rate);
 
+        int? build = null;
+        if (judged && services.GetService<OsuWebAccountFlags>() is { } flags)
+            build = await flags.StableBuildAtAsync(score.UserId, score.EndedAt, cancellationToken).ConfigureAwait(false);
         return new CircleguardPlay(
             data, FramesOnly: true, Ruleset: own.Mode % 4, Mods: own.Mods, Username: score.Username, MaxCombo: own.MaxCombo,
-            Count300: own.Count300, Count100: own.Count100, Count50: own.Count50, CountGeki: own.CountGeki, CountKatu: own.CountKatu, CountMiss: own.CountMiss);
+            Count300: own.Count300, Count100: own.Count100, Count50: own.Count50, CountGeki: own.CountGeki, CountKatu: own.CountKatu, CountMiss: own.CountMiss,
+            BeatmapMd5: judged ? own.BeatmapMd5 : null, ClientBuild: build);
     }
 }

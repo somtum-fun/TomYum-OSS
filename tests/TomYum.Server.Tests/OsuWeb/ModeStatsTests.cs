@@ -95,7 +95,7 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Circleguard:LazerReplaysPath"] = lazerReplays }).Build();
 
         async Task<JsonElement> Board(string? sort) => await Body(await AdminModeScoresEndpoints.LeaderboardAsync(
-            10, 4, 2, viewerId: 3, mods: null, sort, new TomYum.Persistence.Repositories.BeatmapRepository(NewTomYumContext()), NewTomYumContext(), new RestrictedUsers(), configuration, CancellationToken.None));
+            10, 4, 2, viewerId: 3, mods: null, sort, stableOnly: null, new TomYum.Persistence.Repositories.BeatmapRepository(NewTomYumContext()), NewTomYumContext(), new RestrictedUsers(), configuration, CancellationToken.None));
         static string Players(JsonElement board) => string.Join(",", board.GetProperty("scores").EnumerateArray().Select(e => e.GetProperty("userId").GetInt32()));
 
         var byPp = await Board(null);
@@ -109,6 +109,54 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
         // The lazer play carries its website score id (its replay's id); the stable one has none.
         Assert.Equal(77UL, byScore.GetProperty("scores")[1].GetProperty("score").GetProperty("osuWebScoreId").GetUInt64());
         Assert.Equal(JsonValueKind.Null, byScore.GetProperty("scores")[0].GetProperty("score").GetProperty("osuWebScoreId").ValueKind);
+    }
+
+    [MySqlFact]
+    public async Task RelaxBoard_InStableMode_HasOnlyStablePlays()
+    {
+        var db = await NewTomYumContextAsync();
+        db.Beatmaps.Add(new Beatmap { Id = 10, SetId = 1, Md5 = "a", Artist = "A", Title = "T", Version = "V", Creator = "C" });
+        db.Scores.AddRange(
+            new Score { UserId = 1, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 300, ScoreValue = 1_000 },
+            // Player 2's best is a lazer play (a custom DT speed, say); stable's board has their stable one.
+            new Score { UserId = 2, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 500, ScoreValue = 3_000, FromLazer = true, OsuWebScoreId = 77 },
+            new Score { UserId = 2, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Submitted, Passed = true, Pp = 200, ScoreValue = 2_000 },
+            // Player 3 only played it on lazer.
+            new Score { UserId = 3, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 400, ScoreValue = 2_500, FromLazer = true, OsuWebScoreId = 78 });
+        await db.SaveChangesAsync();
+
+        async Task<JsonElement> Board(bool? stableOnly, int? viewerId) => await Body(await AdminModeScoresEndpoints.LeaderboardAsync(
+            10, 4, 50, viewerId, mods: null, null, stableOnly, new TomYum.Persistence.Repositories.BeatmapRepository(NewTomYumContext()), NewTomYumContext(),
+            new RestrictedUsers(), new ConfigurationBuilder().Build(), CancellationToken.None));
+        static string Plays(JsonElement board) => string.Join(",", board.GetProperty("scores").EnumerateArray()
+            .Select(e => $"{e.GetProperty("userId").GetInt32()}:{e.GetProperty("score").GetProperty("pp").GetDouble()}"));
+
+        Assert.Equal("2:500,3:400,1:300", Plays(await Board(null, null)));     // lazer mode: everyone's best
+        Assert.Equal("1:300,2:200", Plays(await Board(true, null)));           // stable mode: best stable plays
+        var mine = await Board(true, 2);
+        Assert.Equal(2, mine.GetProperty("userScore").GetProperty("position").GetInt32());
+        Assert.Equal(200, mine.GetProperty("userScore").GetProperty("score").GetProperty("pp").GetDouble());
+        Assert.False((await Board(true, 3)).TryGetProperty("userScore", out var none) && none.ValueKind != JsonValueKind.Null);
+    }
+
+    [MySqlFact]
+    public async Task TopPlays_AreEveryonesBests_ByPp_WithoutRestrictedPlayers()
+    {
+        var db = await NewTomYumContextAsync();
+        db.Scores.AddRange(
+            new Score { UserId = 1, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 300 },
+            new Score { UserId = 1, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Submitted, Passed = true, Pp = 250 },
+            new Score { UserId = 2, BeatmapId = 11, BeatmapMd5 = "b", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 400, FromLazer = true, OsuWebScoreId = 5 },
+            new Score { UserId = 3, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 900 },
+            new Score { UserId = 4, BeatmapId = 10, BeatmapMd5 = "a", Mode = 8, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 800 });
+        await db.SaveChangesAsync();
+        var restricted = new RestrictedUsers();
+        restricted.Set(3, true);
+
+        var json = await Body(await AdminModeScoresEndpoints.TopPlaysAsync(4, null, NewTomYumContext(), restricted, new ConfigurationBuilder().Build(), CancellationToken.None));
+        var plays = string.Join(",", json.GetProperty("scores").EnumerateArray()
+            .Select(e => $"{e.GetProperty("position").GetInt32()}:{e.GetProperty("userId").GetInt32()}:{e.GetProperty("score").GetProperty("pp").GetDouble()}"));
+        Assert.Equal("1:2:400,2:1:300", plays);   // bests only, lazer too, no restricted player, Relax only
     }
 
     [MySqlFact]

@@ -103,7 +103,7 @@ public sealed partial class DiscordCommands
         new("removebadge", "Admin: take a profile badge away", [PlayerOption, new("badge", "Its number, description or image; left out: list their badges")], Staff: true),
         new("banner_add", "Add a new menu banner", [new("image_url", "A link to the banner's image", Required: true), new("click_url", "Where clicking the banner goes", Required: true), new("expires", "The day it stops showing, like 2026-11-01 (optional: else it stays)")], Staff: true),
         new("banner_remove", "Take a menu banner off", [new("banner", "Its number; left out: list the banners")], Staff: true),
-        new("rankmap", "BN: rank a set (or one difficulty)", StatusOptions, Private: true),
+        new("rankmap", "NAT: rank a set (or one difficulty) without the qualified period", StatusOptions, Private: true),
         new("lovemap", "BN: love a set (or one difficulty)", StatusOptions, Private: true),
         new("qualify", "BN: qualify a set (or one difficulty)", StatusOptions, Private: true),
     ];

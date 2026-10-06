@@ -51,7 +51,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - Email (sign-up verification), downtime alerts by Discord DM, nightly backups
 
 **Not done yet** (see the roadmap): custom medals, multi-instance (Redis-backed) online state, and
-multi-target storage. Put off for now: the DAN mode plugin, and TomYum reading scores straight from
+multi-target storage. osu!dan is a plugin of its own (`example-org/private-repo`). Put off for now: TomYum reading scores straight from
 the website's tables (they're mirrored today).
 
 ## Documentation by topic

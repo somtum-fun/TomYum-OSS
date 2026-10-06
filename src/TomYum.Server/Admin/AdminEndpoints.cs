@@ -60,6 +60,7 @@ public static class AdminEndpoints
         admin.MapBadges();
         admin.MapAssetAdmin();
         admin.MapMenuBanners();
+        admin.MapPackAdmin();
         admin.MapModeStats();
         admin.MapModeScores();
         admin.MapModeRankings();
