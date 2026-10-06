@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Text;
 using Microsoft.EntityFrameworkCore;
@@ -15,24 +16,106 @@ public sealed record CustomSet(int SetId, string Artist, string Title, string Cr
 /// Finds custom (uploaded) sets for osu!direct, which otherwise only searches the beatmap mirror:
 /// they're in TomYum's own beatmap table, and their difficulty settings in their <c>.osu</c> files.
 /// </summary>
-public sealed class CustomBeatmapCatalog
+public sealed class CustomBeatmapCatalog : IDisposable
 {
     private readonly IServiceScopeFactory _scopes;
     private readonly OsuFileCache? _files;
+    private readonly IHttpClientFactory? _http;
 
-    public CustomBeatmapCatalog(IServiceScopeFactory scopes, OsuFileCache? files = null)
+    // .osu downloads for osu!direct's difficulty settings: a few at once, each map once at a time.
+    private readonly SemaphoreSlim _downloads = new(6);
+    private readonly ConcurrentDictionary<int, Task> _fetching = new();
+
+    public CustomBeatmapCatalog(IServiceScopeFactory scopes, OsuFileCache? files = null, IHttpClientFactory? http = null)
     {
         _scopes = scopes;
         _files = files;
+        _http = http;
     }
+
+    public void Dispose() => _downloads.Dispose();
+
+    /// <summary>The map's .osu file from the mirror (catboy.best), for its difficulty settings.</summary>
+    public static string MirrorOsuUrl(int beatmapId) => string.Create(CultureInfo.InvariantCulture, $"https://catboy.best/osu/{beatmapId}");
+
+    /// <summary>
+    /// Gets the .osu files of the sets' maps that aren't kept here yet (imported osu! maps), so their CS, OD, AR and HP show:
+    /// from the mirror, else osu!. Waits at most <paramref name="wait"/>; the rest arrive in the background, for the next search.
+    /// </summary>
+    public async Task FetchMissingFilesAsync(IEnumerable<CustomSet> sets, TimeSpan wait, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sets);
+        if (_files is null)
+            return;
+
+        var tasks = sets.SelectMany(s => s.Maps)
+            .Select(b => b.Id)
+            .Distinct()
+            .Where(id => !File.Exists(Path.Combine(_files.CacheDirectory, id.ToString(CultureInfo.InvariantCulture) + ".osu")))
+            .Select(id => _fetching.GetOrAdd(id, FetchAsync))
+            .ToList();
+        if (tasks.Count == 0)
+            return;
+
+        try
+        {
+            await Task.WhenAny(Task.WhenAll(tasks), Task.Delay(wait, cancellationToken)).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task FetchAsync(int beatmapId)
+    {
+        await _downloads.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+            try
+            {
+                if (_http is not null)
+                {
+                    using var http = _http.CreateClient(AudioPreviews.HttpClientName);
+                    var bytes = await http.GetByteArrayAsync(MirrorOsuUrl(beatmapId), timeout.Token).ConfigureAwait(false);
+                    if (IsOsuFile(bytes))
+                    {
+                        await _files!.StoreAsync(beatmapId, bytes, timeout.Token).ConfigureAwait(false);
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException)
+            {
+            }
+
+            // osu! itself (the cache's own source).
+            try
+            {
+                await _files!.GetAsync(beatmapId, timeout.Token).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or OperationCanceledException or IOException or InvalidOperationException)
+            {
+            }
+        }
+        finally
+        {
+            _downloads.Release();
+            _fetching.TryRemove(beatmapId, out _);
+        }
+    }
+
+    // A real .osu file, not an error page.
+    internal static bool IsOsuFile(byte[] bytes) =>
+        bytes.Length > 16 && Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 64)).TrimStart((char)0xFEFF, ' ', (char)13, (char)10).StartsWith("osu file format", StringComparison.Ordinal);
 
     /// <summary>
     /// Custom sets (with <paramref name="includeImported"/>, also the osu! sets this server has
     /// imported; with <paramref name="frozenOnly"/>, only the osu! sets staff gave a status here)
     /// whose artist, title, creator or difficulty names contain every word of <paramref name="text"/>,
-    /// newest first.
+    /// newest first, from the <paramref name="skip"/>th on.
     /// </summary>
-    public async Task<IReadOnlyList<CustomSet>> SearchAsync(string? text, int? mode, int? apiStatus, int limit, bool includeImported = false, bool frozenOnly = false, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CustomSet>> SearchAsync(string? text, int? mode, int? apiStatus, int limit, bool includeImported = false, bool frozenOnly = false, int skip = 0, CancellationToken cancellationToken = default)
     {
         await using var scope = _scopes.CreateAsyncScope();
         if (scope.ServiceProvider.GetService<TomYumDbContext>() is not { } db)
@@ -43,6 +126,14 @@ public sealed class CustomBeatmapCatalog
             query = query.Where(b => b.SetId < Beatmap.CustomIdFloor && b.StatusFrozen);
         else if (!includeImported)
             query = query.Where(b => b.SetId >= Beatmap.CustomIdFloor);
+
+        // Sets deleted on the website (an upload replaced by a new one) aren't offered.
+        if (scope.ServiceProvider.GetService<TomYum.Persistence.OsuWeb.OsuWebCustomSets>() is { } website)
+        {
+            var deleted = await website.DeletedAsync(cancellationToken).ConfigureAwait(false);
+            if (deleted.Count > 0)
+                query = query.Where(b => !deleted.Contains(b.SetId));
+        }
         if (mode is { } m and >= 0 and <= 3)
             query = query.Where(b => b.Mode == m);
         if (apiStatus is { } api)
@@ -59,6 +150,7 @@ public sealed class CustomBeatmapCatalog
             .GroupBy(b => b.SetId)
             .OrderByDescending(g => g.Max(b => b.LastUpdate))
             .Select(g => g.Key)
+            .Skip(skip)
             .Take(limit)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);

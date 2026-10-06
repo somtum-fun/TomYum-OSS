@@ -225,7 +225,7 @@ public sealed class CustomBeatmapImporter
         // Read before the maps are mirrored: their new status takes the set out of the graveyard.
         var revived = existing.Count > 0 && _website is not null
             && await _website.IsGraveyardedAsync(setId, cancellationToken).ConfigureAwait(false);
-        await _store.SaveAsync(setId, archive, package.Background, package.Preview, cancellationToken).ConfigureAwait(false);
+        await _store.SaveAsync(setId, archive, package.Background, package.Song, cancellationToken).ConfigureAwait(false);
 
         var maps = ids.Select(m => (m.Map, Beatmap: ToBeatmap(m.Map.File, m.Id, setId, OsuFileText.Md5(m.Bytes), package.HasStoryboardFile, target, now), m.Bytes)).ToList();
         var difficulties = new List<CustomUploadDifficulty>();
@@ -413,7 +413,7 @@ public sealed class CustomBeatmapImporter
         public string Version => File.Get("Metadata", "Version") ?? string.Empty;
     }
 
-    private sealed record Package(List<PackagedMap> Maps, (string Extension, byte[] Bytes)? Background, byte[]? Preview, bool HasStoryboardFile);
+    private sealed record Package(List<PackagedMap> Maps, (string Extension, byte[] Bytes)? Background, PreviewSong? Song, bool HasStoryboardFile);
 
     /// <summary>Reads the difficulties, background and audio out of the archive (bounded, so a zip bomb can't hurt).</summary>
     private static Package ReadPackage(byte[] osz)
@@ -460,14 +460,14 @@ public sealed class CustomBeatmapImporter
                 }
             }
 
-            byte[]? preview = null;
+            // The song, for the preview (cut from its preview point when stored).
+            PreviewSong? song = null;
             var audio = maps[0].File.Get("General", "AudioFilename");
-            if (audio is not null && audio.EndsWith(".mp3", StringComparison.OrdinalIgnoreCase)
-                && Find(archive, audio) is { Length: > 0 and <= MaxPreviewBytes } song)
-                preview = ReadEntry(song);
+            if (audio is not null && Find(archive, audio) is { Length: > 0 and <= MaxPreviewBytes } songEntry)
+                song = new PreviewSong(ReadEntry(songEntry), Path.GetExtension(audio).ToLowerInvariant(), maps[0].File.GetInt("General", "PreviewTime", -1));
 
             var storyboardFile = archive.Entries.Any(e => e.FullName.EndsWith(".osb", StringComparison.OrdinalIgnoreCase));
-            return new Package(maps, background, preview, storyboardFile);
+            return new Package(maps, background, song, storyboardFile);
         }
     }
 

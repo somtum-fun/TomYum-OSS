@@ -167,17 +167,60 @@ public sealed class OsuFileText
         }
     }
 
-    /// <summary>The first uninherited timing point's BPM, or null.</summary>
+    /// <summary>
+    /// The map's BPM as osu! and lazer give it: the one it's at the longest (each uninherited timing point lasting until the next,
+    /// the last until the last object; the first from the start), or null without timing points.
+    /// </summary>
     public double? Bpm
     {
         get
         {
+            var points = new List<(double Time, double BeatLength)>();
             var (start, end) = SectionRange("TimingPoints");
             for (var i = start; i < end; i++)
             {
                 var parts = _lines[i].Split(',');
-                if (parts.Length >= 2 && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var beatLength) && beatLength > 0)
-                    return Math.Round(60000 / beatLength, 2);
+                if (parts.Length < 2
+                    || !double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out var time)
+                    || !double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out var beatLength)
+                    || beatLength <= 0)
+                    continue;
+                // Uninherited unless the 7th field says 0.
+                if (parts.Length >= 7 && parts[6].Trim() == "0")
+                    continue;
+                points.Add((time, beatLength));
+            }
+            if (points.Count == 0)
+                return null;
+
+            var lastTime = Math.Max(LastObjectTime ?? 0, points[^1].Time);
+            var mostCommon = points
+                .Select((p, i) =>
+                {
+                    if (p.Time > lastTime)
+                        return (p.BeatLength, Duration: 0.0);
+                    var from = i == 0 ? 0 : p.Time;
+                    var to = i == points.Count - 1 ? lastTime : points[i + 1].Time;
+                    return (p.BeatLength, Duration: to - from);
+                })
+                .GroupBy(p => Math.Round(p.BeatLength, 3))
+                .OrderByDescending(g => g.Sum(p => p.Duration))
+                .First().Key;
+            return Math.Round(60000 / mostCommon, 2);
+        }
+    }
+
+    /// <summary>The last hit object's start time (ms), or null without objects.</summary>
+    public double? LastObjectTime
+    {
+        get
+        {
+            var (start, end) = SectionRange("HitObjects");
+            for (var i = end - 1; i >= start && i >= 0; i--)
+            {
+                var parts = _lines[i].Split(',');
+                if (parts.Length >= 3 && double.TryParse(parts[2], NumberStyles.Float, CultureInfo.InvariantCulture, out var time))
+                    return time;
             }
             return null;
         }

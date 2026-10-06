@@ -277,6 +277,22 @@ public sealed class OsuWebBeatmapMirrorTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task StatusChanges_AreQueuedForLazer_UnchangedRewritesAreNot()
+    {
+        var mirror = new OsuWebBeatmapMirror(NewOsuWebContext());
+
+        await mirror.WriteAsync(Map(300, 30, RankedStatus.Pending, api: 0));
+        Assert.Equal(1L, await ScalarAsync<long>("SELECT COUNT(*) FROM bss_process_queue WHERE beatmapset_id = 30"));
+
+        await mirror.WriteAsync(Map(300, 30, RankedStatus.Pending, api: 0));
+        Assert.Equal(1L, await ScalarAsync<long>("SELECT COUNT(*) FROM bss_process_queue WHERE beatmapset_id = 30"));
+
+        // osu!'s status refreshed: ranked now.
+        await mirror.WriteAsync(Map(300, 30, RankedStatus.Ranked, api: 1));
+        Assert.Equal(2L, await ScalarAsync<long>("SELECT COUNT(*) FROM bss_process_queue WHERE beatmapset_id = 30"));
+    }
+
+    [MySqlFact]
     public async Task IdsBeyondOsuWebsRange_AreRejected()
     {
         var mirror = new OsuWebBeatmapMirror(NewOsuWebContext());

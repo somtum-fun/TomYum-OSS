@@ -24,6 +24,16 @@ public sealed class OsuWebCustomSets
         return owner.Count == 0 ? null : (int)owner[0];
     }
 
+    /// <summary>Custom sets deleted on the website (osu!direct leaves them out).</summary>
+    public async Task<HashSet<int>> DeletedAsync(CancellationToken cancellationToken = default)
+    {
+        var sets = await _db.Database
+            .SqlQuery<uint>($"SELECT beatmapset_id AS Value FROM osu_beatmapsets WHERE beatmapset_id >= {TomYum.Domain.Entities.Beatmap.CustomIdFloor} AND deleted_at IS NOT NULL")
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return sets.Select(s => (int)s).ToHashSet();
+    }
+
     /// <summary>Whether the set is in the graveyard on the website (false when it isn't there).</summary>
     public async Task<bool> IsGraveyardedAsync(int setId, CancellationToken cancellationToken = default)
     {
@@ -96,6 +106,8 @@ public sealed class OsuWebCustomSets
             """,
             cancellationToken).ConfigureAwait(false);
 #pragma warning restore EF1002
+
+        await OsuWebBeatmapsetUpdates.QueueAsync(_db, setId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -112,6 +124,7 @@ public sealed class OsuWebCustomSets
         await _db.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE osu_beatmaps SET approved = {approved} WHERE beatmapset_id = {setId} AND deleted_at IS NULL AND approved IN (-2, -1, 0)",
             cancellationToken).ConfigureAwait(false);
+        await OsuWebBeatmapsetUpdates.QueueAsync(_db, setId, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -130,6 +143,7 @@ public sealed class OsuWebCustomSets
             await _db.Database.ExecuteSqlInterpolatedAsync(
                 $"UPDATE osu_beatmaps SET approved = -2 WHERE beatmapset_id = {set} AND deleted_at IS NULL AND approved IN (-1, 0)", cancellationToken).ConfigureAwait(false);
         }
+        await OsuWebBeatmapsetUpdates.QueueAsync(_db, sets.Select(s => (int)s), cancellationToken).ConfigureAwait(false);
         return sets;
     }
 

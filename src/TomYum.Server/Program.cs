@@ -240,6 +240,10 @@ builder.Services.AddTransient<IOsuApiClient, MirrorFirstOsuApiClient>();
 builder.Services.AddSingleton<BeatmapService>();
 // Custom (uploaded) beatmap sets: stored and served by this server (docs/custom-beatmaps.md).
 builder.Services.AddSingleton<CustomBeatmapStore>();
+// Custom sets stored before their previews were cut from their songs get one.
+builder.Services.AddHostedService<CustomPreviewBackfill>();
+// Uploaded maps get the BPM osu! gives (the one they are at the longest), not their first timing point's.
+builder.Services.AddHostedService<CustomBpmBackfill>();
 builder.Services.AddSingleton<CustomBeatmapCatalog>();
 builder.Services.AddScoped<CustomBeatmapImporter>();
 // osu! API v2 (descriptions, nominators) when an OAuth application is configured.
