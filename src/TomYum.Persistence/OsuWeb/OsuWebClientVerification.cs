@@ -49,7 +49,8 @@ public sealed class OsuWebClientVerification
     }
 
     /// <summary>
-    /// Whether these hashes name a device that can be checked (md5 hex, as builds from 2012 on send them);
+    /// Whether these hashes name a device that can be checked (md5 hex, as builds from b20120812 on send them,
+    /// and older ones patched for device verification);
     /// <see cref="IsVerifiedAsync"/> lets any other in.
     /// </summary>
     /// <param name="osuMd5">The client's osu! path md5.</param>

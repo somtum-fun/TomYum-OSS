@@ -78,6 +78,8 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
         Assert.Contains("top play", sent, StringComparison.Ordinal);
         Assert.Contains("\"username\":\"Top\"", sent, StringComparison.Ordinal);
         Assert.Contains("\"frames_only\":true,\"ruleset\":0,\"mods\":8,\"username\":\"Cheater\",\"max_combo\":400,\"count_300\":300", sent, StringComparison.Ordinal);
+        // The map it was played on, and no client build known (no login recorded): circleguard only reports a CS/OD changer then.
+        Assert.Contains("\"beatmap_md5\":\"a\",\"client_build\":null}", sent, StringComparison.Ordinal);
         Assert.Equal(2, service.Requests.Count); // the top play was checked too, and was clean
 
         Assert.Equal(1L, await ScalarAsync<long>($"SELECT user_warnings FROM phpbb_users WHERE user_id = {cheater}"));
@@ -93,6 +95,164 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
         Assert.Equal($"https://osu.test/scores/{played}", report.Embed.Url);
         Assert.Equal("1 here ▸ 0 on osu!", report.Embed.Fields.Single(f => f.Name == "Compared with").Value);
         Assert.Equal("circleguard ▸ HD", report.Embed.Footer);
+    }
+
+    [MySqlFact]
+    public async Task AStablePassWithoutAReplay_IsReportedOnceTheWaitIsOver()
+    {
+        await NewTomYumContextAsync();
+        var player = (await new OsuWebUserRepository(NewOsuWebContext()).AddAsync(NewUser("Player"))).Id;
+        await new OsuWebBeatmapMirror(NewOsuWebContext()).WriteAsync(new Beatmap { Id = 100, SetId = 10, Md5 = "a", Status = RankedStatus.Ranked, OsuApiStatus = 1, Version = "Hard", Artist = "A", Title = "T", Creator = "M" });
+        var replays = Path.Combine(_directory, "replays");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Replays:Path"] = replays }).Build();
+
+        var service = new FakeCircleguard(risk: 80);
+        var gateway = new DiscordFakeGateway();
+        var time = new MovableTime(DateTimeOffset.UtcNow);
+        var watch = NewWatch(configuration, service, gateway, time);
+
+        await watch.TickAsync();
+        var played = await InsertStableAsync(player, 900_000, replays, replay: null);
+        await watch.TickAsync();
+        time.Now += TimeSpan.FromMinutes(2);
+        await watch.TickAsync();
+        Assert.Empty(gateway.Posts); // the replay may still come
+
+        time.Now += TimeSpan.FromMinutes(2);
+        await watch.TickAsync();
+        await watch.TickAsync();
+        Assert.Empty(service.Requests);
+        var report = Assert.Single(gateway.Posts);
+        Assert.Equal(DiscordFakeGateway.UserLog, report.ChannelId); // the circleguard channel (none set: the reports')
+        Assert.Equal("Suspicious play: Player", report.Post.Embed!.AuthorName);
+        Assert.StartsWith("⚠️ " + CircleguardWatch.NoReplayReason, report.Post.Embed.Description, StringComparison.Ordinal);
+        Assert.Equal($"https://osu.test/scores/{played}", report.Post.Embed.Url);
+        var log = await new StaffLogRepository(NewTomYumContext()).ListAsync(new StaffLogQuery(Action: "anticheat.flagged"));
+        Assert.Equal($"circleguard couldn't check score {played}: {CircleguardWatch.NoReplayReason}", Assert.Single(log).Summary);
+        Assert.Equal(0L, await ScalarAsync<long>($"SELECT user_warnings FROM phpbb_users WHERE user_id = {player}")); // not restricted
+    }
+
+    [MySqlFact]
+    public async Task AStablePassDeletedWhileWaiting_IsNotReported()
+    {
+        await NewTomYumContextAsync();
+        var player = (await new OsuWebUserRepository(NewOsuWebContext()).AddAsync(NewUser("Player"))).Id;
+        await new OsuWebBeatmapMirror(NewOsuWebContext()).WriteAsync(new Beatmap { Id = 100, SetId = 10, Md5 = "a", Status = RankedStatus.Ranked, OsuApiStatus = 1, Version = "Hard", Artist = "A", Title = "T", Creator = "M" });
+        var replays = Path.Combine(_directory, "replays");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Replays:Path"] = replays }).Build();
+        var gateway = new DiscordFakeGateway();
+        var time = new MovableTime(DateTimeOffset.UtcNow);
+        var watch = NewWatch(configuration, new FakeCircleguard(risk: 80), gateway, time);
+
+        await watch.TickAsync();
+        var played = await InsertStableAsync(player, 900_000, replays, replay: null);
+        await watch.TickAsync();
+        await ExecuteAsync($"DELETE FROM scores WHERE id = {played}"); // staff removed it
+        time.Now += TimeSpan.FromMinutes(4);
+        await watch.TickAsync();
+
+        Assert.Empty(gateway.Posts);
+        Assert.Empty(await new StaffLogRepository(NewTomYumContext()).ListAsync(new StaffLogQuery(Action: "anticheat.flagged")));
+    }
+
+    [MySqlFact]
+    public Task AStablePassWithADamagedReplay_IsReported_AndDoesntHoldUpTheRest() =>
+        ReplayCantBeJudgedAsync("damaged", CircleguardWatch.DamagedReplayReason);
+
+    [MySqlFact]
+    public Task AStablePassWithATooShortReplay_IsReported_AndDoesntHoldUpTheRest() =>
+        ReplayCantBeJudgedAsync("short", CircleguardWatch.ShortReplayReason);
+
+    private async Task ReplayCantBeJudgedAsync(string replay, string reason)
+    {
+        await NewTomYumContextAsync();
+        var users = new OsuWebUserRepository(NewOsuWebContext());
+        var player = (await users.AddAsync(NewUser("Player"))).Id;
+        var cheater = (await users.AddAsync(NewUser("Cheater"))).Id;
+        await new OsuWebBeatmapMirror(NewOsuWebContext()).WriteAsync(new Beatmap { Id = 100, SetId = 10, Md5 = "a", Status = RankedStatus.Ranked, OsuApiStatus = 1, Version = "Hard", Artist = "A", Title = "T", Creator = "M" });
+        var replays = Path.Combine(_directory, "replays");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Replays:Path"] = replays }).Build();
+        Directory.CreateDirectory(Path.Combine(_directory, "osu"));
+        await File.WriteAllTextAsync(Path.Combine(_directory, "osu", "100.osu"), "osu file format v14\n[HitObjects]\n");
+        var service = new FakeCircleguard(risk: 80);
+        var gateway = new DiscordFakeGateway();
+        var watch = NewWatch(configuration, service, gateway);
+
+        await watch.TickAsync();
+        var played = await InsertStableAsync(player, 900_000, replays, replay);
+        await InsertStableAsync(cheater, 800_000, replays, "cheater's play");
+        await watch.TickAsync();
+        await watch.TickAsync();
+
+        // Each play went to circleguard once: the one it couldn't judge was dropped, the next one still checked.
+        Assert.Equal(1, service.Requests.Count(r => FakeCircleguard.Judged(r) == replay));
+        Assert.Equal(1, service.Requests.Count(r => FakeCircleguard.Judged(r) == "cheater's play"));
+        Assert.Equal(1L, await ScalarAsync<long>($"SELECT user_warnings FROM phpbb_users WHERE user_id = {cheater}"));
+        Assert.Equal(0L, await ScalarAsync<long>($"SELECT user_warnings FROM phpbb_users WHERE user_id = {player}"));
+        var report = Assert.Single(gateway.In(DiscordFakeGateway.UserLog), p => p.Embed?.AuthorName == "Suspicious play: Player");
+        Assert.StartsWith("⚠️ " + reason, report.Embed!.Description, StringComparison.Ordinal);
+        var log = await new StaffLogRepository(NewTomYumContext()).ListAsync(new StaffLogQuery(Action: "anticheat.flagged"));
+        Assert.Equal($"circleguard couldn't check score {played}: {reason}", Assert.Single(log).Summary);
+    }
+
+    [MySqlFact]
+    public async Task TheServiceDown_KeepsThePlay_ForAnHour()
+    {
+        await NewTomYumContextAsync();
+        var player = (await new OsuWebUserRepository(NewOsuWebContext()).AddAsync(NewUser("Player"))).Id;
+        await new OsuWebBeatmapMirror(NewOsuWebContext()).WriteAsync(new Beatmap { Id = 100, SetId = 10, Md5 = "a", Status = RankedStatus.Ranked, OsuApiStatus = 1, Version = "Hard", Artist = "A", Title = "T", Creator = "M" });
+        var replays = Path.Combine(_directory, "replays");
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Replays:Path"] = replays }).Build();
+        Directory.CreateDirectory(Path.Combine(_directory, "osu"));
+        await File.WriteAllTextAsync(Path.Combine(_directory, "osu", "100.osu"), "osu file format v14\n[HitObjects]\n");
+        var service = new FakeCircleguard(risk: 80);
+        var gateway = new DiscordFakeGateway();
+        var time = new MovableTime(DateTimeOffset.UtcNow);
+        var watch = NewWatch(configuration, service, gateway, time);
+
+        await watch.TickAsync();
+        await InsertStableAsync(player, 900_000, replays, "down");
+        await Assert.ThrowsAsync<HttpRequestException>(() => watch.TickAsync());
+        time.Now += TimeSpan.FromMinutes(30);
+        await Assert.ThrowsAsync<HttpRequestException>(() => watch.TickAsync()); // still tried
+
+        time.Now += TimeSpan.FromMinutes(31);
+        await watch.TickAsync(); // dropped
+        await watch.TickAsync();
+        Assert.Equal(3, service.Requests.Count);
+        Assert.Empty(gateway.Posts); // not the player's fault
+    }
+
+    [Theory]
+    [InlineData("b20260924.1", 20260924)]
+    [InlineData("b20151228.3cuttingedge", 20151228)]
+    [InlineData("b1122", 1122)]
+    [InlineData("b20130606", 20130606)]
+    [InlineData("Mozilla/5.0", null)]
+    [InlineData("b", null)]
+    [InlineData(null, null)]
+    public void StableVersions_GiveTheirBuild(string? version, int? build) => Assert.Equal(build, OsuWebAccountFlags.BuildOf(version));
+
+    [MySqlFact]
+    public async Task ThePlayersStableBuild_IsTheirLastLoginBeforeThePlay()
+    {
+        await NewTomYumContextAsync();
+        var flags = new OsuWebAccountFlags(NewOsuWebContext());
+        var at = new DateTime(2026, 10, 6, 12, 0, 0, DateTimeKind.Utc);
+        await ExecuteAsync("""
+            INSERT INTO tomyum_login_history (user_id, client, result, agent, created_at) VALUES
+              (7, 'stable', 'ok', 'b20130606', '2026-10-06 10:00:00'),
+              (7, 'stable', 'ok', 'b20260924.1', '2026-10-06 11:00:00'),
+              (7, 'stable', 'bad_password', 'b1122', '2026-10-06 11:30:00'),
+              (7, 'lazer', 'ok', '2026.1001.0', '2026-10-06 11:40:00'),
+              (7, 'stable', 'ok', 'b1122', '2026-10-06 12:30:00')
+            """);
+
+        Assert.Equal(20260924, await flags.StableBuildAtAsync(7, at));
+        Assert.Equal(20130606, await flags.StableBuildAtAsync(7, at.AddHours(-1.5)));
+        Assert.Equal(1122, await flags.StableBuildAtAsync(7, at.AddHours(1)));
+        Assert.Null(await flags.StableBuildAtAsync(7, at.AddDays(-1)));
+        Assert.Null(await flags.StableBuildAtAsync(8, at));
     }
 
     [MySqlFact]
@@ -147,14 +307,15 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
         Assert.Equal(3, service.Requests.Single(r => FakeCircleguard.Judged(r) == "cheater's play").Split("top play").Length - 1);
     }
 
-    private CircleguardWatch NewWatch(IConfiguration configuration, FakeCircleguard service, DiscordFakeGateway gateway)
+    private CircleguardWatch NewWatch(IConfiguration configuration, FakeCircleguard service, DiscordFakeGateway gateway, TimeProvider? time = null)
     {
+        time ??= TimeProvider.System;
         var services = Services(configuration, service, new InMemoryDiscordLinkRepository());
         var options = services.GetRequiredService<CircleguardOptions>();
-        var discord = new DiscordWatch(DiscordFakeGateway.Options(), gateway, new DiscordFormat("https://osu.test", "https://a.test"), new DiscordState(), TimeProvider.System);
+        var discord = new DiscordWatch(DiscordFakeGateway.Options(), gateway, new DiscordFormat("https://osu.test", "https://a.test"), new DiscordState(), time);
         return new CircleguardWatch(
             options, services.GetRequiredService<CircleguardScanner>(),
-            services.GetRequiredService<IServiceScopeFactory>(), TimeProvider.System, NullLogger<CircleguardWatch>.Instance, discord);
+            services.GetRequiredService<IServiceScopeFactory>(), time, NullLogger<CircleguardWatch>.Instance, discord);
     }
 
     private ServiceProvider Services(IConfiguration configuration, FakeCircleguard service, IDiscordLinkRepository links)
@@ -182,8 +343,8 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
             .BuildServiceProvider();
     }
 
-    /// <summary>A stable pass with its replay file (the text stands in for the replay).</summary>
-    private async Task<ulong> InsertStableAsync(int userId, uint total, string replays, string replay)
+    /// <summary>A stable pass with its replay file (the text stands in for the replay; null: no replay).</summary>
+    private async Task<ulong> InsertStableAsync(int userId, uint total, string replays, string? replay)
     {
         await ExecuteAsync(string.Create(CultureInfo.InvariantCulture, $$"""
             INSERT INTO scores (user_id, ruleset_id, beatmap_id, preserve, ranked, `rank`, passed, accuracy, max_combo, total_score, data, pp, legacy_score_id, legacy_total_score, ended_at)
@@ -197,6 +358,8 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
             tomyum.Scores.Add(new Score { Id = legacy, UserId = userId, BeatmapId = 100, BeatmapMd5 = "a", Mode = 0, MaxCombo = 400, Count300 = 300, Mods = 8, Passed = true, Grade = "S", SubmittedAt = DateTimeOffset.UtcNow });
             await tomyum.SaveChangesAsync();
         }
+        if (replay is null)
+            return id;
         Directory.CreateDirectory(replays);
         await File.WriteAllTextAsync(Path.Combine(replays, legacy.ToString(CultureInfo.InvariantCulture) + ".osr"), replay);
         return id;
@@ -211,7 +374,14 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
         Country = "nl",
     };
 
-    /// <summary>The service: flags the cheater's play, passes everything else.</summary>
+    private sealed class MovableTime(DateTimeOffset now) : TimeProvider
+    {
+        public DateTimeOffset Now { get; set; } = now;
+
+        public override DateTimeOffset GetUtcNow() => Now;
+    }
+
+    /// <summary>The service: flags the cheater's play, turns down a "damaged" one, is "down" for a "down" one, passes everything else.</summary>
     private sealed class FakeCircleguard(int risk) : HttpMessageHandler
     {
         /// <summary>The replay being judged (the form's "replay" part), not the ones it's compared with.</summary>
@@ -229,6 +399,15 @@ public sealed class CircleguardWatchTests : OsuWebDatabaseTest, IDisposable
             var body = await request.Content!.ReadAsStringAsync(cancellationToken);
             lock (Requests)
                 Requests.Add(body);
+            switch (Judged(body))
+            {
+                case "damaged":
+                    return new HttpResponseMessage(HttpStatusCode.BadRequest) { Content = new StringContent("""{"error":"The replay frames are damaged."}""", Encoding.UTF8, "application/json") };
+                case "short":
+                    return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("""{"risk_score":0,"reasons":[],"mods":"NM","snap_count":0,"note":"The replay is too short to look at."}""", Encoding.UTF8, "application/json") };
+                case "down":
+                    return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+            }
             var flagged = Judged(body) == "cheater's play" && request.Headers.GetValues("X-Circleguard-Key").Single() == "k";
             var json = flagged
                 ? $$$"""{"risk_score":{{{risk}}},"reasons":["Un-human play detected (UR 12.00 < 35.5, raw UR 12.00)"],"mods":"HD","unstable_rate":12,"converted_unstable_rate":12,"frametime":16.6,"snap_count":0,"similarity":{"comparisons":[{"score_id":1,"username":"Top","distance":40}],"threshold":17}}"""

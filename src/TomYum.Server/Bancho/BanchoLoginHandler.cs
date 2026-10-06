@@ -256,7 +256,8 @@ public sealed class BanchoLoginHandler
             var hasDevice = TomYum.Persistence.OsuWeb.OsuWebClientVerification.IsDevice(hashes.OsuPathMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5);
             if (!hasDevice)
             {
-                // No usable hardware hashes (builds before b20120812) can't be checked or confirmed. Under
+                // No usable hardware hashes (builds before b20120812 as osu! made them; patched ones send
+                // the install's whole device) can't be checked or confirmed. Under
                 // Refuse an old build like that is a new device for any account that has one already (an
                 // account's first is trusted, as any first device is); otherwise it gets in, as before.
                 // Today's clients always send them: one that doesn't (a client made to skip the check)

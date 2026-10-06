@@ -59,12 +59,69 @@ public sealed class ClientVerificationTests : OsuWebDatabaseTest
         var hashless = Reply(await LogInAsync(login, "b1122", null));
         Assert.Equal(-1, hashless.UserId);
         Assert.Contains($"https://osu.{Domain}/home/download", hashless.Notice);
-        // b20120522/b20120529 send no disk signature (4 parts): the same, patched or not.
+        // b20120522/b20120529 as osu! made them send no disk signature (4 parts): the same, even with the capability.
         Assert.Equal(-1, Reply(await LogInAsync(login, "b20120522", $"{Md5()}:1c.1b.0d:{Md5()}:{Md5()}:", "|tomyum-verify")).UserId);
 
         // ... but an account's first.
         await AddUserAsync(users, "Newcomer");
         Assert.True(Reply(await LogInAsync(login, "b1122", null, name: "Newcomer")).UserId > 0);
+    }
+
+    [MySqlTheory]
+    [InlineData("b337.test")]   // 2008: the login line had no city, no client hash
+    [InlineData("b1122")]       // no client hash
+    [InlineData("b1218")]
+    [InlineData("b1818")]       // a 3-part client hash (no uninstall id, no disk)
+    [InlineData("b20120522")]   // a 4-part one (no disk)
+    public async Task Refuse_PatchedBuildsBeforeB20120812_VerifyTheirDevice(string version)
+    {
+        var (login, users) = NewLogin(OldClientPolicy.Refuse);
+        var name = "Old" + version.Replace(".", string.Empty, StringComparison.Ordinal);
+        var user = await AddUserAsync(users, name);
+        var home = Device();
+        var laptop = Device();
+        Assert.Equal(user.Id, Reply(await LogInAsync(login, "b20140624", home, name: name)).UserId);
+
+        // As osu! made it (no device): refused, pointed at the downloads.
+        var unpatched = Reply(await LogInAsync(login, version, null, name: name));
+        Assert.Equal(-1, unpatched.UserId);
+        Assert.Contains($"https://osu.{Domain}/home/download", unpatched.Notice);
+
+        // Patched (step 12 of the prod patcher): its whole device and the capability. A new device: held.
+        var held = Reply(await LogInAsync(login, version, laptop, "|tomyum-verify", name: name));
+        Assert.Equal(-8, held.UserId);
+        Assert.Contains($"https://osu.{Domain}/p/verify", held.Notice);
+        Assert.Equal(1L, await ScalarAsync<long>($"SELECT COUNT(*) FROM osu_user_security WHERE user_id = {user.Id} AND verified = 0"));
+        // Its retries (every 15 s) are held quietly.
+        Assert.Null(Reply(await LogInAsync(login, version, laptop, "|tomyum-verify", name: name)).Notice);
+
+        // Confirmed on the website (what /p/verify?ch= marks): the next retry gets in, and so does every later login.
+        await ExecuteAsync($"UPDATE osu_user_security SET verified = 1 WHERE user_id = {user.Id}");
+        Assert.Equal(user.Id, Reply(await LogInAsync(login, version, laptop, "|tomyum-verify", name: name)).UserId);
+        Assert.Equal(user.Id, Reply(await LogInAsync(login, version, laptop, "|tomyum-verify", name: name)).UserId);
+    }
+
+    [MySqlFact]
+    public async Task Refuse_TheCapabilityAloneSkipsNothing()
+    {
+        var (login, users) = NewLogin(OldClientPolicy.Refuse);
+        var user = await AddUserAsync(users, "Guarded");
+        await AddUserAsync(users, "Other");
+        Assert.Equal(user.Id, Reply(await LogInAsync(login, "b20140624", Device(), name: "Guarded")).UserId);
+
+        // The capability with no device, or one that isn't md5s: still a build that sends no device.
+        Assert.Equal(-1, Reply(await LogInAsync(login, "b1818", string.Empty, "|tomyum-verify", name: "Guarded")).UserId);
+        Assert.Equal(-1, Reply(await LogInAsync(login, "b337.test", "x:y:z:w:v", "|tomyum-verify", name: "Guarded")).UserId);
+
+        // A made-up device is a new device: held on every try until the player confirms it.
+        var madeUp = $"{Md5()}::{Md5()}:{Md5()}:{Md5()}";
+        for (var i = 0; i < 3; i++)
+            Assert.Equal(-8, Reply(await LogInAsync(login, "b1818", madeUp, "|tomyum-verify", name: "Guarded")).UserId);
+
+        // A device confirmed by one account isn't confirmed for another.
+        var shared = $"{Md5()}:1c.1b.0d:{Md5()}:{Md5()}:{Md5()}";
+        Assert.True(Reply(await LogInAsync(login, "b1818", shared, "|tomyum-verify", name: "Other")).UserId > 0);   // Other's first device
+        Assert.Equal(-8, Reply(await LogInAsync(login, "b1818", shared, "|tomyum-verify", name: "Guarded")).UserId);
     }
 
     [MySqlFact]

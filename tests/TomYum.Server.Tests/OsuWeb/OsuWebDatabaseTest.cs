@@ -22,6 +22,16 @@ public sealed class MySqlFactAttribute : FactAttribute
     }
 }
 
+/// <summary>A <see cref="MySqlFactAttribute"/> with cases: skipped unless <c>TOMYUM_TEST_MYSQL</c> is set.</summary>
+public sealed class MySqlTheoryAttribute : TheoryAttribute
+{
+    public MySqlTheoryAttribute()
+    {
+        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(MySqlFactAttribute.EnvVar)))
+            Skip = $"Set {MySqlFactAttribute.EnvVar} to a MySQL connection string to run osu-web integration tests.";
+    }
+}
+
 /// <summary>Like <see cref="MySqlFactAttribute"/>, and also needs Redis in <c>TOMYUM_TEST_REDIS</c> (e.g. <c>127.0.0.1:6379</c>).</summary>
 public sealed class MySqlAndRedisFactAttribute : FactAttribute
 {

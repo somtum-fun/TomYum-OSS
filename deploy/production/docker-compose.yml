@@ -34,7 +34,7 @@ x-osu-web: &osu-web
     USER_BADGE_IMAGE_PREFIX: https://assets.${DOMAIN}/profile-badges/
     # The changelog's streams, in order (written on the changelog panel; changelog.sh imports commits):
     # lazer-fork, Stable, Legacy clients, Server, Website, Discord, Wiki.
-    UPDATE_STREAMS: "6 5 13 10 1 11 12"
+    UPDATE_STREAMS: "6 5 13 10 1 11"
     # The red "development instance" banner: DEVELOPMENT_BANNER=true in .env shows it.
     IS_DEVELOPMENT_DEPLOY: ${DEVELOPMENT_BANNER:-false}
   volumes:

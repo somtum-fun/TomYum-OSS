@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Repositories;
 using TomYum.Performance;
@@ -24,14 +25,32 @@ namespace TomYum.Server.Anticheat;
 /// </list>
 /// Stable replays are TomYum's own files; lazer's are the spectator server's (read-only mount).
 /// Replays can arrive a little after the score, so a score waits up to three minutes for its replay.
+/// A stable pass always comes with its replay, so one that can't be checked (its replay never turns up,
+/// circleguard can't read it, or it's too short to hold the play) is reported to staff; lazer's replay
+/// depends on the spectator server, so a missing one is only logged.
 /// </summary>
 public sealed class CircleguardWatch : BackgroundService
 {
     /// <summary>What the player is told (no details, like production).</summary>
     public const string PlayerReason = "[circleguard] Suspicious activity detected on your recent play.";
 
+    /// <summary>Why a stable pass without a replay is reported.</summary>
+    public const string NoReplayReason = "no replay came with this stable pass, so circleguard couldn't check it";
+
+    /// <summary>Why a stable pass whose replay circleguard turned down is reported.</summary>
+    public const string DamagedReplayReason = "circleguard couldn't read the replay that came with this stable pass";
+
+    /// <summary>Why a stable pass with a replay of only a few frames is reported.</summary>
+    public const string ShortReplayReason = "the replay that came with this stable pass is too short to hold the play";
+
+    /// <summary>circleguard's note for a replay of under 20 frames (its Analyzer), which it doesn't judge.</summary>
+    public const string TooShortNote = "The replay is too short to look at.";
+
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan ReplayWait = TimeSpan.FromMinutes(3);
+
+    /// <summary>A play the checks keep failing on (not its replay's fault) is dropped after this, so it can't hold up the rest.</summary>
+    private static readonly TimeSpan GiveUpAfter = TimeSpan.FromHours(1);
 
     /// <summary>How many top plays (here, and on osu!) each new pass is compared with.</summary>
     public const int References = 5;
@@ -98,6 +117,9 @@ public sealed class CircleguardWatch : BackgroundService
                 {
                     _waiting.Remove(entry);
                     _logger.LogInformation("circleguard: score {ScoreId} has no replay; not checked.", entry.Score.ScoreId);
+                    // (no path: the stable score is gone from the website, deleted while it waited)
+                    if (entry.Score.IsStable && path is not null)
+                        await ReportUncheckedAsync(scope.ServiceProvider, entry.Score, NoReplayReason, cancellationToken).ConfigureAwait(false);
                 }
                 continue;
             }
@@ -105,6 +127,21 @@ public sealed class CircleguardWatch : BackgroundService
             {
                 await CheckAsync(scope.ServiceProvider, community, entry.Score, path, cancellationToken).ConfigureAwait(false);
                 _waiting.Remove(entry);
+            }
+            catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.BadRequest)
+            {
+                // circleguard turned this replay down (damaged frames): trying again won't help.
+                // (a wrong key is 401: the pass fails and is tried again, like the service being down)
+                _waiting.Remove(entry);
+                _logger.LogWarning(ex, "circleguard: score {ScoreId}'s replay was turned down; not checked.", entry.Score.ScoreId);
+                if (entry.Score.IsStable)
+                    await ReportUncheckedAsync(scope.ServiceProvider, entry.Score, DamagedReplayReason, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not (IOException or OperationCanceledException) && _time.GetUtcNow() - entry.SeenAt > GiveUpAfter)
+            {
+                // Anything else (the service down) fails the pass and is tried again, but not for ever.
+                _waiting.Remove(entry);
+                _logger.LogWarning(ex, "circleguard: score {ScoreId} couldn't be checked for an hour; dropped.", entry.Score.ScoreId);
             }
             catch (IOException ex)
             {
@@ -151,6 +188,12 @@ public sealed class CircleguardWatch : BackgroundService
 
         var scan = await _scanner.ScanAsync(services, community, score, path, References, References, cancellationToken: cancellationToken).ConfigureAwait(false);
         var verdict = scan.Verdict;
+        // A real pass is hundreds of frames: a few means the replay doesn't hold the play.
+        if (score.IsStable && verdict.RiskScore < _options.ReportAt && verdict.Note == TooShortNote)
+        {
+            await ReportUncheckedAsync(services, score, ShortReplayReason, cancellationToken).ConfigureAwait(false);
+            return;
+        }
         var restricted = false;
         if (verdict.RiskScore > _options.RestrictAbove)
             restricted = await RestrictAsync(services, score, verdict, cancellationToken).ConfigureAwait(false);
@@ -161,6 +204,27 @@ public sealed class CircleguardWatch : BackgroundService
             if (_discord is not null)
                 await _discord.CircleguardAsync(score, scan, restricted, cancellationToken).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>A stable pass circleguard couldn't check (<paramref name="reason"/>): staff are told (staff log and Discord), nobody is restricted.</summary>
+    private async Task ReportUncheckedAsync(IServiceProvider services, ScoreCard score, string reason, CancellationToken cancellationToken)
+    {
+        if (services.GetService<OsuWebAccountFlags>() is { } flags && await flags.IsWhitelistedAsync(score.UserId, cancellationToken).ConfigureAwait(false))
+            return;
+        if (services.GetService<IStaffLogRepository>() is { } log)
+        {
+            await log.AddAsync(new StaffLogEntry
+            {
+                CreatedAt = _time.GetUtcNow().UtcDateTime,
+                ActorId = BanchoBot.UserId,
+                Action = "anticheat.flagged",
+                TargetId = score.UserId,
+                Summary = string.Create(CultureInfo.InvariantCulture, $"circleguard couldn't check score {score.ScoreId}: {reason}"),
+                Result = "circleguard",
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        if (_discord is not null)
+            await _discord.UncheckedAsync(score, reason, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>A flagged play that didn't restrict, kept in the staff log (the admin panel shows the last one).</summary>

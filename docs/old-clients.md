@@ -174,7 +174,14 @@ A patched old client can verify like today's: it adds a last field to its login 
 `version|utc|city|hashes|pm|tomyum-verify` (a comma-separated capability list), and is then sent
 -8 and handles it itself (it opens `osu.<domain>/p/verify?u=<name>&ch=<hashes>` once and retries the
 login until the device is confirmed). The decompiled clients' patcher does this for b20120812 to
-b20151026.3 (step 11; the builds that send a whole device); b20151228.3 handles -8 already and only gets `ch` added to its verify link.
+b20151026.3 (step 11; the builds that send a whole device) and for b337 to b20120529 (step 12): those sent
+no client hash, or one without the uninstall id or disk, so the patched build sends its install's whole
+device instead, as later builds do (`md5(osu!.exe):adapters:md5(adapters):md5(md5(UninstallID)):md5(disk serial)`,
+with the same `UninstallID` registry value osu! keeps, so it's the same device for every build on a PC).
+The login line is the same in every era once patched (b337 sent only `version|utc`, b370 to b1652
+`version|utc|city`): `version|utc|city|hashes|0|tomyum-verify`, over TCP bancho for builds up to
+b20130815. Its -8 goes out as -8 in the build's own packet ids; the build retries through its own
+"connection failed" retry every 15 s. b20151228.3 handles -8 already and only gets `ch` added to its verify link.
 The hook (original builds) follows `OldClients`.
 
 ## Testing locally

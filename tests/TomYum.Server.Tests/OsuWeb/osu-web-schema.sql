@@ -1029,3 +1029,24 @@ CREATE TABLE osu_user_security (
   KEY disk_md5 (disk_md5),
   KEY unique_md5 (unique_md5)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- TomYum's staff flags and game logins (osu-web migration 2026_09_30_000001).
+CREATE TABLE tomyum_account_flags (
+  user_id int unsigned NOT NULL,
+  locked_at datetime NULL,
+  whitelisted_at datetime NULL,
+  PRIMARY KEY (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE tomyum_login_history (
+  id bigint unsigned NOT NULL AUTO_INCREMENT,
+  user_id int unsigned NOT NULL,
+  client varchar(16) NOT NULL,
+  result varchar(16) NOT NULL,
+  ip varchar(45) NULL,
+  country char(2) NULL,
+  agent varchar(255) NULL,
+  created_at datetime NOT NULL,
+  PRIMARY KEY (id),
+  KEY user_id_id (user_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
