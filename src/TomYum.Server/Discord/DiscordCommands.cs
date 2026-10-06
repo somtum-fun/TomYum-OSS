@@ -101,6 +101,8 @@ public sealed partial class DiscordCommands
         new("addbadge", "Admin: give a player a profile badge", [PlayerOption, new("image", "An osu! badge's file name (e.g. contributor.png) or a link to an image (86x40 fits best)", Required: true), new("description", "The badge's tooltip", Required: true), new("url", "Where clicking the badge goes (optional)"), new("name", "What a linked image is saved as, like ndc-2023 (optional: else the link's file name)")], Staff: true),
         new("scan", "Staff: check a score with circleguard, against the map's top 30 here and on osu!", [new("score", "The score's link (or its id on the website)", Required: true), new("official", "osu!'s top plays to compare with (top 30 if left out)", Choices: ScanOfficial)], Staff: true, Live: true),
         new("removebadge", "Admin: take a profile badge away", [PlayerOption, new("badge", "Its number, description or image; left out: list their badges")], Staff: true),
+        new("banner_add", "Add a new menu banner", [new("image_url", "A link to the banner's image", Required: true), new("click_url", "Where clicking the banner goes", Required: true), new("expires", "The day it stops showing, like 2026-11-01 (optional: else it stays)")], Staff: true),
+        new("banner_remove", "Take a menu banner off", [new("banner", "Its number; left out: list the banners")], Staff: true),
         new("rankmap", "BN: rank a set (or one difficulty)", StatusOptions, Private: true),
         new("lovemap", "BN: love a set (or one difficulty)", StatusOptions, Private: true),
         new("qualify", "BN: qualify a set (or one difficulty)", StatusOptions, Private: true),
@@ -181,6 +183,10 @@ public sealed partial class DiscordCommands
                 return await AddBadgeAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
             case "removebadge":
                 return await RemoveBadgeAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "banner_add":
+                return await AddMenuBannerAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
+            case "banner_remove":
+                return await RemoveMenuBannerAsync(scope.ServiceProvider, links, options, callerId, cancellationToken).ConfigureAwait(false);
             case var status when StatusCommands.ContainsKey(status):
                 return await StatusRequestAsync(scope.ServiceProvider, links, status, options, callerId, cancellationToken).ConfigureAwait(false);
         }

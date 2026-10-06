@@ -132,12 +132,13 @@ public sealed partial class DiscordCommands
     }
 
     /// <summary>The caller's game account when it's an administrator.</summary>
-    private static async Task<(User? Admin, string? Error)> AdminCallerAsync(IServiceProvider services, IDiscordLinkRepository links, ulong callerId, CancellationToken cancellationToken)
+    private static async Task<(User? Admin, string? Error)> AdminCallerAsync(
+        IServiceProvider services, IDiscordLinkRepository links, ulong callerId, CancellationToken cancellationToken, string refusal = "Only administrators can give or take badges.")
     {
         var (staff, error) = await StaffCallerAsync(services, links, callerId, cancellationToken).ConfigureAwait(false);
         if (staff is null)
             return (null, error);
-        return staff.Privileges.HasFlag(UserPrivileges.Administrator) ? (staff, null) : (null, "Only administrators can give or take badges.");
+        return staff.Privileges.HasFlag(UserPrivileges.Administrator) ? (staff, null) : (null, refusal);
     }
 
     private static Task LogAsync(IServiceProvider services, User actor, string action, User target, string summary, CancellationToken cancellationToken) =>

@@ -59,6 +59,9 @@ public static partial class AssetsEndpoints
         // the ones staff put here (the admin panel's assets), else osu!'s, fetched once and kept.
         app.MapGet("/" + AssetStore.BannerFolder + "/{**path}", (string path, IHttpClientFactory http, IConfiguration configuration, ILoggerFactory logs, CancellationToken cancellationToken) =>
             HandleNestedAssetAsync(AssetStore.BannerFolder + "/" + path, http, configuration, logs, cancellationToken)).RequireHost(hosts);
+        // lazer's main-menu banners (osu!'s assets.ppy.sh/menu-content.json), as staff set them here.
+        app.MapGet("/" + MenuBanners.FileName, async (MenuBanners banners, CancellationToken cancellationToken) =>
+            Results.Text(await banners.ContentAsync(cancellationToken).ConfigureAwait(false), "application/json")).RequireHost(hosts);
     }
 
     /// <summary>

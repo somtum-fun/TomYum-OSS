@@ -278,6 +278,7 @@ builder.Services.AddHttpClient(AudioPreviews.HttpClientName, http =>
 });
 builder.Services.AddSingleton<AudioPreviews>();
 builder.Services.AddSingleton<AssetStore>();
+builder.Services.AddSingleton<MenuBanners>();
 
 // --- Static assets (medal icons) ---
 // Named HttpClient used to lazily fetch medal icons from ppy's CDN for the assets.<domain> proxy.
