@@ -153,14 +153,21 @@ public static class SubmissionEndpoints
     /// <c>POST osu-osz2-bmsubmit-post.php</c> (form <c>u, p, b, subject, message, complete, notify</c>):
     /// finished (pending) or a work in progress, and the description. Answers the set's thread id.
     /// </summary>
+    /// <remarks>
+    /// The login is read like the upload's: the form or the query string, as <c>h</c> or <c>p</c> (the
+    /// stable editor's post was refused with a 403 while its getid and upload, just before, logged in).
+    /// </remarks>
     internal static async Task<IResult> StablePostAsync(HttpContext context, BeatmapSubmissions submissions, CancellationToken cancellationToken)
     {
         if (!context.Request.HasFormContentType)
             return Results.StatusCode(StatusCodes.Status400BadRequest);
         var form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
-        if (await StableUserAsync(context, form["u"], form["p"], cancellationToken).ConfigureAwait(false) is not { } user)
+        string Field(string name) => form[name].ToString() is { Length: > 0 } value ? value : context.Request.Query[name].ToString();
+
+        var password = Field("h") is { Length: > 0 } hash ? hash : Field("p");
+        if (await StableUserAsync(context, Field("u"), password, cancellationToken).ConfigureAwait(false) is not { } user)
             return Results.StatusCode(StatusCodes.Status403Forbidden);
-        if (!int.TryParse(form["b"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var setId))
+        if (!int.TryParse(Field("b"), NumberStyles.Integer, CultureInfo.InvariantCulture, out var setId))
             return Results.NotFound();
 
         // The editor puts a generated header above the mapper's own text.

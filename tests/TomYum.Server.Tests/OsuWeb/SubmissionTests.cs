@@ -111,7 +111,8 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
         Assert.IsType<ContentHttpResult>(post);
         Assert.Equal(-1L, await ScalarAsync<long>("SELECT approved FROM osu_beatmapsets WHERE beatmapset_id = 10000000"));
         Assert.Equal(2L, await ScalarAsync<long>("SELECT COUNT(*) FROM osu_beatmaps WHERE beatmapset_id = 10000000 AND approved = -1"));
-        await SubmissionEndpoints.StablePostAsync(StablePost(services, "Mapper", "10000000", complete: true), submissions, default);
+        // The login also works the way getid and upload send it (u and h in the query).
+        Assert.IsType<ContentHttpResult>(await SubmissionEndpoints.StablePostAsync(StablePost(services, "Mapper", "10000000", complete: true, loginInQuery: true), submissions, default));
         Assert.Equal(0L, await ScalarAsync<long>("SELECT approved FROM osu_beatmapsets WHERE beatmapset_id = 10000000"));
         Assert.Equal(CustomBeatmapSet.Pending, (await sets.GetAsync(10000000))!.Target);
 
@@ -328,14 +329,17 @@ public sealed class SubmissionTests : OsuWebDatabaseTest, IDisposable
         return context;
     }
 
-    private static DefaultHttpContext StablePost(ServiceProvider services, string user, string set, bool complete)
+    /// <summary>The editor's post; <paramref name="loginInQuery"/>: its login as getid's and upload's (<c>u</c>, <c>h</c> in the query).</summary>
+    private static DefaultHttpContext StablePost(ServiceProvider services, string user, string set, bool complete, bool loginInQuery = false)
     {
         var context = new DefaultHttpContext { RequestServices = services };
         context.Request.ContentType = "application/x-www-form-urlencoded";
+        if (loginInQuery)
+            context.Request.QueryString = new QueryString($"?u={user}&h={PasswordMd5}");
         context.Request.Form = new FormCollection(new Dictionary<string, StringValues>
         {
-            ["u"] = user,
-            ["p"] = PasswordMd5,
+            ["u"] = loginInQuery ? StringValues.Empty : user,
+            ["p"] = loginInQuery ? StringValues.Empty : PasswordMd5,
             ["b"] = set,
             ["subject"] = "Artist - Song",
             ["message"] = "[generated header]\n---------------\nMy first map!",
