@@ -168,6 +168,48 @@ public sealed class DiscordDatabaseTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task Announcer_PostsTheWayToRanked_ToTheBnChannel()
+    {
+        var (alpha, bravo, cheater) = await SeedAsync();
+        // Before the bot started: not announced.
+        await ExecuteAsync($"INSERT INTO beatmapset_events (beatmapset_id, user_id, type, created_at) VALUES (10, {bravo}, 'nominate', UTC_TIMESTAMP())");
+        var gateway = new DiscordFakeGateway();
+        var (announcer, _) = NewAnnouncer(gateway, new InMemoryDiscordLinkRepository());
+        await announcer.TickAsync();
+        gateway.Clear();
+
+        // A hype (and a restricted player's, left out), a nomination, a disqualification with its reason, other events.
+        await ExecuteAsync($"INSERT INTO beatmap_discussions (beatmapset_id, user_id, message_type, created_at) VALUES (10, {alpha}, 4, UTC_TIMESTAMP())");
+        await ExecuteAsync("INSERT INTO beatmap_discussion_posts (beatmap_discussion_id, user_id, message, created_at) VALUES ((SELECT MAX(id) FROM beatmap_discussions), 0, 'please rank this', UTC_TIMESTAMP())");
+        await ExecuteAsync($"INSERT INTO beatmap_discussions (beatmapset_id, user_id, message_type, created_at) VALUES (10, {cheater}, 4, UTC_TIMESTAMP())");
+        await ExecuteAsync($"INSERT INTO beatmapset_events (beatmapset_id, user_id, type, created_at) VALUES (10, {bravo}, 'nominate', UTC_TIMESTAMP())");
+        await ExecuteAsync($"INSERT INTO beatmap_discussions (beatmapset_id, user_id, message_type, created_at) VALUES (10, {bravo}, 2, UTC_TIMESTAMP())");
+        var problem = await ScalarAsync<ulong>("SELECT MAX(id) FROM beatmap_discussions");
+        await ExecuteAsync($"INSERT INTO beatmap_discussion_posts (beatmap_discussion_id, user_id, message, created_at) VALUES ({problem}, {bravo}, 'unsnapped notes', UTC_TIMESTAMP())");
+        await ExecuteAsync($$"""INSERT INTO beatmapset_events (beatmapset_id, user_id, type, comment, created_at) VALUES (10, {{bravo}}, 'disqualify', '{"beatmap_discussion_id":{{problem}},"beatmap_discussion_post_id":null}', UTC_TIMESTAMP())""");
+        await ExecuteAsync($"INSERT INTO beatmapset_events (beatmapset_id, user_id, type, created_at) VALUES (10, {bravo}, 'kudosu_gain', UTC_TIMESTAMP())");
+        await announcer.TickAsync();
+
+        var posts = gateway.In(DiscordFakeGateway.BnRequest);
+        Assert.Equal(3, posts.Count);
+        Assert.Contains(posts, p => p.Embed!.Description!.StartsWith("📣 **Hyped** by **Alpha**", StringComparison.Ordinal) && p.Embed.Description.Contains("> please rank this", StringComparison.Ordinal));
+        Assert.Contains(posts, p => p.Embed!.Description!.StartsWith("👍 **Nominated** by **Bravo**", StringComparison.Ordinal));
+        Assert.Contains(posts, p => p.Embed!.Description!.StartsWith("❌ **Disqualified** by **Bravo**", StringComparison.Ordinal) && p.Embed.Description.Contains("> unsnapped notes", StringComparison.Ordinal));
+        Assert.All(posts, p => Assert.Equal("Artist - Song", p.Embed!.Title));
+        gateway.Clear();
+
+        // A BN opening an osu! set for nominations (the website logs it).
+        await using var tomyum = await NewTomYumContextAsync();
+        await new StaffLogRepository(tomyum).AddAsync(new StaffLogEntry { CreatedAt = DateTime.UtcNow, ActorId = bravo, Action = DiscordAnnouncer.OpenForNominationsAction, TargetId = 10, Summary = "Opened Artist - Song for nominations" });
+        await announcer.TickAsync();
+        Assert.StartsWith("📂 **Opened for nominations** by **Bravo**", Assert.Single(gateway.In(DiscordFakeGateway.BnRequest)).Embed!.Description, StringComparison.Ordinal);
+
+        gateway.Clear();
+        await announcer.TickAsync();
+        Assert.Empty(gateway.In(DiscordFakeGateway.BnRequest));
+    }
+
+    [MySqlFact]
     public async Task TheOnlyRankedPlayer_IsFirst_WhateverTheirPp()
     {
         var (alpha, _, _) = await SeedAsync();

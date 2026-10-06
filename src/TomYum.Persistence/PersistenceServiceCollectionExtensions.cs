@@ -43,7 +43,7 @@ public static class PersistenceServiceCollectionExtensions
 
             // Beatmaps: TomYum's table stays authoritative; writes are mirrored to osu-web's.
             services.AddScoped<BeatmapRepository>();
-            services.AddScoped<OsuWebBeatmapMirror>();
+            services.AddScoped(sp => new OsuWebBeatmapMirror(sp.GetRequiredService<OsuWebDbContext>(), options.OsuWebImportPacks));
             services.AddScoped<IBeatmapRepository, OsuWebMirroringBeatmapRepository>();
 
             // Scores + stats: mirrored after each submission (the server's OsuWebSync drives it).

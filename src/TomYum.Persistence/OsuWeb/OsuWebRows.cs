@@ -100,6 +100,12 @@ public sealed class OsuWebBeatmapset
 
     public DateTime? ApprovedDate { get; set; }
 
+    /// <summary>
+    /// When the set entered the qualified queue: osu-web's <c>modding:rank</c> ranks it once the
+    /// qualified period has passed since then. Null while not qualified.
+    /// </summary>
+    public DateTime? QueuedAt { get; set; }
+
     public DateTime? SubmitDate { get; set; }
 
     public DateTime LastUpdate { get; set; }

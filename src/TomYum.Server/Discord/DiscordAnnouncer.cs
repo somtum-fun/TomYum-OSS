@@ -13,6 +13,7 @@ namespace TomYum.Server.Discord;
 /// <list type="bullet">
 /// <item>public log: new #1s, big plays (<see cref="DiscordOptions.BigPlayPp"/>), medals, new players;</item>
 /// <item>beatmaps: ranked, approved, qualified and loved maps;</item>
+/// <item>BN requests: nominations, disqualifications, nomination resets, hypes and sets opened for nominations;</item>
 /// <item>user log: staff actions on accounts, blocked ban evasion, Discord links;</item>
 /// <item>server log: other staff actions, the server starting, and errors.</item>
 /// </list>
@@ -47,6 +48,8 @@ public sealed class DiscordAnnouncer : BackgroundService
     private HashSet<(int UserId, int MedalId)> _medalsAtMark = [];
     private int _userMark;
     private long _staffMark;
+    private ulong _moddingMark;
+    private ulong _hypeMark;
     private DateTimeOffset _nextRoleSync;
 
     public DiscordAnnouncer(
@@ -106,6 +109,8 @@ public sealed class DiscordAnnouncer : BackgroundService
             await AnnouncePlayersAsync(community, cancellationToken).ConfigureAwait(false);
             if (_watch is not null)
                 await _watch.TickAsync(community, cancellationToken).ConfigureAwait(false);
+            if (_options.BnRequestChannelId != 0)
+                await AnnounceModdingAsync(community, cancellationToken).ConfigureAwait(false);
         }
         if (staffLog is not null)
             await AnnounceStaffLogAsync(staffLog, community, services, cancellationToken).ConfigureAwait(false);
@@ -153,6 +158,7 @@ public sealed class DiscordAnnouncer : BackgroundService
             _medalsAtMark = (await community.GetMedalsSinceAsync(_medalMark, cancellationToken).ConfigureAwait(false))
                 .Select(m => (m.UserId, m.MedalId)).ToHashSet();
             _userMark = await community.GetLatestUserIdAsync(cancellationToken).ConfigureAwait(false);
+            (_moddingMark, _hypeMark) = await community.GetLatestModdingIdsAsync(cancellationToken).ConfigureAwait(false);
             if (_watch is not null)
                 await _watch.StartAsync(community, cancellationToken).ConfigureAwait(false);
         }
@@ -294,6 +300,13 @@ public sealed class DiscordAnnouncer : BackgroundService
             var channel = entry.Action.StartsWith("user.", StringComparison.Ordinal) ? _options.UserLogChannelId : _options.ServerLogChannelId;
             await _gateway.PostAsync(channel, StaffPost(entry, actor), cancellationToken).ConfigureAwait(false);
 
+            if (entry.Action == OpenForNominationsAction && entry.TargetId is { } openedId && community is not null && _options.BnRequestChannelId != 0
+                && await community.GetBeatmapsetAsync((int)openedId, cancellationToken).ConfigureAwait(false) is { } opened)
+            {
+                await _gateway.PostAsync(_options.BnRequestChannelId,
+                    ModdingPost(opened, new ModdingEvent(0, "open", opened.BeatmapsetId, actor?.Id, actor?.Username, null, entry.CreatedAt)), cancellationToken).ConfigureAwait(false);
+            }
+
             if (entry.Action == BeatmapStatusChanger.LogAction && entry.Result is { } status && AnnouncedStatuses.Contains(status)
                 && entry.TargetId is { } setId && community is not null
                 && await community.GetBeatmapsetAsync((int)setId, cancellationToken).ConfigureAwait(false) is { } set)
@@ -302,6 +315,59 @@ public sealed class DiscordAnnouncer : BackgroundService
             }
         }
     }
+
+    /// <summary>The staff log action the website writes when a BN opens an osu! graveyard/WIP set for nominations.</summary>
+    public const string OpenForNominationsAction = "beatmapset.open";
+
+    /// <summary>Nominations, disqualifications, nomination resets and hypes since the last pass, to the BNs' channel.</summary>
+    private async Task AnnounceModdingAsync(OsuWebCommunity community, CancellationToken cancellationToken)
+    {
+        var events = await community.GetModdingEventsAfterAsync(_moddingMark, cancellationToken).ConfigureAwait(false);
+        var hypes = await community.GetHypesAfterAsync(_hypeMark, cancellationToken).ConfigureAwait(false);
+        foreach (var item in events.Concat(hypes).OrderBy(e => e.CreatedAt))
+        {
+            if (item.Type == "hype")
+                _hypeMark = Math.Max(_hypeMark, item.Id);
+            else
+                _moddingMark = Math.Max(_moddingMark, item.Id);
+            if (await community.GetBeatmapsetAsync(item.BeatmapsetId, cancellationToken).ConfigureAwait(false) is not { } set)
+                continue;
+            await _gateway.PostAsync(_options.BnRequestChannelId, ModdingPost(set, item), cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>A step on a set's way to ranked, for the BNs' channel.</summary>
+    public DiscordPost ModdingPost(BeatmapsetCard set, ModdingEvent item)
+    {
+        ArgumentNullException.ThrowIfNull(set);
+        ArgumentNullException.ThrowIfNull(item);
+        var (emoji, what, color) = item.Type switch
+        {
+            "nominate" => ("👍", "Nominated", 0x66CCFFu),
+            "disqualify" => ("❌", "Disqualified", DiscordFormat.Danger),
+            "nomination_reset" => ("💔", "Nomination reset", 0xF39C12u),
+            "hype" => ("📣", "Hyped", 0xFF66AAu),
+            "open" => ("📂", "Opened for nominations", DiscordFormat.Accent),
+            _ => ("•", item.Type, DiscordFormat.Staff),
+        };
+        var by = item.Username is { Length: > 0 } name ? $" by **{DiscordFormat.Escape(name)}**" : string.Empty;
+        var message = string.IsNullOrWhiteSpace(item.Message) ? string.Empty
+            : "\n> " + DiscordFormat.Escape(Shorten(item.Message.Trim().ReplaceLineEndings(" "), 300));
+        return new DiscordPost(Embed: new DiscordEmbed
+        {
+            AuthorName = item.Username,
+            AuthorUrl = item.UserId is { } userId ? _format.Profile(userId) : null,
+            AuthorIconUrl = item.UserId is { } avatarId ? _format.Avatar(avatarId) : null,
+            Title = $"{set.Artist} - {set.Title}",
+            Url = _format.Beatmapset(set.BeatmapsetId),
+            Description = $"{emoji} **{what}**{by}\nmapped by **{DiscordFormat.Escape(set.Creator)}**{message}",
+            ThumbnailUrl = _format.ListCover(set.BeatmapsetId),
+            Color = color,
+            Timestamp = new DateTimeOffset(DateTime.SpecifyKind(item.CreatedAt, DateTimeKind.Utc)),
+        });
+    }
+
+    private static string Shorten(string text, int max) => text.Length <= max ? text : text[..(max - 1)] + "…";
 
     /// <summary>A staff log entry as posted in the staff channels.</summary>
     public DiscordPost StaffPost(StaffLogEntry entry, User? actor)

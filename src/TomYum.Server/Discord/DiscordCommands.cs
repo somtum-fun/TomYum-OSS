@@ -101,7 +101,7 @@ public sealed partial class DiscordCommands
         new("addbadge", "Admin: give a player a profile badge", [PlayerOption, new("image", "An osu! badge's file name (e.g. contributor.png) or a link to an image (86x40 fits best)", Required: true), new("description", "The badge's tooltip", Required: true), new("url", "Where clicking the badge goes (optional)"), new("name", "What a linked image is saved as, like ndc-2023 (optional: else the link's file name)")], Staff: true),
         new("scan", "Staff: check a score with circleguard, against the map's top 30 here and on osu!", [new("score", "The score's link (or its id on the website)", Required: true), new("official", "osu!'s top plays to compare with (top 30 if left out)", Choices: ScanOfficial)], Staff: true, Live: true),
         new("removebadge", "Admin: take a profile badge away", [PlayerOption, new("badge", "Its number, description or image; left out: list their badges")], Staff: true),
-        new("rankmap", "BN: rank a set (or one difficulty)", StatusOptions, Private: true),
+        new("rankmap", "NAT: rank a set (or one difficulty) without the qualified period", StatusOptions, Private: true),
         new("lovemap", "BN: love a set (or one difficulty)", StatusOptions, Private: true),
         new("qualify", "BN: qualify a set (or one difficulty)", StatusOptions, Private: true),
     ];

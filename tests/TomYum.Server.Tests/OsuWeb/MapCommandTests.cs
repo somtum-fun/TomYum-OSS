@@ -63,6 +63,12 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
         store.Set(nominator, new NowPlaying(101, 10, 0, Mods.None));
         Assert.Equal("Artist - Song: all difficulties → loved.", await maps.RunAsync(bn, ["love"]));
         Assert.Equal("Nothing changed: Artist - Song already has loved.", await maps.RunAsync(bn, ["loved", "set"]));
+        Assert.Equal("Artist - Song: [Insane] → qualified.", await maps.RunAsync(bn, ["qualify", "map"]));
+
+        // Ranking directly (no qualified period) is the NAT's and admins'.
+        Assert.StartsWith("Only the NAT and admins rank directly.", await maps.RunAsync(bn, ["rank", "map"]));
+        Assert.StartsWith("Only the NAT and admins rank directly.", await maps.RunAsync(bn, ["approve"]));
+        await ExecuteAsync($"INSERT INTO phpbb_user_group (group_id, user_id, group_leader, user_pending) SELECT group_id, {nominator}, 0, 0 FROM phpbb_groups WHERE identifier = 'nat'");
         Assert.Equal("Artist - Song: [Insane] → ranked.", await maps.RunAsync(bn, ["rank", "map"]));
 
         using (var scope = services.CreateScope())
@@ -71,9 +77,13 @@ public sealed class MapCommandTests : OsuWebDatabaseTest
             Assert.Equal(RankedStatus.Loved, (await repository.GetByIdAsync(100))!.Status);
             Assert.Equal(RankedStatus.Ranked, (await repository.GetByIdAsync(101))!.Status);
             var log = await scope.ServiceProvider.GetRequiredService<IStaffLogRepository>().ListAsync(new StaffLogQuery("beatmapset.status"));
-            Assert.Equal(2, log.Count);
+            Assert.Equal(3, log.Count);
             Assert.All(log, e => Assert.Equal(nominator, e.ActorId));
         }
+
+        // BNs on probation nominate on the website only.
+        await ExecuteAsync($"INSERT INTO phpbb_user_group (group_id, user_id, group_leader, user_pending) SELECT group_id, {player.UserId}, 0, 0 FROM phpbb_groups WHERE identifier = 'bng_limited'");
+        Assert.StartsWith("Probationary BNs nominate on the website", await maps.RunAsync(player, ["qualify"]));
 
         // The (fake) osu! API doesn't know the set: there's no bancho status to go back to.
         Assert.Equal("Nothing to reset: Artist - Song has no staff-set status, or osu! doesn't have it.", await maps.RunAsync(bn, ["reset"]));

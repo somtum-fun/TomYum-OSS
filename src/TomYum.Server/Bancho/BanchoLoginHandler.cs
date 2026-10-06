@@ -51,6 +51,7 @@ public sealed class BanchoLoginHandler
     private readonly IFriendRepository? _friends;
     private readonly TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? _privateMessages;
     private readonly TomYum.Persistence.OsuWeb.OsuWebClientVerification? _clientVerification;
+    private readonly ClientVerificationOptions _verificationOptions;
     private readonly TomYum.Persistence.OsuWeb.OsuWebAccountFlags? _accountFlags;
     private readonly TomYum.Server.Admin.RestrictionNotices? _restrictionNotices;
     private readonly TomYum.Server.Admin.Maintenance? _maintenance;
@@ -78,16 +79,35 @@ public sealed class BanchoLoginHandler
     public static readonly TimeSpan ActiveSessionWindow = TimeSpan.FromSeconds(10);
 
     /// <summary>
-    /// What a held-for-verification login is told: today's clients open <c>/p/verify</c> on their
-    /// own when they see the <see cref="LoginFailureReason.VerificationRequired"/> code, but older
-    /// builds (and anything going through the production hook) may just show a generic login
-    /// failure, so TomYum attaches a message with the URL. Shown as a bancho NOTIFICATION — the
-    /// client renders it in a dialog, so it is readable on every supported build.
+    /// What a held-for-verification login is told, with the website's verify page on
+    /// <paramref name="domain"/> (<c>Server:Domain</c>): today's clients open <c>/p/verify</c> on their own
+    /// when they see the <see cref="LoginFailureReason.VerificationRequired"/> code, but the page also
+    /// works without the client's details (it confirms the account's newest waiting device). Shown as a
+    /// bancho notification, once while a device waits (see <see cref="NoticeAgain"/>).
     /// </summary>
-    public const string VerificationNotice =
-        "This is a new device.\n"
-      + "Please sign in on https://osu.example.com and open Settings → Account Verification\n"
-      + "to confirm it, then log in to the game again.";
+    /// <param name="domain">The server's public domain.</param>
+    public static string VerificationNotice(string domain) =>
+        "This is a new device, so it needs confirming first.\n"
+      + $"Sign in on https://osu.{domain}/p/verify and confirm it there, then log in to the game again.";
+
+    /// <summary>
+    /// What an old client that can't verify devices is told when its device needs verifying
+    /// (<see cref="OldClientPolicy.Refuse"/>): a client that can is at <paramref name="downloadsUrl"/>. When the
+    /// client sent its device's details (<paramref name="hasDevice"/>), the website can confirm it too.
+    /// </summary>
+    /// <param name="domain">The server's public domain.</param>
+    /// <param name="downloadsUrl">Where clients that can verify are.</param>
+    /// <param name="hasDevice">Whether the device was recorded (the client sent its hardware hashes).</param>
+    public static string OldClientNotice(string domain, string downloadsUrl, bool hasDevice) =>
+        hasDevice
+            ? "This is a new device, and this version of osu! can't confirm it by itself.\n"
+              + $"Sign in on https://osu.{domain}/p/verify to confirm it, then log in again,\n"
+              + $"or get a client that can at {downloadsUrl}"
+            : "This version of osu! can't confirm a new device.\n"
+              + $"Please get a client that can at {downloadsUrl}, then log in again.";
+
+    /// <summary>A device still waiting after this long gets the verification notice again (it's not repeated on every retry).</summary>
+    public static readonly TimeSpan NoticeAgain = TimeSpan.FromMinutes(10);
 
     /// <summary>
     /// The staff log action for an account that got in earlier and now logs in from the machine of a
@@ -122,6 +142,7 @@ public sealed class BanchoLoginHandler
         _restrictionNotices = restrictionNotices;
         _accountFlags = accountFlags;
         _clientVerification = clientVerificationOptions?.Value.Enabled == true ? clientVerification : null;
+        _verificationOptions = clientVerificationOptions?.Value ?? new ClientVerificationOptions();
         _friends = friends;
         _privateMessages = privateMessages;
         _presenceStats = presenceStats;
@@ -226,16 +247,55 @@ public sealed class BanchoLoginHandler
 
         // A device the player hasn't confirmed (ClientVerificationOptions): the client opens the
         // website's verify page (osu.<domain>/p/verify), where they confirm it after signing in.
+        // Builds that can't be asked (before b20151228, not patched for it) follow OldClients.
+        var build = ClientBuild.Parse(request.OsuVersion) with { HandlesVerification = request.HandlesVerification };
         if (_clientVerification is not null && user.Id != BanchoBot.UserId)
         {
             var hashes = request.ClientHashes;
-            if (!await _clientVerification.IsVerifiedAsync(user.Id, hashes.OsuPathMd5, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5, cancellationToken).ConfigureAwait(false))
+            var verified = await _clientVerification.IsVerifiedAsync(user.Id, hashes.OsuPathMd5, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5, cancellationToken).ConfigureAwait(false);
+            var hasDevice = TomYum.Persistence.OsuWeb.OsuWebClientVerification.IsDevice(hashes.OsuPathMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5);
+            if (!hasDevice)
             {
-                HoldDevice(user.Id, hashes.UninstallMd5);
-                _logger.LogInformation("Login held: {Username} (id {UserId}) is on a device they haven't verified yet.", user.Username, user.Id);
-                await RecordLoginAsync(user.Id, "held", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
-                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired, VerificationNotice), null, Held: true);
+                // No usable hardware hashes (builds before b20120812) can't be checked or confirmed. Under
+                // Refuse an old build like that is a new device for any account that has one already (an
+                // account's first is trusted, as any first device is); otherwise it gets in, as before.
+                // Today's clients always send them: one that doesn't (a client made to skip the check)
+                // is a new device too, whatever OldClients says.
+                if ((!build.IsLegacy || _verificationOptions.OldClients == OldClientPolicy.Refuse)
+                    && await _clientVerification.HasDevicesAsync(user.Id, cancellationToken).ConfigureAwait(false))
+                {
+                    _logger.LogInformation("Login refused: {Username} (id {UserId}) is on a build that sends no device ({Version}).", user.Username, user.Id, request.OsuVersion);
+                    await RecordLoginAsync(user.Id, "old_client", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+                    return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, OldClientNotice(Domain, DownloadsUrl, hasDevice: false)), null);
+                }
+                verified = true;
             }
+
+            if (!verified && build.CanVerifyDevices)
+            {
+                var noticeDue = !HeldDevices.TryGetValue((user.Id, hashes.UninstallMd5), out var heldSince) || DateTimeOffset.UtcNow - heldSince > NoticeAgain;
+                HoldDevice(user.Id, hashes.UninstallMd5);
+                // A patched old client retries the whole login every 15 s while it waits: log and record it once.
+                if (noticeDue)
+                {
+                    _logger.LogInformation("Login held: {Username} (id {UserId}) is on a device they haven't verified yet.", user.Username, user.Id);
+                    await RecordLoginAsync(user.Id, "held", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+                }
+                var held = noticeDue
+                    ? LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired, VerificationNotice(Domain))
+                    : LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired);
+                return new LoginOutcome(held, null, Held: true);
+            }
+
+            if (!verified && _verificationOptions.OldClients == OldClientPolicy.Refuse)
+            {
+                _logger.LogInformation("Login refused: {Username} (id {UserId}) is on a device they haven't verified, with a build that can't verify it ({Version}).", user.Username, user.Id, request.OsuVersion);
+                await RecordLoginAsync(user.Id, "old_client", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, OldClientNotice(Domain, DownloadsUrl, hasDevice: true)), null);
+            }
+
+            if (!verified)
+                _logger.LogInformation("Login: {Username} (id {UserId}) is on a device they haven't verified, with a build that can't verify it ({Version}); let in (ClientVerification:OldClients is Unverified).", user.Username, user.Id, request.OsuVersion);
         }
 
         // osu!'s tournament client (version "…tourney") logs in once per player it shows, with the
@@ -279,7 +339,7 @@ public sealed class BanchoLoginHandler
         await (_presenceStats ?? new PresenceStats(_userStats)).FillAsync(presence, user.Id, presence.Mode, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var player = tournament ? _registry.AddTournamentClient(presence) : _registry.Add(presence);
-        player.Build = ClientBuild.Parse(request.OsuVersion);
+        player.Build = build;
         player.IsRestricted = user.IsRestricted;
         player.SilenceEndUtc = user.SilenceEndUtc;
         IReadOnlyList<int> friendIds = _friends is null ? [] : await _friends.GetFriendIdsAsync(user.Id, cancellationToken).ConfigureAwait(false);
@@ -399,6 +459,14 @@ public sealed class BanchoLoginHandler
             _logger.LogWarning(ex, "Couldn't log out {UserId}'s previous session.", player.UserId);
         }
     }
+
+    /// <summary>The server's public domain (<c>Server:Domain</c>), for the links in notices.</summary>
+    private string Domain =>
+        _services?.GetService(typeof(IConfiguration)) is IConfiguration configuration ? BanchoHosts.ResolveDomain(configuration) : BanchoHosts.DefaultDomain;
+
+    /// <summary>Where clients that can verify devices are (<see cref="ClientVerificationOptions.DownloadsUrl"/>, else the website's download page).</summary>
+    private string DownloadsUrl =>
+        string.IsNullOrWhiteSpace(_verificationOptions.DownloadsUrl) ? $"https://osu.{Domain}/home/download" : _verificationOptions.DownloadsUrl.Trim();
 
     private async Task RecordLoginAsync(int userId, string result, string? address, string country, string version, CancellationToken cancellationToken)
     {

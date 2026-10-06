@@ -45,9 +45,16 @@ public sealed class SpectateFramesHandler : IClientPacketHandler
             foreach (var session in context.Registry.SpectatingSessions(spectatorId, context.Player.UserId))
                 session.Enqueue(framed);
 
-        // Plugins watching play (e.g. pause detection) get the raw bundle. A copy: the packet buffer
-        // isn't the plugin's to keep.
+        // Plugins watching play (e.g. pause detection) get the raw bundle, and its action read from
+        // today's layout. A copy: the packet buffer isn't the plugin's to keep.
         if (context.Services.GetService<TomYum.Plugins.Abstractions.IEventBus>() is { } events)
-            await events.PublishAsync(new TomYum.Plugins.Abstractions.SpectateFrameEvent(host.UserId, context.Payload.ToArray()), cancellationToken).ConfigureAwait(false);
+        {
+            await events.PublishAsync(
+                new TomYum.Plugins.Abstractions.SpectateFrameEvent(host.UserId, context.Payload.ToArray())
+                {
+                    Action = LegacyFrames.ReadAction(bundle),
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
     }
 }

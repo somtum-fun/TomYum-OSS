@@ -207,6 +207,56 @@ public sealed class OsuWebInterop
         response.EnsureSuccessStatusCode();
     }
 
+    /// <summary>
+    /// Asks the website's sign-up rules (the fork's <c>/_lio/tomyum/registration-check</c>: IP bans, one
+    /// account per network a day, no VPN, proxy or hosting network) whether stable's in-game sign-up from
+    /// <paramref name="ip"/> may go ahead. Returns null when it may, else the message for the player.
+    /// <paramref name="quick"/> is the keystroke check (the cheap rules only). A stock osu-web without the
+    /// endpoint (404) allows it; other failures throw.
+    /// </summary>
+    public async Task<string?> CheckRegistrationAsync(string ip, string username, string? country, bool quick, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostJsonAsync("/_lio/tomyum/registration-check", new
+        {
+            ip,
+            username,
+            country,
+            source = "stable",
+            check = quick,
+        }, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode == HttpStatusCode.NotFound)
+            return null;
+        response.EnsureSuccessStatusCode();
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+        using var json = System.Text.Json.JsonDocument.Parse(body);
+        var root = json.RootElement;
+        if (root.TryGetProperty("ok", out var ok) && ok.ValueKind == System.Text.Json.JsonValueKind.True)
+            return null;
+        return root.TryGetProperty("message", out var message) && message.ValueKind == System.Text.Json.JsonValueKind.String
+            && message.GetString() is { Length: > 0 } text
+            ? text
+            : "You can't make an account right now. Please try again later.";
+    }
+
+    /// <summary>
+    /// Tells the website's sign-up rules about an account stable's sign-up made (the fork's
+    /// <c>/_lio/tomyum/registration-created</c>; it counts for one account per network a day). A 404 is ignored.
+    /// </summary>
+    public async Task RegistrationCreatedAsync(int userId, string username, string ip, string? country, CancellationToken cancellationToken = default)
+    {
+        using var response = await PostJsonAsync("/_lio/tomyum/registration-created", new
+        {
+            user_id = userId,
+            username,
+            ip,
+            country,
+            source = "stable",
+        }, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode != HttpStatusCode.NotFound)
+            response.EnsureSuccessStatusCode();
+    }
+
     /// <summary>The signed URL for <paramref name="path"/> at the current time.</summary>
     public (Uri Url, string Signature) Sign(string path)
     {

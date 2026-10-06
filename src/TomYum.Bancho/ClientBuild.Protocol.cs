@@ -82,7 +82,10 @@ public enum BanchoFeature
     /// <summary>b20130513: spectator frame bundles start with an extra int; rooms end with a seed.</summary>
     FrameBundleExtra,
 
-    /// <summary>After b20130915.4 (the last build read): login refusals below -6 (-7 and -8) are left as they are.</summary>
+    /// <summary>
+    /// b20151228: login refusals below -6 (-7 password reset, -8 verify this device) are left as they are.
+    /// Earlier builds (b20151026.3fallback has neither) read them as a successful login.
+    /// </summary>
     TodaysLoginCodes,
 }
 
@@ -117,7 +120,7 @@ public sealed partial record ClientBuild
         [BanchoFeature.MenuIconLink] = Parse("b20121223"),
         [BanchoFeature.MessageSenderId] = Parse("b20130303"),
         [BanchoFeature.FrameBundleExtra] = Parse("b20130513"),
-        [BanchoFeature.TodaysLoginCodes] = Parse("b20131001"),
+        [BanchoFeature.TodaysLoginCodes] = Parse("b20151228"),
     };
 
     /// <summary>
@@ -127,8 +130,20 @@ public sealed partial record ClientBuild
     public static ClientBuild FromLogin(string? body)
     {
         var lines = (body ?? string.Empty).Split('\n');
-        return Parse(lines.Length >= 3 ? lines[2].Split('|')[0].Trim() : null);
+        if (lines.Length < 3)
+            return Parse(null);
+        var info = lines[2].Split('|');
+        return Parse(info[0].Trim()) with { HandlesVerification = LoginRequest.HasCapability(info, LoginRequest.VerifyCapability) };
     }
+
+    /// <summary>
+    /// Whether the client said at login that it handles -8 ("verify this device") itself
+    /// (<see cref="LoginRequest.VerifyCapability"/>): old builds patched for it, which can't otherwise.
+    /// </summary>
+    public bool HandlesVerification { get; init; }
+
+    /// <summary>Whether this build can be asked to verify a new device (-8): b20151228 and later, or patched for it.</summary>
+    public bool CanVerifyDevices => HandlesVerification || Has(BanchoFeature.TodaysLoginCodes);
 
     /// <summary>Whether this build has <paramref name="feature"/> (today's clients have them all).</summary>
     public bool Has(BanchoFeature feature) => IsAtLeast(FirstBuilds[feature]);
@@ -151,11 +166,15 @@ public sealed partial record ClientBuild
         !Has(BanchoFeature.ChannelPart) ? -2           // b337-b595b: failed, too old
         : Number is < 1700 ? -3                        // b639-b1652: + banned
         : !Has(BanchoFeature.TodaysIds) ? -4          // b1700, b1704: + not activated
-        : !Has(BanchoFeature.TodaysLoginCodes) ? -6   // b1807-b20130915: + server error, supporter only
+        : !Has(BanchoFeature.TodaysLoginCodes) ? -6   // b1807-b20151026.3: + server error, supporter only
         : int.MinValue;
 
-    /// <summary>A login reply's user id (or refusal) as this build reads it: refusals it doesn't know become "failed" (-1).</summary>
-    public int LoginCode(int code) => code < LowestLoginCode ? -1 : code;
+    /// <summary>
+    /// A login reply's user id (or refusal) as this build reads it: refusals it doesn't know become "failed" (-1),
+    /// apart from -8 for a build patched to handle it (<see cref="HandlesVerification"/>).
+    /// </summary>
+    public int LoginCode(int code) =>
+        code < LowestLoginCode && !(HandlesVerification && code == (int)LoginFailureReason.VerificationRequired) ? -1 : code;
 
     /// <summary>The client privileges this build knows (normal, BAT, supporter; then more bits).</summary>
     public int PrivilegeMask => !Has(BanchoFeature.TodaysIds) ? 0x7 : !Has(BanchoFeature.WideMods) ? 0xF : ~0;

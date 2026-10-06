@@ -115,6 +115,17 @@ value as `TOMYUM_DATABASE__OSUWEBINDEXPREFIX`.
 - **Session plugin** (`plugins/tomyum-session`) reads TomYum's own `users` table, so it doesn't see
   osu-web accounts. The osu-web site has its own login; leave the plugin off in osu-web mode.
 
+### Beatmap packs
+
+The website's beatmap packs (`osu_beatmappacks`) are made by staff on the website (Staff panel ›
+Beatmap packs). TomYum no longer makes osu!'s packs from the osu! API's pack tags when it imports a set;
+`TOMYUM_DATABASE__OSUWEBIMPORTPACKS=true` brings that back. A pack's download is either a link pasted
+on the panel or `/d/packs/{tag}` on the `osu.` host: TomYum zips the pack's `.osz` files (from the
+beatmap mirror without videos, custom sets from disk) the first time it's asked, keeps the zip in
+`Packs:Path` (default `data/packs`) until the pack's sets change, and answers 503 "being put together"
+meanwhile. One pack builds at a time; `Packs:MaxBytes` (default 4 GiB) caps a zip. The admin API's
+`GET`/`POST /_admin/packs/{tag}/download` shows or starts a build (the panel's "Build it now").
+
 ### Medals and osu-web's InterOp API
 
 osu-web's migrations leave its medal catalog (`osu_achievements`) empty, and a profile only shows

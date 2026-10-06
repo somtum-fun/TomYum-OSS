@@ -9,8 +9,10 @@ namespace TomYum.Bancho;
 /// <code>
 /// &lt;username&gt;\n
 /// &lt;password_md5&gt;\n
-/// &lt;osu_version&gt;|&lt;utc_offset&gt;|&lt;display_city&gt;|&lt;client_hashes&gt;|&lt;pm_private&gt;\n
+/// &lt;osu_version&gt;|&lt;utc_offset&gt;|&lt;display_city&gt;|&lt;client_hashes&gt;|&lt;pm_private&gt;[|&lt;capabilities&gt;]\n
 /// </code>
+/// The optional last field is TomYum's: a comma-separated list of what a patched old client can do
+/// (<see cref="VerifyCapability"/>). osu! itself never sends it.
 /// </summary>
 /// <param name="Username">Login name as typed in the client (may contain spaces).</param>
 /// <param name="PasswordMd5">Hex MD5 of the password as sent by the client.</param>
@@ -28,6 +30,35 @@ public sealed record LoginRequest(
     ClientHashes ClientHashes,
     bool PmPrivate)
 {
+    /// <summary>
+    /// The capability an old client patched for device verification adds to its login line
+    /// (<c>...|&lt;pm_private&gt;|tomyum-verify</c>): it handles -8 itself, opening the website's verify page.
+    /// </summary>
+    public const string VerifyCapability = "tomyum-verify";
+
+    /// <summary>Whether the client handles -8 ("verify this device") itself: it sent <see cref="VerifyCapability"/>.</summary>
+    public bool HandlesVerification { get; init; }
+
+    /// <summary>
+    /// Whether the login line's fields (<c>version|utc|city|hashes|pm|...</c>, split on <c>|</c>) name
+    /// <paramref name="capability"/> after the pm field (a comma-separated list).
+    /// </summary>
+    /// <param name="info">The login line's fields.</param>
+    /// <param name="capability">The capability, e.g. <see cref="VerifyCapability"/>.</param>
+    public static bool HasCapability(string[] info, string capability)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        for (var i = 5; i < info.Length; i++)
+        {
+            foreach (var part in info[i].Split(','))
+            {
+                if (part.Trim().Equals(capability, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>
     /// Parses a raw login body. Returns <see langword="false"/> (with <paramref name="request"/>
     /// set to <see langword="null"/>) when the body is malformed, so the caller can reply with
@@ -94,7 +125,10 @@ public sealed record LoginRequest(
             UtcOffset: utcOffset,
             DisplayCity: city == "1",
             ClientHashes: hashes,
-            PmPrivate: pmRaw.StartsWith('1'));
+            PmPrivate: pmRaw.StartsWith('1'))
+        {
+            HandlesVerification = HasCapability(info, VerifyCapability),
+        };
         return true;
     }
 }

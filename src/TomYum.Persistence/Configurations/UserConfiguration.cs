@@ -48,6 +48,8 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
         // Moderation state comes from osu-web's account data (osu-web mode only).
         builder.Ignore(u => u.IsRestricted);
         builder.Ignore(u => u.SilenceEndUtc);
+        // The sign-up address is only kept in osu-web (user_ip).
+        builder.Ignore(u => u.RegistrationIp);
         builder.Ignore(u => u.IsBot);
         builder.Ignore(u => u.IsDeleted);
     }

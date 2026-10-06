@@ -66,6 +66,14 @@ public sealed class DatabaseOptions
     /// <summary>osu-web's multiplayer database (its <c>DB_DATABASE_MP</c>), where match history is.</summary>
     public string OsuWebMpName { get; set; } = "osu_mp";
 
+    /// <summary>
+    /// Whether the osu! API's beatmap pack tags create packs on the website (<c>osu_beatmappacks</c>)
+    /// and set each imported set's pack membership. Off by default: staff make this server's packs
+    /// on the website (Staff panel › Beatmap packs). <c>TOMYUM_DATABASE__OSUWEBIMPORTPACKS=true</c>
+    /// brings back osu!'s packs.
+    /// </summary>
+    public bool OsuWebImportPacks { get; set; }
+
     /// <summary>Whether accounts are stored in osu-web's database (database enabled and <see cref="OsuWebName"/> set).</summary>
     public bool UseOsuWebAccounts => Enabled && !string.IsNullOrWhiteSpace(OsuWebName);
 

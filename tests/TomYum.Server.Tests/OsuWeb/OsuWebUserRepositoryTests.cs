@@ -24,6 +24,7 @@ public sealed class OsuWebUserRepositoryTests : OsuWebDatabaseTest
             Email = "player@example.com",
             PasswordBcrypt = bcrypt,
             Country = "th",
+            RegistrationIp = "203.0.113.7",
         });
 
         Assert.Equal(4, created.Id); // ids up to BanchoBot's (3) are reserved
@@ -35,6 +36,7 @@ public sealed class OsuWebUserRepositoryTests : OsuWebDatabaseTest
         Assert.Equal("some player", await ScalarAsync<string>("SELECT username_clean FROM phpbb_users WHERE user_id = 4"));
         Assert.Equal("TH", await ScalarAsync<string>("SELECT country_acronym FROM phpbb_users WHERE user_id = 4"));
         Assert.Equal(bcrypt, await ScalarAsync<string>("SELECT user_password FROM phpbb_users WHERE user_id = 4"));
+        Assert.Equal("203.0.113.7", await ScalarAsync<string>("SELECT user_ip FROM phpbb_users WHERE user_id = 4"));
         Assert.Equal("default", await ScalarAsync<string>(
             "SELECT g.identifier FROM phpbb_users u JOIN phpbb_groups g ON g.group_id = u.group_id WHERE u.user_id = 4"));
         Assert.Equal("default", await ScalarAsync<string>(

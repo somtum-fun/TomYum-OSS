@@ -58,4 +58,26 @@ public static class LegacyFrames
         BinaryPrimitives.WriteUInt16LittleEndian(upgraded.AsSpan(upgraded.Length - 2), sequence);
         return upgraded;
     }
+
+    /// <summary>The highest replay action a bundle carries (WatchingOther).</summary>
+    public const byte MaxReplayAction = 8;
+
+    /// <summary>
+    /// The replay action of a frame bundle in today's layout (what <see cref="SpectateFrames"/> returns):
+    /// extra (i32), frame count (u16), the frames, then the action byte. Null when the bundle is too
+    /// short for its frame count or the action isn't one osu! has.
+    /// </summary>
+    /// <param name="bundle">The bundle, in today's layout.</param>
+    /// <returns>The action (0 play … 5 pause, 6 unpause …), or null.</returns>
+    public static byte? ReadAction(ReadOnlySpan<byte> bundle)
+    {
+        if (bundle.Length < 7)
+            return null;
+        var count = BinaryPrimitives.ReadUInt16LittleEndian(bundle[4..]);
+        var actionAt = 6 + (count * ReplayFrameLength);
+        if (bundle.Length <= actionAt)
+            return null;
+        var action = bundle[actionAt];
+        return action <= MaxReplayAction ? action : null;
+    }
 }

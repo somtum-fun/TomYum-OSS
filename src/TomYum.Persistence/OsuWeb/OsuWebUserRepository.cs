@@ -81,6 +81,8 @@ public sealed class OsuWebUserRepository : IUserRepository
             UserEmail = string.IsNullOrEmpty(user.Email) ? null : user.Email,
             CountryAcronym = OsuWebAccounts.ToOsuWebCountry(user.Country),
             OsuSubscriber = user.Privileges.HasFlag(UserPrivileges.Supporter),
+            // As osu-web's own sign-up does (the column is varchar(50)).
+            UserIp = user.RegistrationIp is { Length: > 0 } ip ? ip[..Math.Min(ip.Length, 50)] : string.Empty,
         };
 
         var transaction = await _db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);

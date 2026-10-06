@@ -956,6 +956,54 @@ public sealed class OsuWebScoreMirror
         return linked;
     }
 
+    /// <summary>What <see cref="ClearBeatmapLeaderboardsAsync"/> did on the website.</summary>
+    /// <param name="Deleted">The website score ids deleted (to queue for the search index, which drops missing scores).</param>
+    /// <param name="Unranked">Website scores kept because a multiplayer room links them, now off the leaderboards.</param>
+    /// <param name="Players">Whose website scores they were, by vanilla ruleset (their totals need redoing).</param>
+    public sealed record ClearedLeaderboards(IReadOnlyList<ulong> Deleted, IReadOnlyList<ulong> Unranked, IReadOnlyList<(int UserId, int Mode)> Players);
+
+    /// <summary>
+    /// Empties the website leaderboards of <paramref name="beatmapIds"/> (a map that just got ranked,
+    /// as the old server did): every website score on them is deleted, stable copies and lazer plays
+    /// alike, with their first places. Scores a multiplayer room links stay for its results, but no
+    /// longer count (not ranked, no pp), as osu-web's own <c>RemoveBeatmapsetSoloScores</c> does.
+    /// TomYum's own scores (and their links) are deleted by the caller first.
+    /// </summary>
+    public async Task<ClearedLeaderboards> ClearBeatmapLeaderboardsAsync(IReadOnlyCollection<int> beatmapIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(beatmapIds);
+        if (beatmapIds.Count == 0)
+            return new ClearedLeaderboards([], [], []);
+
+        // Only ints formatted invariantly are spliced in.
+        var list = string.Join(",", beatmapIds.Select(id => id.ToString(CultureInfo.InvariantCulture)));
+        var players = (await _osuWeb.Database
+                .SqlQueryRaw<PlayerRow>("SELECT DISTINCT user_id AS UserId, ruleset_id AS RulesetId FROM scores WHERE beatmap_id IN (" + list + ")")
+                .ToListAsync(cancellationToken).ConfigureAwait(false))
+            .Select(p => ((int)p.UserId, p.RulesetId))
+            .ToList();
+        var kept = await _osuWeb.Database
+            .SqlQueryRaw<ulong>("SELECT s.id AS Value FROM scores s JOIN multiplayer_score_links m ON m.score_id = s.id WHERE s.beatmap_id IN (" + list + ")")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var deleted = await _osuWeb.Database
+            .SqlQueryRaw<ulong>("SELECT s.id AS Value FROM scores s WHERE s.beatmap_id IN (" + list + ") AND NOT EXISTS (SELECT 1 FROM multiplayer_score_links m WHERE m.score_id = s.id)")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+
+        foreach (var chunk in deleted.Chunk(500))
+            await _osuWeb.Scores.Where(s => chunk.Contains(s.Id)).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var chunk in kept.Chunk(500))
+        {
+            await _osuWeb.Scores.Where(s => chunk.Contains(s.Id))
+                .ExecuteUpdateAsync(s => s.SetProperty(x => x.Ranked, false).SetProperty(x => x.Pp, (float?)null), cancellationToken).ConfigureAwait(false);
+        }
+
+        // Their first places go with them.
+        await _osuWeb.Database.ExecuteSqlRawAsync("DELETE FROM beatmap_leaders WHERE beatmap_id IN (" + list + ")", cancellationToken).ConfigureAwait(false);
+        foreach (var table in new[] { "osu_leaders", "osu_leaders_taiko", "osu_leaders_fruits", "osu_leaders_mania" })
+            await _osuWeb.Database.ExecuteSqlRawAsync("DELETE FROM `" + table + "` WHERE beatmap_id IN (" + list + ")", cancellationToken).ConfigureAwait(false);
+        return new ClearedLeaderboards(deleted, kept, players);
+    }
+
     /// <summary>
     /// Brings the website copies of <paramref name="scores"/> in line after their pp or their map's
     /// status changed: <c>ranked</c> follows the map's current <c>approved</c>, pp the TomYum score.

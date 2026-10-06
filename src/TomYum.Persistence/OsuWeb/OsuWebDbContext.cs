@@ -128,6 +128,7 @@ public sealed class OsuWebDbContext : DbContext
             set.Property(s => s.Creator).HasColumnName("creator");
             set.Property(s => s.Approved).HasColumnName("approved");
             set.Property(s => s.ApprovedDate).HasColumnName("approved_date");
+            set.Property(s => s.QueuedAt).HasColumnName("queued_at");
             set.Property(s => s.SubmitDate).HasColumnName("submit_date");
             set.Property(s => s.LastUpdate).HasColumnName("last_update");
             set.Property(s => s.CoverUpdatedAt).HasColumnName("cover_updated_at");

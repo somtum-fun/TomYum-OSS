@@ -126,13 +126,15 @@ _Core watch-and-relay done 2026-07-08 (`docs/spectating.md`). 143 tests. Chat ch
 - [x] Ephemeral `#spectator` chat channel (`SpectatorChannel` on `OnlinePlayer`, mirroring
       `Match.Channel`; hidden from the login channel-list; host joins on first spectator, all leave when
       empty) + `#spectator` routing in `SendPublicMessageHandler`. 2026-07-09; 6 tests.
-- [ ] Publish `SpectateFrameEvent` on the plugin bus (lands with the DAN plugin, Phase 4).
+- [x] Publish `SpectateFrameEvent` on the plugin bus, with the bundle's replay action read by the host. 2026-10-06.
 
 ## Phase 4 — DAN mode + Session plugins (ports) 🔒 Phase 1 + Phase 3
 _Clean-room reimplementations of the old server's DAN mode and session.py (that fork is GPL — behaviour only)._
 
-- [ ] ⏸ **DAN mode** plugin (not wanted for now, 2026-09-29) — mania clear validator: bot spectates on `CHANGE_ACTION`, taints on pause
-      frame, vetoes score submit; `is_dan` per-diff flag + set-granularity tag endpoint; transient per-login state.
+- [x] **osu!dan** plugin (wanted again, 2026-10-06): its own repo, `example-org/private-repo` (`tomyum.dan`). Host side:
+      `IHostSpectating` (BanchoBot spectates for plugins), `SpectateFrameEvent.Action`, `ActionChangedEvent.CanCheckFrames`,
+      `ScoreSubmittedEvent`, beatmap id/set/difficulty on `ScoreSubmittingEvent`. The plugin keeps courses and clears in
+      `plugin_dan_*`; a play that breaks a rule stays a normal score (no veto). The website's staff panel edits the courses.
 - [~] **Session** plugin — `session.<domain>` vhost, opaque web-session table (IP/UA binding).
   - [x] **Auth core** (loose source `plugins/tomyum-session/`): `/login` (bcrypt, mint token, cookie),
         `/check-session`, `/logout`, `GET`/`DELETE /user/sessions/web` (list + masked-suffix revoke),

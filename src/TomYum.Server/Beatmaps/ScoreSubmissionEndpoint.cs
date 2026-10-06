@@ -339,7 +339,12 @@ public static class ScoreSubmissionEndpoint
         // Plugins may reject the score before anything is stored (e.g. a mode's own rules).
         var submitting = new TomYum.Plugins.Abstractions.ScoreSubmittingEvent(
             user.Id, bmk, (byte)gameMode, (uint)mods, ComputeAccuracy(mode, n300, n100, n50, ngeki, nkatu, nmiss),
-            maxCombo, passed, beatmap.FullName);
+            maxCombo, passed, beatmap.FullName)
+        {
+            BeatmapId = beatmap.Id,
+            BeatmapSetId = beatmap.SetId,
+            BeatmapVersion = beatmap.Version,
+        };
         await events.PublishAsync(submitting, cancellationToken).ConfigureAwait(false);
         if (submitting.IsVetoed)
         {
@@ -384,6 +389,19 @@ public static class ScoreSubmissionEndpoint
             await File.WriteAllBytesAsync(replayPath, replayBytes, cancellationToken).ConfigureAwait(false);
             logger.LogInformation("Replay saved: {Path} ({Bytes} bytes)", replayPath, replayBytes.Length);
         }
+
+        // Plugins learn of the stored score (osu!dan records a clear with its id). Cheap when no plugin
+        // subscribes; a plugin fault is logged by the bus, never fails the submission.
+        await events.PublishAsync(
+            new TomYum.Plugins.Abstractions.ScoreSubmittedEvent(
+                score.Id, user.Id, beatmap.Id, beatmap.SetId, bmk, (byte)gameMode, (uint)mods,
+                submitting.Accuracy, scoreValue, maxCombo, nmiss, grade, ppValue, passed, build.Version)
+            {
+                BeatmapVersion = beatmap.Version,
+                BeatmapTitle = beatmap.FullName,
+                PlayerRestricted = user.IsRestricted,
+            },
+            cancellationToken).ConfigureAwait(false);
 
         // Enqueue for async post-processing (spectator broadcast, achievements, etc.).
         // Best-effort: a Redis hiccup must not fail the submission response.

@@ -60,16 +60,65 @@ public sealed record ChatMessageEvent(long SenderUserId, string SenderUsername, 
 /// <param name="BeatmapId">Beatmap id the player is on, or 0 when unknown.</param>
 /// <param name="Mods">Legacy mods bitmask the player has selected.</param>
 /// <param name="GameMode">Combined gamemode byte (vanilla 0-3, relax +4, autopilot +8).</param>
-public sealed record ActionChangedEvent(long UserId, byte Action, string BeatmapMd5, long BeatmapId, uint Mods, byte GameMode) : IPluginEvent;
+public sealed record ActionChangedEvent(long UserId, byte Action, string BeatmapMd5, long BeatmapId, uint Mods, byte GameMode) : IPluginEvent
+{
+    /// <summary>The client's version (e.g. <c>b20240123.2</c>, or an old build's), empty when unknown.</summary>
+    public string ClientVersion { get; init; } = string.Empty;
+
+    /// <summary>
+    /// Whether the host can read this client's spectator frames, so <see cref="SpectateFrameEvent.Action"/>
+    /// is set for them: osu!stable builds whose frame bundles are in today's layout (from b20130513).
+    /// False for older builds and IRC sessions.
+    /// </summary>
+    public bool CanCheckFrames { get; init; }
+}
 
 /// <summary>
 /// Raised for each SPECTATE_FRAMES bundle a spectated host sends. <see cref="RawFrame"/> is the raw
-/// replay-frame payload; plugins that need frame detail (DAN pause detection) decode it themselves,
-/// since the host relays frames verbatim without parsing.
+/// replay-frame payload as the client sent it; <see cref="Action"/> is the bundle's replay action,
+/// read by the host (old builds send other layouts), so a plugin needn't parse frames to see a pause.
 /// </summary>
 /// <param name="HostUserId">User id of the player being spectated (the frame source).</param>
 /// <param name="RawFrame">The raw replay-frame-bundle payload bytes.</param>
-public sealed record SpectateFrameEvent(long HostUserId, ReadOnlyMemory<byte> RawFrame) : IPluginEvent;
+public sealed record SpectateFrameEvent(long HostUserId, ReadOnlyMemory<byte> RawFrame) : IPluginEvent
+{
+    /// <summary>
+    /// The bundle's replay action (<see cref="ReplayActions"/>, e.g. <see cref="ReplayActions.Pause"/>),
+    /// or null when the host couldn't read the bundle.
+    /// </summary>
+    public byte? Action { get; init; }
+}
+
+/// <summary>The replay actions of a spectator frame bundle (<see cref="SpectateFrameEvent.Action"/>).</summary>
+public static class ReplayActions
+{
+    /// <summary>Ordinary play.</summary>
+    public const byte Standard = 0;
+
+    /// <summary>The player started a new map (or restarted).</summary>
+    public const byte NewSong = 1;
+
+    /// <summary>The player skipped the intro.</summary>
+    public const byte Skip = 2;
+
+    /// <summary>The play finished.</summary>
+    public const byte Completion = 3;
+
+    /// <summary>The player failed.</summary>
+    public const byte Fail = 4;
+
+    /// <summary>The player paused.</summary>
+    public const byte Pause = 5;
+
+    /// <summary>The player unpaused.</summary>
+    public const byte Unpause = 6;
+
+    /// <summary>The player is back in song select.</summary>
+    public const byte SongSelect = 7;
+
+    /// <summary>The player is spectating someone else.</summary>
+    public const byte WatchingOther = 8;
+}
 
 /// <summary>
 /// Vetoable: raised just before a submitted score is persisted. A handler may
@@ -122,4 +171,60 @@ public sealed class ScoreSubmittingEvent : VetoableEvent
 
     /// <summary>Human-readable beatmap title, for messages/logs.</summary>
     public string BeatmapTitle { get; }
+
+    /// <summary>The played beatmap's id (0 when the host didn't set it).</summary>
+    public long BeatmapId { get; init; }
+
+    /// <summary>The played beatmap's set id (0 when the host didn't set it).</summary>
+    public long BeatmapSetId { get; init; }
+
+    /// <summary>The played difficulty's name (e.g. <c>~ INTRO-1st ~</c>), empty when the host didn't set it.</summary>
+    public string BeatmapVersion { get; init; } = string.Empty;
+}
+
+/// <summary>
+/// Raised after an osu!stable score has been stored (failed plays included), with the stored score's
+/// id. Not raised for a score a plugin vetoed (<see cref="ScoreSubmittingEvent"/>) or the host refused.
+/// osu!lazer scores go to the website and don't raise it.
+/// </summary>
+/// <param name="ScoreId">The stored score's id.</param>
+/// <param name="UserId">The player.</param>
+/// <param name="BeatmapId">The beatmap's id.</param>
+/// <param name="BeatmapSetId">The beatmap's set id.</param>
+/// <param name="BeatmapMd5">The beatmap's MD5.</param>
+/// <param name="GameMode">Combined gamemode byte (vanilla 0-3, relax +4, autopilot +8).</param>
+/// <param name="Mods">Legacy mods bitmask.</param>
+/// <param name="Accuracy">Accuracy as a fraction in [0, 1].</param>
+/// <param name="TotalScore">The score's points.</param>
+/// <param name="MaxCombo">Max combo.</param>
+/// <param name="Misses">Misses.</param>
+/// <param name="Grade">Grade letter as the client sent it (<c>XH</c>, <c>X</c>, <c>SH</c>, <c>S</c>, <c>A</c> … <c>F</c>).</param>
+/// <param name="Pp">pp awarded (0 on maps without ranked pp, e.g. Loved).</param>
+/// <param name="Passed">Whether the play passed.</param>
+/// <param name="ClientVersion">The client's version.</param>
+public sealed record ScoreSubmittedEvent(
+    long ScoreId,
+    long UserId,
+    long BeatmapId,
+    long BeatmapSetId,
+    string BeatmapMd5,
+    byte GameMode,
+    uint Mods,
+    double Accuracy,
+    long TotalScore,
+    int MaxCombo,
+    int Misses,
+    string Grade,
+    double Pp,
+    bool Passed,
+    string ClientVersion) : IPluginEvent
+{
+    /// <summary>The played difficulty's name.</summary>
+    public string BeatmapVersion { get; init; } = string.Empty;
+
+    /// <summary>Human-readable beatmap title (<c>Artist - Title [Version]</c>).</summary>
+    public string BeatmapTitle { get; init; } = string.Empty;
+
+    /// <summary>Whether the player is restricted (their scores are stored but hidden from others).</summary>
+    public bool PlayerRestricted { get; init; }
 }

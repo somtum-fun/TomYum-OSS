@@ -166,4 +166,31 @@ public sealed class OsuWebSync : IOsuWebSync
         if (_interop.IsConfigured)
             await _interop.IndexUserAsync(userId, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>What a player is told when the website's sign-up rules can't be asked.</summary>
+    public const string RegistrationUnavailable = "Registration is unavailable right now. Please try again in a few minutes.";
+
+    public async Task<string?> CheckRegistrationAsync(string? ip, string username, string? country, bool quick, CancellationToken cancellationToken = default)
+    {
+        // Without InterOp there are no website rules to ask (docs/osu-web.md).
+        if (!_interop.IsConfigured)
+            return null;
+
+        try
+        {
+            return await _interop.CheckRegistrationAsync(ip ?? string.Empty, username, country, quick, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+        {
+            // The keystroke check lets the player go on; the final one makes no account unchecked.
+            _logger.LogWarning(ex, "Asking osu-web's sign-up rules about {Username} failed", username);
+            return quick ? null : RegistrationUnavailable;
+        }
+    }
+
+    public async Task RegistrationCreatedAsync(int userId, string username, string? ip, string? country, CancellationToken cancellationToken = default)
+    {
+        if (_interop.IsConfigured && !string.IsNullOrEmpty(ip))
+            await _interop.RegistrationCreatedAsync(userId, username, ip, country, cancellationToken).ConfigureAwait(false);
+    }
 }

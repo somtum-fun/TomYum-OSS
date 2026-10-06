@@ -99,6 +99,49 @@ internal static class SpectatorManager
             LeaveSpectatorChannel(host, host);
     }
 
+    /// <summary>
+    /// BanchoBot starts watching <paramref name="host"/> for a plugin (osu!dan): the host and its
+    /// spectators see BanchoBot join, so the host's client streams frames. BanchoBot itself keeps no
+    /// link (it can watch many players at once): it isn't in the #spectator channel, and the frame
+    /// fan-out finds no session of it, so nothing is queued for it. Idempotent.
+    /// </summary>
+    /// <returns>True when it was added, false when it was already watching.</returns>
+    public static bool AttachBot(OnlinePlayer host, PlayerRegistry registry)
+    {
+        if (host.Spectators.Contains(BanchoBot.UserId))
+            return false;
+
+        var isFirstSpectator = host.SpectatorCount == 0;
+        var fellowJoined = FellowSpectatorJoined(BanchoBot.UserId);
+        foreach (var existingId in host.Spectators)
+            foreach (var session in registry.SpectatingSessions(existingId, host.UserId))
+                session.Enqueue(fellowJoined);
+
+        host.Enqueue(SpectatorJoined(BanchoBot.UserId));
+        host.AddSpectator(BanchoBot.UserId);
+        if (isFirstSpectator)
+            JoinSpectatorChannel(host, host);
+        return true;
+    }
+
+    /// <summary>BanchoBot stops watching <paramref name="host"/> (<see cref="AttachBot"/>'s reverse).</summary>
+    /// <returns>True when it was watching.</returns>
+    public static bool DetachBot(OnlinePlayer host, PlayerRegistry registry)
+    {
+        if (!host.RemoveSpectator(BanchoBot.UserId))
+            return false;
+
+        var fellowLeft = FellowSpectatorLeft(BanchoBot.UserId);
+        foreach (var remainingId in host.Spectators)
+            foreach (var session in registry.SpectatingSessions(remainingId, host.UserId))
+                session.Enqueue(fellowLeft);
+
+        host.Enqueue(SpectatorLeft(BanchoBot.UserId));
+        if (host.SpectatorCount == 0)
+            LeaveSpectatorChannel(host, host);
+        return true;
+    }
+
     /// <summary>Adds <paramref name="member"/> to the host's #spectator channel and opens the client tab.</summary>
     private static void JoinSpectatorChannel(OnlinePlayer host, OnlinePlayer member)
     {

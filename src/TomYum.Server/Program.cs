@@ -283,6 +283,9 @@ builder.Services.AddHttpClient(AudioPreviews.HttpClientName, http =>
     http.DefaultRequestHeaders.UserAgent.ParseAdd("TomYum/1.0 (osu! private server; audio previews)");
 });
 builder.Services.AddSingleton<AudioPreviews>();
+// Beatmap pack downloads (/d/packs/{tag}): zips of a pack's sets, built from the mirror and kept on disk.
+builder.Services.Configure<PackArchiveOptions>(builder.Configuration.GetSection(PackArchiveOptions.Section));
+builder.Services.AddSingleton<PackArchives>();
 builder.Services.AddSingleton<AssetStore>();
 
 // --- Static assets (medal icons) ---
@@ -666,6 +669,8 @@ if (databaseOptions.UseOsuWebAccounts)
     app.MapCustomUploads(BanchoHosts.Web(domain));
     // Beatmap submission from the stable editor and lazer (docs/custom-beatmaps.md).
     app.MapSubmission(BanchoHosts.Web(domain));
+    // Beatmap pack downloads, linked from the website's pack pages.
+    app.MapPackDownloads();
 }
 
 app.Run();

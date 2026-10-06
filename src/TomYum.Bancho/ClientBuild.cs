@@ -69,6 +69,18 @@ public sealed partial record ClientBuild(string Version, DateOnly? Date)
     /// <summary>Whether this build's spectator frame bundles end with a sequence number (today's do).</summary>
     public bool HasFrameSequence => Era is not { } date || date >= FrameSequenceFrom;
 
+    /// <summary>
+    /// Spectator frame bundles start with today's extra int from this build on (docs/old-clients.md). Older
+    /// builds' bundles are translated, but what they send while playing hasn't been checked.
+    /// </summary>
+    public static readonly DateOnly CheckableFramesFrom = new(2013, 5, 13);
+
+    /// <summary>
+    /// Whether the server can read this build's spectator frames well enough to check a play (a pause,
+    /// for osu!dan): today's client and builds from <see cref="CheckableFramesFrom"/> on.
+    /// </summary>
+    public bool HasCheckableFrames => !IsBefore(CheckableFramesFrom);
+
     /// <summary>Multiplayer rooms have 16 slots from this build on (with protocol 19, which TomYum sends); 8 before.</summary>
     public static readonly DateOnly SixteenSlotsFrom = new(2014, 5, 28);
 

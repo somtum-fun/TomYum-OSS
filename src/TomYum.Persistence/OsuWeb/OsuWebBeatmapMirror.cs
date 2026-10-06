@@ -17,8 +17,19 @@ namespace TomYum.Persistence.OsuWeb;
 public sealed class OsuWebBeatmapMirror
 {
     private readonly OsuWebDbContext _db;
+    private readonly bool _importPacks;
 
-    public OsuWebBeatmapMirror(OsuWebDbContext db) => _db = db;
+    /// <summary>Mirrors into <paramref name="db"/>.</summary>
+    /// <param name="db">osu-web's database.</param>
+    /// <param name="importPacks">
+    /// Whether the osu! API's pack tags create packs and set pack membership
+    /// (<see cref="DatabaseOptions.OsuWebImportPacks"/>); off, staff manage the packs on the website.
+    /// </param>
+    public OsuWebBeatmapMirror(OsuWebDbContext db, bool importPacks = false)
+    {
+        _db = db;
+        _importPacks = importPacks;
+    }
 
     /// <summary>Inserts or updates <paramref name="beatmap"/> and its set on osu-web.</summary>
     public async Task WriteAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
@@ -34,7 +45,7 @@ public sealed class OsuWebBeatmapMirror
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
 
-        if (beatmap.Details?.PackTags is { } packTags)
+        if (_importPacks && beatmap.Details?.PackTags is { } packTags)
             await SyncPacksAsync(beatmap.SetId, packTags, cancellationToken).ConfigureAwait(false);
     }
 
@@ -97,10 +108,16 @@ public sealed class OsuWebBeatmapMirror
         return added;
     }
 
+    /// <summary>osu-web's <c>approved</c> for qualified.</summary>
+    private const sbyte QualifiedApproved = 3;
+
     /// <summary>
     /// Sets a set's <c>approved</c> from its difficulties after they were changed one by one (staff
     /// status changes): the "best" status any difficulty has, in osu!'s order ranked, approved,
-    /// loved, qualified, pending, WIP, graveyard. Gives it a ranked date when it gets one.
+    /// loved, qualified, pending, WIP, graveyard. Gives it a ranked date when it gets one, and a
+    /// queue date when it becomes qualified (the BN panel, <c>!map qualify</c>, Discord's
+    /// <c>/qualify</c>), so osu-web's <c>modding:rank</c> ranks it after the qualified period like a
+    /// set qualified by nominations; back to pending, WIP or graveyard, it leaves the queue.
     /// </summary>
     public async Task SyncSetStatusAsync(int setId, CancellationToken cancellationToken = default)
     {
@@ -120,8 +137,12 @@ public sealed class OsuWebBeatmapMirror
         {
             set.Approved = best;
             set.ApprovedDate = OsuWebBeatmaps.HasApprovedDate(best) ? set.ApprovedDate ?? DateTime.UtcNow : null;
-            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         }
+        // Pending, WIP or graveyard: out of the ranking queue (a staff-set qualified difficulty put
+        // it there in Apply). Checked even when approved didn't change: Apply already wrote it.
+        if (best <= 0)
+            set.QueuedAt = null;
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
         _db.ChangeTracker.Clear();
     }
 
@@ -157,6 +178,13 @@ public sealed class OsuWebBeatmapMirror
         set.Artist = OsuWebBeatmaps.Truncate(beatmap.Artist);
         set.Title = OsuWebBeatmaps.Truncate(beatmap.Title);
         set.Creator = OsuWebBeatmaps.Truncate(beatmap.Creator);
+        // A status staff set here (not osu!'s): qualified enters osu-web's ranking queue once, so
+        // later writes (refreshes of a set with other difficulties still pending, or a set osu-web
+        // qualified from nominations with its own queue date) keep the date; coming back from
+        // ranked or loved, it queues again. SyncSetStatusAsync takes it out when the set leaves
+        // qualified for pending. Sets osu! has qualified are left to osu!'s own status.
+        if (beatmap.StatusFrozen && approved == QualifiedApproved && (set.QueuedAt is null || set.Approved is 1 or 2 or 4))
+            set.QueuedAt = DateTime.UtcNow;
         set.Approved = approved;
         set.ApprovedDate = OsuWebBeatmaps.HasApprovedDate(approved) ? set.ApprovedDate ?? lastUpdate : null;
         if (lastUpdate > set.LastUpdate)

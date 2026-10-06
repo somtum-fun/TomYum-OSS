@@ -22,6 +22,17 @@ public interface IOsuWebSync
 
     /// <summary>Called after an account was created in-game.</summary>
     Task AccountCreatedAsync(int userId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The website's sign-up rules for stable's in-game registration (IP bans, one account per network a
+    /// day, no VPN, proxy or hosting network): null when the sign-up from <paramref name="ip"/> may go
+    /// ahead, else the message for the player. <paramref name="quick"/> is the keystroke check (the cheap
+    /// rules only). When the website can't be asked, a quick check passes and a final one is refused.
+    /// </summary>
+    Task<string?> CheckRegistrationAsync(string? ip, string username, string? country, bool quick, CancellationToken cancellationToken = default);
+
+    /// <summary>Called after an account was created in-game from <paramref name="ip"/> (for the website's sign-up rules).</summary>
+    Task RegistrationCreatedAsync(int userId, string username, string? ip, string? country, CancellationToken cancellationToken = default);
 }
 
 /// <summary>Standalone TomYum: nothing to sync.</summary>
@@ -34,4 +45,10 @@ public sealed class NoOsuWebSync : IOsuWebSync
         Task.CompletedTask;
 
     public Task AccountCreatedAsync(int userId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    public Task<string?> CheckRegistrationAsync(string? ip, string username, string? country, bool quick, CancellationToken cancellationToken = default) =>
+        Task.FromResult<string?>(null);
+
+    public Task RegistrationCreatedAsync(int userId, string username, string? ip, string? country, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
 }

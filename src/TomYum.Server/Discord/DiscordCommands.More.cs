@@ -484,8 +484,9 @@ public sealed partial class DiscordCommands
     {
         if (await links.GetByDiscordIdAsync(callerId, cancellationToken).ConfigureAwait(false) is not { } link)
             return DiscordReply.Text("Link your account first with /link: map status changes are made as your game account.", isPrivate: true);
-        if (!await MapCommands.MayChangeStatusAsync(services, link.UserId, cancellationToken).ConfigureAwait(false))
-            return DiscordReply.Text("That command is for the Beatmap Nominators, NAT and admins.", isPrivate: true);
+        var wanted = StatusCommands.TryGetValue(command, out var known) ? known.Status : null;
+        if (await MapCommands.StatusRefusalAsync(services, link.UserId, wanted, cancellationToken).ConfigureAwait(false) is { } refusal)
+            return DiscordReply.Text(refusal, isPrivate: true);
         if (services.GetService<OsuWebCommunity>() is not { } community)
             return DiscordReply.Text("Status changes need the website (osu-web mode).", isPrivate: true);
 

@@ -65,6 +65,12 @@ public sealed class User
     public UserPrivileges Privileges { get; init; } = UserPrivileges.Normal;
 
     /// <summary>
+    /// The address the account was registered from (the in-game sign-up), saved as osu-web's
+    /// <c>user_ip</c>. Only written in osu-web mode, and only when the account is created; not read back.
+    /// </summary>
+    public string? RegistrationIp { get; init; }
+
+    /// <summary>
     /// Restricted by staff: can still log in and play, but is hidden from other players,
     /// leaderboards and rankings, and can't chat in public channels. Only known in osu-web mode
     /// (osu-web's <c>user_warnings</c>/banned account type); not persisted in TomYum's own table.

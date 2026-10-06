@@ -102,7 +102,11 @@ public partial class OldBanchoTests
     [InlineData("b20121223", -6, -6)]
     [InlineData("b20130915.4", -7, -1)]
     [InlineData("b20130915.4", 7, 7)]
-    [InlineData("b20140624", -8, -8)]
+    [InlineData("b20140624", -8, -1)]   // -7 and -8 came with b20151228
+    [InlineData("b20151026.3fallback", -8, -1)]
+    [InlineData("b20151026.3fallback", -7, -1)]
+    [InlineData("b20151228.3", -8, -8)]
+    [InlineData("b20151228.3", -7, -7)]
     [InlineData("b20250101", -8, -8)]
     public void LoginRefusals_AreOnesTheBuildKnows(string version, int code, int expected)
     {
@@ -122,6 +126,26 @@ public partial class OldBanchoTests
     [InlineData("nonsense", "")]
     public void TheBuild_IsReadFromTheLogin(string body, string version) =>
         Assert.Equal(version, ClientBuild.FromLogin(body).Version);
+
+    [Theory]
+    [InlineData("a\nb\nb20140624|7|0|h:a:m:u:d:|0|tomyum-verify\n", true)]
+    [InlineData("a\nb\nb20120522|7|0|h:a:m:u:d:|0|tomyum-verify\n", true)]
+    [InlineData("a\nb\nb20140624|7|0|h:a:m:u:d:|0|something,TOMYUM-VERIFY\n", true)]
+    [InlineData("a\nb\nb20140624|7|0|h:a:m:u:d:|0\n", false)]
+    [InlineData("a\nb\nb20140624|7|0|tomyum-verify\n", false)]   // only after the pm field
+    public void APatchedBuild_IsAskedToVerifyItsDevice(string body, bool patched)
+    {
+        var build = ClientBuild.FromLogin(body);
+
+        Assert.Equal(patched, build.HandlesVerification);
+        Assert.Equal(patched, build.CanVerifyDevices);
+        Assert.True(LoginRequest.TryParse(body, out var request));
+        Assert.Equal(patched, request!.HandlesVerification);
+        var refusal = LoginResponseBuilder.BuildFailure(LoginFailureReason.VerificationRequired, "Confirm it.");
+        var reply = Packets(LegacyPackets.Outgoing(refusal, build));
+        Assert.Equal(patched ? -8 : -1, BitConverter.ToInt32(Assert.Single(reply, p => p.Id == 5).Payload));
+        Assert.Equal(-1, build.LoginCode(-7));   // only -8 is patched in
+    }
 
     // ---- chat ----
 
