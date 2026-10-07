@@ -92,7 +92,7 @@ public sealed class CustomBeatmapImporter
         {
             var result = await ImportCoreAsync(osz, uploaderId, updateSetId, cancellationToken).ConfigureAwait(false);
             await LogAsync(result.SetId, uploaderId, result.Updated ? "updated" : "uploaded",
-                Invariant($"{result.Artist} - {result.Title} ({result.Creator}), {result.Difficulties.Count} difficulties"), cancellationToken).ConfigureAwait(false);
+                Invariant($"{result.Artist} - {result.Title} ({result.Creator}), {result.Difficulties.Count} {(result.Difficulties.Count == 1 ? "difficulty" : "difficulties")}"), cancellationToken).ConfigureAwait(false);
             return result;
         }
         catch (CustomUploadException ex)
@@ -120,7 +120,7 @@ public sealed class CustomBeatmapImporter
         {
             var result = await SubmitCoreAsync(osz, setId, userId, cancellationToken).ConfigureAwait(false);
             await LogAsync(result.SetId, userId, result.Updated ? "updated" : "uploaded",
-                Invariant($"{result.Artist} - {result.Title} ({result.Creator}), {result.Difficulties.Count} difficulties, from {client}"), cancellationToken).ConfigureAwait(false);
+                Invariant($"{result.Artist} - {result.Title} ({result.Creator}), {result.Difficulties.Count} {(result.Difficulties.Count == 1 ? "difficulty" : "difficulties")}, from {client}"), cancellationToken).ConfigureAwait(false);
             return result;
         }
         catch (CustomUploadException ex)
