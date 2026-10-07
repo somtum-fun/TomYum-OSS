@@ -74,8 +74,9 @@ public static class AdminEndpoints
         admin.MapGet("/beatmapsets/import-jobs/{id}", (string id, BeatmapImportRunner runner) =>
             runner.Get(id) is { } job ? Results.Ok(job) : Results.NotFound());
 
-        admin.MapGet("/log", async (IStaffLogRepository log, string? action, long? targetId, string? jobId, long? before, int? limit, CancellationToken cancellationToken) =>
-            Results.Ok(await log.ListAsync(new StaffLogQuery(action, targetId, jobId, before, limit ?? 50), cancellationToken).ConfigureAwait(false)));
+        // The staff log: by action (or "user." for all of a kind), player, who did it, job; paged with before.
+        admin.MapGet("/log", async (IStaffLogRepository log, string? action, long? targetId, string? jobId, long? before, int? limit, long? actorId, CancellationToken cancellationToken) =>
+            Results.Ok(await log.ListAsync(new StaffLogQuery(action, targetId, jobId, before, limit ?? 50, actorId), cancellationToken).ConfigureAwait(false)));
         admin.MapPost("/log", AppendLogAsync);
         // Maintenance mode and in-game alerts (the admin panel).
         admin.MapGet("/maintenance", (Maintenance maintenance) => Results.Ok(MaintenanceJson(maintenance)));

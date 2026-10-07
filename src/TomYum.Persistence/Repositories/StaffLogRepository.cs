@@ -34,6 +34,8 @@ public sealed class StaffLogRepository : IStaffLogRepository
         }
         if (query.TargetId is { } targetId)
             entries = entries.Where(e => e.TargetId == targetId);
+        if (query.ActorId is { } actorId)
+            entries = entries.Where(e => e.ActorId == actorId);
         if (!string.IsNullOrEmpty(query.JobId))
             entries = entries.Where(e => e.JobId == query.JobId);
         if (query.BeforeId is { } beforeId)

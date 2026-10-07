@@ -8,7 +8,8 @@ namespace TomYum.Domain.Repositories;
 /// <param name="JobId">Only entries from this bulk job.</param>
 /// <param name="BeforeId">Paging: only entries older than this id.</param>
 /// <param name="Limit">Maximum entries (capped at 500).</param>
-public sealed record StaffLogQuery(string? Action = null, long? TargetId = null, string? JobId = null, long? BeforeId = null, int Limit = 50);
+/// <param name="ActorId">Only entries by this staff member (or bot).</param>
+public sealed record StaffLogQuery(string? Action = null, long? TargetId = null, string? JobId = null, long? BeforeId = null, int Limit = 50, long? ActorId = null);
 
 /// <summary>The staff action log (<see cref="StaffLogEntry"/>).</summary>
 public interface IStaffLogRepository
