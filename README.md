@@ -138,10 +138,7 @@ not published with the source.
 - Push **to the Branch** `git push origin feature/AmazingFeature`
 - Open a **Pull Request**
 
-## AI use
-
-Our team uses AI as an assistant, always under human review. Low-effort AI-generated ("slop") pull requests
-or comments may be closed without notice.
+Our team believes in using AI as an assistant, always under human review. Low-effort AI-generated ("slop") pull requests or comments may be closed without notice.
 
 ## License
 
