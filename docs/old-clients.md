@@ -68,6 +68,15 @@ have (invites, silences, restart, menu icon before b20120916, ...), and to b337â
 past 255 (a byte there). b337 sees other players' stats only with their presence (its update has no
 stats-only form).
 
+## Old clients on vanilla TomYum
+
+TomYum on its own has no patched clients: the builds that confirm devices (`tomyum-verify`, below) come from a
+server's own patcher, which isn't part of this repository. So to let original old builds connect (HTTP bancho, or
+TCP bancho on `server.<domain>` for builds up to b20130802.1), **turn device verification off**: leave
+`TOMYUM_CLIENTVERIFICATION__ENABLED` unset or `false` (the default). With it on, only b20151228 and later can
+confirm a new device; `OldClients=Refuse` turns every other old build away, and even `Unverified` leaves their
+devices unconfirmed, so there's nothing gained for them.
+
 ## What the server does for them
 
 - **Plain HTTP.** Builds before late 2015 talk to the server over plain HTTP and don't follow
@@ -173,11 +182,11 @@ tried to log in most recently, in the last day.
 A patched old client can verify like today's: it adds a last field to its login line,
 `version|utc|city|hashes|pm|tomyum-verify` (a comma-separated capability list), and is then sent
 -8 and handles it itself (it opens `osu.<domain>/p/verify?u=<name>&ch=<hashes>` once and retries the
-login until the device is confirmed). The decompiled clients' patcher does this for b20120812 to
+login until the device is confirmed). A server's own client patcher does this (one did for b20120812 to
 b20151026.3 (step 11; the builds that send a whole device) and for b337 to b20120529 (step 12): those sent
 no client hash, or one without the uninstall id or disk, so the patched build sends its install's whole
 device instead, as later builds do (`md5(osu!.exe):adapters:md5(adapters):md5(md5(UninstallID)):md5(disk serial)`,
-with the same `UninstallID` registry value osu! keeps, so it's the same device for every build on a PC).
+with the same `UninstallID` registry value osu! keeps, so it's the same device for every build on a PC); it isn't part of TomYum.
 The login line is the same in every era once patched (b337 sent only `version|utc`, b370 to b1652
 `version|utc|city`): `version|utc|city|hashes|0|tomyum-verify`, over TCP bancho for builds up to
 b20130815. Its -8 goes out as -8 in the build's own packet ids; the build retries through its own
