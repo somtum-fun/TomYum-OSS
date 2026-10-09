@@ -23,7 +23,6 @@ to it for them.
 
 ## History
 
-- 2026-10-02: a port of osu!'s Project Loved site (`example-org/private-repo`), then our own
-  separate site (`example-org/private-repo`). Both retired: too many separate websites.
+- 2026-10-02: a port of osu!'s Project Loved site, then a separate site. Both retired: too many separate websites.
 - 2026-10-03: sundei's in-website version (rounds and forum polls) reworked into the simple model
   above. Forum #120 (Project Loved) is left over from the polls and unused.

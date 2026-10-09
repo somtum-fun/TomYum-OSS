@@ -2,7 +2,7 @@
 //
 // The host hands plugins a PluginHttpRequest (headers/query/route-values/body) and expects a
 // PluginHttpResponse back. It does NOT parse cookies, expose the socket peer IP, or give us
-// redis — so everything the prod `session.py` got from FastAPI/redis we reproduce here from
+// redis — so everything the original `session.py` got from FastAPI/redis we reproduce here from
 // headers + the BCL. See docs/session-plugin.md for the behavioural spec this mirrors.
 
 using System;
@@ -45,7 +45,7 @@ internal static class SessionHttp
         return Json(status, map);
     }
 
-    /// <summary>A single <c>{"status": "..."}</c> body — the prod convention for every response.</summary>
+    /// <summary>A single <c>{"status": "..."}</c> body — the original's convention for every response.</summary>
     public static PluginHttpResponse Status(int status, string message) => Json(status, ("status", message));
 
     // --- token sources (cookie -> bearer -> body), first non-empty wins ------------------------
@@ -91,7 +91,7 @@ internal static class SessionHttp
     // --- client IP + binding primitives --------------------------------------------------------
 
     /// <summary>
-    /// Resolves the trusted client IP the same spoof-resistant way prod does, but limited to what
+    /// Resolves the trusted client IP the same spoof-resistant way the original does, but limited to what
     /// the host exposes (there is no socket-peer IP in a PluginHttpRequest): the proxy header when the
     /// shared token matches, else Cloudflare's <c>CF-Connecting-IP</c>. X-Forwarded-For is NOT trusted.
     /// Returns <c>"unknown"</c> when nothing usable is present.
@@ -158,7 +158,7 @@ internal static class SessionHttp
         return c.Length == 2 && c != "xx" && c != "t1" ? c : null;
     }
 
-    /// <summary>A human-readable "Browser on OS" label for the Security page (mirrors prod's _pretty_user_agent).</summary>
+    /// <summary>A human-readable "Browser on OS" label for the Security page (mirrors the original's _pretty_user_agent).</summary>
     public static string? PrettyUserAgent(string? ua)
     {
         if (string.IsNullOrEmpty(ua))

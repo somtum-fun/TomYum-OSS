@@ -128,58 +128,6 @@ public sealed class ModerationCommandTests : OsuWebDatabaseTest
         Assert.Equal("Sent to Stable Player.", await commands.RunAsync(gmt.Id, "alertu", ["Stable_Player", "hi"]));
     }
 
-    [MySqlFact]
-    public async Task DiscordStaffCommands_TakeAPlayer_AndRunAsTheLinkedAccount()
-    {
-        var tomyum = await NewTomYumContextAsync();
-        var osuWeb = NewOsuWebContext();
-        var users = new OsuWebUserRepository(osuWeb);
-        var gmt = await users.AddAsync(NewUser("Gmt Person", UserPrivileges.Normal | UserPrivileges.Moderator));
-        var player = await users.AddAsync(NewUser("Player One", UserPrivileges.Normal));
-        var links = new InMemoryDiscordLinkRepository();
-        await links.LinkAsync(gmt.Id, 100, DateTime.UtcNow);
-        await links.LinkAsync(player.Id, 200, DateTime.UtcNow);
-
-        var players = new PlayerRegistry();
-        var services = new ServiceCollection()
-            .AddSingleton<IUserRepository>(users)
-            .AddSingleton(new OsuWebModeration(osuWeb))
-            .AddSingleton<IStaffLogRepository>(new StaffLogRepository(tomyum))
-            .AddSingleton<IDiscordLinkRepository>(links)
-            .AddSingleton(new UserModerationSync(users, players, new RestrictedUsers(), TimeProvider.System, NullLogger<UserModerationSync>.Instance))
-            .BuildServiceProvider();
-        var scopes = services.GetRequiredService<IServiceScopeFactory>();
-        var discord = new TomYum.Server.Discord.DiscordCommands(
-            scopes, players, new TomYum.Server.Discord.DiscordLinkCodes(), new TomYum.Server.Discord.DiscordFormat("https://osu.test", "https://a.test"),
-            new ModerationCommands(scopes, players));
-
-        var silence = await discord.RunAsync("silence", new Dictionary<string, string> { ["player"] = "Player One", ["length"] = "1h", ["reason"] = "spam in #osu" }, 100);
-        Assert.True(silence.Private);
-        Assert.Equal("Silenced Player One for 1 hour(s): spam in #osu.", silence.Post.Content);
-        Assert.StartsWith("Lifted Player One's silence", (await discord.RunAsync("unsilence", new Dictionary<string, string> { ["player"] = "<@200>" }, 100)).Post.Content);
-        Assert.Equal("That command is staff-only.", (await discord.RunAsync("restrict", new Dictionary<string, string> { ["player"] = "Gmt Person", ["reason"] = "x" }, 200)).Post.Content);
-        Assert.StartsWith("Link your account first", (await discord.RunAsync("alts", new Dictionary<string, string> { ["player"] = "Player One" }, 999)).Post.Content);
-        Assert.StartsWith("That member hasn't linked", (await discord.RunAsync("alts", new Dictionary<string, string> { ["player"] = "<@999>" }, 100)).Post.Content);
-        Assert.Equal("Restricted Player One: botting.", (await discord.RunAsync("restrict", new Dictionary<string, string> { ["player"] = "<@!200>", ["reason"] = "botting" }, 100)).Post.Content);
-    }
-
-    private static readonly string[] StaffCommandNames = ["restrict", "unrestrict", "silence", "unsilence", "alts", "verify", "alert"];
-    private static readonly string[] PlayerCommandNames = ["profile", "rank", "recent", "best", "top", "leaderboard", "online", "link", "unlink"];
-
-    [Fact]
-    public void StaffCommands_AreHiddenFromMembers_AndEveryoneElseIsnt()
-    {
-        var specs = TomYum.Server.Discord.DiscordCommands.Specs.ToDictionary(s => s.Name);
-        Assert.All(StaffCommandNames, name => Assert.True(specs[name].Staff));
-        Assert.All(PlayerCommandNames, name => Assert.False(specs[name].Staff));
-        Assert.DoesNotContain("staff", specs.Keys);
-        // Discord allows 100 commands, names of 1-32 lowercase letters, digits, - and _ (like banner_add) and descriptions up to 100.
-        Assert.InRange(specs.Count, 1, 100);
-        Assert.All(specs.Values, s => Assert.Matches("^[-_a-z0-9]{1,32}$", s.Name));
-        Assert.All(specs.Values, s => Assert.InRange(s.Description.Length, 1, 100));
-        Assert.All(specs.Values.SelectMany(s => s.Options), o => Assert.InRange(o.Description.Length, 1, 100));
-    }
-
     private async Task<(ModerationCommands Commands, IUserRepository Users, int Admin, int Gmt, int Player, PlayerRegistry Players)> SetUpAsync()
     {
         var tomyum = await NewTomYumContextAsync();

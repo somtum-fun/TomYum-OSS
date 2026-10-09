@@ -147,7 +147,7 @@ public partial class OldBanchoTests
         Assert.Equal(-1, build.LoginCode(-7));   // only -8 is patched in
     }
 
-    // The login lines of builds before b20120812 as the prod patcher (step 12) makes them: the install's
+    // The login lines of builds before b20120812 as a patched client (step 12) makes them: the install's
     // whole device (osu! md5, adapters, their md5, md5(md5(UninstallID)), disk md5) and the capability, in
     // each era's form (b337 had no city, b1122 to b1652 no client hash, b1700 to b20120529 an incomplete one).
     private const string PatchedDevice =

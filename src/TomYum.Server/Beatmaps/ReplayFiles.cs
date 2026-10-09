@@ -19,12 +19,12 @@ public static class ReplayFiles
 
     /// <summary>
     /// A lazer play's replay as the spectator server saved it (a complete .osr, named by its website
-    /// score id, in <c>Circleguard:LazerReplaysPath</c>); null when lazer replays aren't set up here.
+    /// score id, in <c>Replays:LazerPath</c>); null when lazer replays aren't set up here.
     /// </summary>
     public static string? LazerPathFor(IConfiguration configuration, ulong osuWebScoreId)
     {
         ArgumentNullException.ThrowIfNull(configuration);
-        var directory = configuration["Circleguard:LazerReplaysPath"];
+        var directory = configuration["Replays:LazerPath"];
         return string.IsNullOrEmpty(directory) ? null : Path.Combine(directory, osuWebScoreId.ToString(CultureInfo.InvariantCulture));
     }
 

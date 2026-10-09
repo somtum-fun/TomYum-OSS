@@ -1,6 +1,6 @@
 // Session plugin — entry point, HTTP endpoints, and the expiry reaper.
 //
-// Clean-room port of bancho.py+prod's `session.py` web-auth core to the TomYum plugin ABI.
+// Clean-room port of a bancho.py fork's `session.py` web-auth core to the TomYum plugin ABI.
 // Ships as ONE trusted plugin mounted on session.<domain>. It resolves auth itself inside each
 // handler (the host's requireAuth is a hard 401 today — no auth-resolver hook exists), owns its
 // own `sessions` table via IPluginContext.Data, and needs only TomYum.Plugins.Abstractions plus
@@ -37,7 +37,7 @@ public sealed class SessionPlugin : IPlugin
         Name: "Session (web auth)",
         Version: "0.1.0",
         Authors: "Phapoom Saksri",
-        Description: "Website session/auth layer (login, tokens, session management) on session.<domain>. Port of bancho.py+prod session.py.");
+        Description: "Website session/auth layer (login, tokens, session management) on session.<domain>. Port of a bancho.py fork's session.py.");
 
     public async Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)
     {

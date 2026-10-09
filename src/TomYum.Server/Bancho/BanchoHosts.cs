@@ -18,7 +18,7 @@ public static class BanchoHosts
     public const string DomainConfigKey = "Server:Domain";
 
     /// <summary>Domain used when none is configured.</summary>
-    public const string DefaultDomain = "example.com";
+    public const string DefaultDomain = "localhost";
 
     /// <summary>Bancho subdomain labels (binary protocol hosts).</summary>
     private static readonly string[] BanchoLabels = ["c", "c1", "c2", "c3", "c4", "c5", "c6", "ce", "cho"];

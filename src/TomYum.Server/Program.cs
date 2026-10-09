@@ -381,19 +381,6 @@ builder.Services.AddSingleton<IClientPacketHandler, CantSpectateHandler>();
 
 builder.Services.AddSingleton<BanchoPacketDispatcher>();
 
-// circleguard (sundeiii/lazer-circleguard): replay checks after each ranked pass, stable and lazer.
-var circleguardOptions = new TomYum.Server.Anticheat.CircleguardOptions();
-builder.Configuration.GetSection(TomYum.Server.Anticheat.CircleguardOptions.SectionName).Bind(circleguardOptions);
-if (circleguardOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
-{
-    builder.Services.AddSingleton(circleguardOptions);
-    builder.Services.AddHttpClient<TomYum.Server.Anticheat.CircleguardClient>(http => http.Timeout = TimeSpan.FromMinutes(2));
-    builder.Services.AddHttpClient<TomYum.Server.Anticheat.OfficialReplays>(http => http.Timeout = TimeSpan.FromSeconds(60))
-        .AddHttpMessageHandler<OsuApiBudgetHandler>();
-    builder.Services.AddSingleton<TomYum.Server.Anticheat.CircleguardScanner>();
-    builder.Services.AddHostedService<TomYum.Server.Anticheat.CircleguardWatch>();
-}
-
 // Last.fm: players who connect it (account settings on the website) get their plays scrobbled.
 var lastFmOptions = new TomYum.Server.LastFm.LastFmOptions();
 builder.Configuration.GetSection(TomYum.Server.LastFm.LastFmOptions.SectionName).Bind(lastFmOptions);
@@ -437,33 +424,6 @@ if (tcpBanchoOptions.Enabled)
 var gatewayOptions = new TomYum.Server.Gateway.GatewayOptions();
 builder.Configuration.GetSection(TomYum.Server.Gateway.GatewayOptions.SectionName).Bind(gatewayOptions);
 builder.Services.AddSingleton(gatewayOptions);
-
-// The Discord bot (docs/discord.md): runs when Discord:Token and Discord:GuildId are set.
-var discordOptions = TomYum.Server.Discord.DiscordOptions.Read(builder.Configuration.GetSection(TomYum.Server.Discord.DiscordOptions.SectionName));
-if (discordOptions.IsConfigured)
-{
-    TomYum.Server.Discord.DiscordFormat.UseGradeEmojis(discordOptions.GradeEmojis);
-    var discordDomain = BanchoHosts.ResolveDomain(builder.Configuration);
-    var discordErrors = new TomYum.Server.Discord.DiscordLogSink();
-    builder.Logging.AddProvider(discordErrors);
-    builder.Services.AddSingleton(discordOptions);
-    builder.Services.AddSingleton(discordErrors);
-    builder.Services.AddSingleton(new TomYum.Server.Discord.DiscordFormat(
-        string.IsNullOrWhiteSpace(discordOptions.SiteUrl) ? $"https://osu.{discordDomain}" : discordOptions.SiteUrl,
-        string.IsNullOrWhiteSpace(discordOptions.AvatarUrl) ? $"https://a.{discordDomain}" : discordOptions.AvatarUrl));
-    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordLinkCodes>();
-    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordBotService>();
-    builder.Services.AddSingleton<TomYum.Server.Discord.IDiscordGateway>(sp => sp.GetRequiredService<TomYum.Server.Discord.DiscordBotService>());
-    builder.Services.AddHostedService(sp => sp.GetRequiredService<TomYum.Server.Discord.DiscordBotService>());
-    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordCommands>();
-    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordChatRelay>();
-    builder.Services.AddHostedService(sp => sp.GetRequiredService<TomYum.Server.Discord.DiscordChatRelay>());
-    builder.Services.AddSingleton(sp => new TomYum.Server.Discord.DiscordState(sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
-    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordInteractions>();
-    builder.Services.AddSingleton<TomYum.Server.Discord.DiscordWatch>();
-    builder.Services.AddHostedService<TomYum.Server.Discord.DiscordAnnouncer>();
-    builder.Services.AddHostedService<TomYum.Server.Discord.DiscordDaily>();
-}
 
 var app = builder.Build();
 

@@ -1,7 +1,7 @@
 # tomyum.metrics: Prometheus numbers for the status page
 
 A **loose-source** TomYum plugin that serves `GET /metrics` in the Prometheus text format, for the
-status page's Prometheus (`~/workspace/status-page`, job `tomyum`). It only needs
+status page's Prometheus (job `tomyum`). It only needs
 `TomYum.Plugins.Abstractions`.
 
 ## What it serves

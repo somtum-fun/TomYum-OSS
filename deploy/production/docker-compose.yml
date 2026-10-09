@@ -30,10 +30,10 @@ x-osu-web: &osu-web
     OSU_API_KEY: ${OSU_API_KEY:-}
     # Medal icons from TomYum's asset host (it caches osu!'s icons, and serves custom ones).
     USER_ACHIEVEMENT_ICON_PREFIX: https://assets.${DOMAIN}/medals/client/
-    # Profile badges, the same way (osu!'s, and those added with the Discord bot).
+    # Profile badges, the same way (osu!'s, and those added in the admin panel).
     USER_BADGE_IMAGE_PREFIX: https://assets.${DOMAIN}/profile-badges/
     # The changelog's streams, in order (written on the changelog panel; changelog.sh imports commits):
-    # lazer-fork, Stable, Legacy clients, Server, Website, Discord, Wiki.
+    # lazer, Stable, Legacy clients, Server, Website, Discord, Wiki (stream names are the website's).
     UPDATE_STREAMS: "6 5 13 10 1 11"
     # The red "development instance" banner: DEVELOPMENT_BANNER=true in .env shows it.
     IS_DEVELOPMENT_DEPLOY: ${DEVELOPMENT_BANNER:-false}
@@ -104,10 +104,8 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
       TOMYUM_SERVER__DOMAIN: ${DOMAIN}
-      # circleguard: replay checks (off while CIRCLEGUARD_KEY is empty).
-      TOMYUM_CIRCLEGUARD__URL: http://circleguard:8555
-      TOMYUM_CIRCLEGUARD__KEY: ${CIRCLEGUARD_KEY:-}
-      TOMYUM_CIRCLEGUARD__LAZERREPLAYSPATH: /app/lazer-replays
+      # Lazer replays (the spectator server writes them), for downloads and plugins.
+      TOMYUM_REPLAYS__LAZERPATH: /app/lazer-replays
       TOMYUM_DATABASE__ENABLED: "true"
       TOMYUM_DATABASE__HOST: db
       TOMYUM_DATABASE__PORT: "3306"
@@ -129,7 +127,7 @@ services:
       - server-data:/app/data
       # Checks lazer logins for beatmap submission.
       - *oauth-key
-      # Lazer replays (written by the spectator server), for circleguard.
+      # Lazer replays (written by the spectator server).
       - type: volume
         source: osu-web-uploads
         target: /app/lazer-replays
@@ -244,14 +242,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-
-  # Replay checks (sundeiii/lazer-circleguard, a checkout next to TomYum): TomYum sends it passes.
-  circleguard:
-    build:
-      context: ${CIRCLEGUARD_PATH:-../../../lazer-circleguard}
-    restart: unless-stopped
-    environment:
-      CIRCLEGUARD_KEY: ${CIRCLEGUARD_KEY:-}
 
   # ppy's spectator server with TomYum's changes (sundeiii/tomyum-spectator, a checkout next to TomYum).
   spectator:

@@ -1,6 +1,6 @@
 // Session plugin — options, in-memory rate limiting, and the sessions-table data access.
 //
-// This is the clean-room reimplementation of bancho.py+prod's `session.py` auth core against
+// This is the clean-room reimplementation of a bancho.py fork's `session.py` auth core against
 // TomYum's schema. Divergences from upstream (documented in docs/session-plugin.md):
 //   * TomYum `users` columns are PascalCase (Id, SafeName, Email, PasswordBcrypt, Country,
 //     Privileges); there is no `verified`/`silence_end` column yet.
@@ -24,7 +24,7 @@ namespace TomYum.Plugins.Session;
 /// <summary>Strongly-typed view over the plugin's <c>Plugins:tomyum.session</c> config subtree.</summary>
 internal sealed class SessionOptions
 {
-    public int TtlHours { get; init; } = 24 * 30;          // 30 days, matching prod's SESSION_TTL_HOURS
+    public int TtlHours { get; init; } = 24 * 30;          // 30 days, matching the original's SESSION_TTL_HOURS
     public bool BindClient { get; init; }                  // enforce IP-prefix + UA-hash binding
     public bool AllowBodyToken { get; init; } = true;      // accept token in a JSON body field
     public bool PasswordIsMd5 { get; init; }               // true if the frontend already md5s the password
@@ -154,7 +154,7 @@ internal sealed class SessionService
         return updated.Count > _options.RateLimitMaxAttempts;
     }
 
-    /// <summary>True at most once per minute per token — the prod last-active write throttle, in memory.</summary>
+    /// <summary>True at most once per minute per token — the original's last-active write throttle, in memory.</summary>
     private bool ShouldBumpLastActive(string token)
     {
         var now = DateTime.UtcNow;
@@ -185,7 +185,7 @@ internal sealed class SessionService
 
     // --- queries -------------------------------------------------------------------------------
 
-    /// <summary>Looks a user up by safe-name (preferred) or email, mirroring prod's login lookup + ORDER BY.</summary>
+    /// <summary>Looks a user up by safe-name (preferred) or email, mirroring the original's login lookup + ORDER BY.</summary>
     public async Task<UserRow?> FindUserAsync(string username, CancellationToken ct)
     {
         var safeName = SessionHttp.MakeSafeName(username);

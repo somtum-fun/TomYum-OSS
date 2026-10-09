@@ -3,7 +3,7 @@
 > **Docs convention.** `docs/` holds the documentation (contributors, operators): one page per
 > feature, plus this checklist.
 
-_Last updated: 2026-10-04 (version 0.3.0-dev)._ .NET 10; production at example.com (stable, lazer and the website), sundei.eu as the test server._
+_Last updated: 2026-10-04 (version 0.3.0-dev)._ .NET 10; used in production (stable, lazer and the website)._
 
 This is the living checklist for the big feature wave requested on 2026-07-07: `.osu` cache →
 plugin host → moderation/HWID → spectating → DAN/Session ports → custom beatmaps → **osu!lazer
@@ -131,7 +131,7 @@ _Core watch-and-relay done 2026-07-08 (`docs/spectating.md`). 143 tests. Chat ch
 ## Phase 4 — DAN mode + Session plugins (ports) 🔒 Phase 1 + Phase 3
 _Clean-room reimplementations of the old server's DAN mode and session.py (that fork is GPL — behaviour only)._
 
-- [x] **osu!dan** plugin (wanted again, 2026-10-06): its own repo, `example-org/private-repo` (`tomyum.dan`). Host side:
+- [x] **osu!dan** plugin (wanted again, 2026-10-06): its own repo (`tomyum.dan`). Host side:
       `IHostSpectating` (BanchoBot spectates for plugins), `SpectateFrameEvent.Action`, `ActionChangedEvent.CanCheckFrames`,
       `ScoreSubmittedEvent`, beatmap id/set/difficulty on `ScoreSubmittingEvent`. The plugin keeps courses and clears in
       `plugin_dan_*`; a play that breaks a rule stays a normal score (no veto). The website's staff panel edits the courses.
@@ -294,7 +294,7 @@ the BN panel (`/panel/bn`). These close the gaps. Requested 2026-10-01._
   - [x] Fixed: NAT had no modes (`nat.has_playmodes` was 0 here; osu! gives NAT modes) and a BN could be
         saved with none (then they can't nominate); the admin panel now asks for at least one mode.
 - [x] **QAT / BN Management** ([pishifat/qat](https://github.com/pishifat/qat)) — fork
-      `example-org/private-repo` (branch `prod`): server address configurable, our group ids mapped (7 is
+      a qat fork: server address configurable, our group ids mapped (7 is
       everyone's default here), an event feed from `/api/v2/beatmapsets/events` instead of the Aiess bot,
       deployed as `qat` + `qat-mongo` behind `bn.<domain>` (docs/qat.md). 2026-10-01
   - [x] DNS `bn.<domain>`; signed in from a browser (2026-10-01). Fixed: default settings on a new
@@ -373,7 +373,7 @@ Progress 2026-10-02 with b20140624 locally: see docs/old-clients.md for what wor
       multiplayer with a second player and go build by build towards 2013.
 - [ ] Later: TCP builds (2013 and older) if a TCP port can be exposed; older eras.
 
-### Gateway for TCP bancho and IRC — 2026-10-03 (production, example.com)
+### Gateway for TCP bancho and IRC — 2026-10-03
 _Decided 2026-10-03: like Titanic!'s `server.titanic.sh`, pre-2014 builds connect to `server.<domain>`
 over raw TCP; the hoster patches the client to point there (and patches the server for those
 builds' protocol themselves). The hook route below stays paused._
@@ -382,65 +382,30 @@ builds' protocol themselves). The hook route below stays paused._
       player's address is passed on with a shared key (`GATEWAY_KEY`).
 - [x] 2026-10-03: bancho over TCP is TomYum's own (`Bancho:Tcp`, sundei's: packets pushed as
       queued), with a ping after 10 s of quiet for b1122; the gateway relays to it
-      (`/_gateway/bancho`) instead of polling HTTP bancho. On example.com: `TCP_BANCHO=true`.
-- [x] Tested on example.com: a TCP login (b20130606 login body), packets split across writes,
+      (`/_gateway/bancho`) instead of polling HTTP bancho. In production: `TCP_BANCHO=true`.
+- [x] Tested: a TCP login (b20130606 login body), packets split across writes,
       logout on exit and on a dropped socket, the player's address and IRC through the relay.
 - [ ] A real pre-2014 build, patched to use `server.<domain>`.
-- Here (example.com) TomYum's own TCP bancho (`Bancho:Tcp`, inside the game server) takes 13381;
+- TomYum's own TCP bancho (`Bancho:Tcp`, inside the game server) takes 13381;
   the gateway is merged but off, for when old clients and IRC should move to another box.
 
-### production's findings 2026-10-03 (example.com; work paused there, continuing on example.com)
-_production decided 2026-10-03 to pause old-client work on their server. Getting old builds stable needs more research and
-far more work than expected, whether through a hook or by patching the client. Priority goes to the
-upstream side: the **latest lazer client**, **stable 2023+ (latest)** and **anti-cheat**. Comments and
-findings on old clients are welcome; add them here._
-
-Tested on example.com with the production hook ([example-org/private-repo](https://github.com/example-org/private-repo),
-MIT, a clean-room loader instead of Titanic! Hook):
-- **Works:** no more startup crashes on b1814–b20131009 (the hook never patches osu!'s obfuscated
-  `Main`: Harmony 2/MonoMod crashed there; Titanic! Hook avoids it with a Harmony 1 fork), no update
-  prompt (`/release/update.php` answers `0`), TCP-era builds reach bancho through the hook's local
-  **bancho bridge** (raw TCP in, HTTPS bancho to `c.<domain>` out, so no TCP port or server IP is
-  exposed and Cloudflare stays in front), login bodies without `pm_private`/hashes are accepted
-  (`LoginRequest`), held logins carry a verify-your-device notice, and the hook fills blank client
-  hashes with its own machine id. b20151128.2 logs in, chats, searches and downloads maps.
-- **Open problems:**
-  - b20151128.2 freezes on a black screen after **Play Solo**: the client posts `osu-error.php` (now
-    logged by TomYum as a warning) and a finalizer NRE follows; the cause isn't known yet. It may be a
-    server reply the build can't read (then it's a TomYum fix) or an osu! bug.
-  - osu!'s own races on .NET 4 (`MapPackage.Close`, `Dispose` finalizers): keeping the process alive
-    (legacy exception policy, a `Dispose` guard) only turned crashes into frozen black screens, so a
-    crash to desktop stays the default.
-  - The hook runs 2.0-era builds on the .NET 4 CLR; native .NET 2 behaviour differs (exception policy,
-    timing), which is a likely source of more of these.
-  - Old builds have no osu!auth: anything the hook sends (device id, hashes) can be faked, so anti-cheat
-    for them is weak until the hook has its own integrity checks.
-- **Options to research (none chosen):**
-  - Keep the hook (players bring their own `osu!.exe`, no ppy code shipped) and add small, targeted
-    in-memory fixes for specific osu! bugs, found by the method's IL shape rather than its obfuscated
-    name. Most work per bug, least legal risk, stays MIT.
-  - Patch the client like osuTitanic (their download page ships pre-patched builds, "unofficial,
-    unlicensed", with a DMCA contact). Easier to fix osu!'s own bugs, but obfuscation means editing IL
-    per build (not recompiling decompiled source), it redistributes ppy's code (DMCA risk, can't be
-    open source) and every build needs its own patches. If ever done, ship a patcher for the player's
-    own copy, never patched binaries.
-  - Use Titanic! Hook as docs/old-clients.md describes, and only keep TomYum's server side compatible.
-
-### production, 2026-10-04 (example.com): old clients playable with Relax/Autopilot
-Played on b1553 (a non-Titanic, obfuscated copy) through the production hook (example-org/private-repo 1.3.3,
-the Titanic! Hook fork; test builds on dl.example.com/hook/):
-- **Relax/Autopilot:** misses show, combo breaks sound, local scores kept; b452–b1844 submit them
-  (their ranked mods check refused them); builds before b20130329 send `&mods=` with the leaderboard
-  (their bancho status has the mods only while playing). Server side, `WebEndpoints.BoardMods` falls
-  back to the player's last status when there are none. Scores land on the Relax/Autopilot boards.
-- **Screen mode, set ids, song switch** as the decompiled clients' prod patcher (steps 6–9); the hook
-  finds each by its IL shape, also in exes with control flow obfuscation and encrypted strings
-  (`OldClientShapes.Flow`, `ShapeCode`), checked against all 76 Titanic builds and that b1553.
-- **Old sets import again:** sets repacked in 2014 say zip 6.3 in their local headers, which old
-  osu!'s SharpZipLib refuses; `OszVersionFixStream` corrects them on old clients' downloads.
-- [ ] One hook .exe for every build (today: a .NET 2 build and a .NET 4 build).
-- [ ] Prod-Anticheat-Hook `no-anticheat` doesn't have any of the above yet.
-- [ ] The decompiled clients' patcher doesn't send `&mods=` with the leaderboard yet.
+### Old clients: findings (2026-10)
+Old-client work is paused upstream: getting old builds stable needs more research. Priority goes to the
+**latest lazer client**, **stable 2023+** and **anti-cheat**. Findings so far, from running old builds
+through a Titanic! Hook-style loader:
+- **Works:** no startup crashes on b1814–b20131009 when the loader never patches osu!'s obfuscated
+  `Main`; no update prompt (`/release/update.php` answers `0`); TCP-era builds can reach bancho through a
+  local bridge (raw TCP in, HTTPS bancho to `c.<domain>` out); login bodies without
+  `pm_private`/hashes are accepted (`LoginRequest`); held logins carry a verify-your-device notice.
+- **Relax/Autopilot:** builds before b20130329 don't send `&mods=` with the leaderboard; the server
+  (`WebEndpoints.BoardMods`) falls back to the player's last status. b452–b1844 refuse to submit RX/AP
+  plays unless their ranked mods check is patched.
+- **Old sets:** sets repacked in 2014 say zip 6.3 in their local headers, which old osu!'s SharpZipLib
+  refuses; `OszVersionFixStream` corrects them on old clients' downloads.
+- **Open problems:** b20151128.2 can freeze on a black screen after Play Solo (it posts
+  `osu-error.php`, logged as a warning); osu!'s own races on .NET 4 (`MapPackage.Close`, finalizers);
+  2.0-era builds behave differently on the .NET 4 CLR; old builds have no osu!auth, so anything a
+  loader sends (device id, hashes) can be faked.
 
 ### Relax/Autopilot on the website, 2026-10-04
 - [x] Stable mode's beatmap boards have only stable plays (each player's best stable one); lazer mode
@@ -470,7 +435,7 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
 - [ ] Custom medals.
 
 ## Cross-cutting infra (interleave as needed)
-- [x] **Discord bot** (docs/discord.md): slash commands, two-way `#osu` relay, announcements
+- [x] **Discord bot** (moved out of core; to come back as a plugin): slash commands, two-way `#osu` relay, announcements
       (#1s, big plays, medals, new players, ranked/loved), account linking via BanchoBot with
       group roles, staff user/server log channels. 2026-09-28.
 - [x] **Operations** (sundei.eu): mail through Proton (`osu@sundei.eu`, email verification on), downtime
@@ -524,8 +489,7 @@ _Clean-room port of bancho.py's vanilla medal catalog; custom/website medals are
         tomyum-spectator's lazer replays.
 - [x] **Config audit** (2026-10-01): every setting in TomYum's option classes is read somewhere, except
       `Storage:*` (above). (`src/TomYum.Caching/PlaceHolder.cs`, an empty leftover, removed 2026-10-02.)
-- [x] **Anticheat** — circleguard (sundeiii/lazer-circleguard, C#) checks every ranked pass, stable and
-      lazer, incl. against osu!'s top replays (docs/anticheat.md). 2026-09-29
+- [x] **Anticheat** — circleguard replay checks (moved out of core; to come back as a plugin). 2026-09-29
 - [x] **IRC server** (docs/irc.md): port 6667, passwords from BanchoBot's `!irc`, the game's chat
       handlers behind it. 2026-09-29
 

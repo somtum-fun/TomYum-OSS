@@ -1,6 +1,6 @@
 // Metrics plugin — entry point: the /metrics route, the event counters and the database poller.
 //
-// Serves Prometheus numbers for the status page (~/workspace/status-page, job "tomyum"). Lives in a
+// Serves Prometheus numbers for the status page (job "tomyum"). Lives in a
 // plugin so core TomYum stays free of it; it needs only TomYum.Plugins.Abstractions:
 //   - players online by client: IHostOnlineCounts (stable, IRC, lazer from the spectator feed);
 //   - stable scores: ScoreSubmittingEvent (the last step before a score is stored);

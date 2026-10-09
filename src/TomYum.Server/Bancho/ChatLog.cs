@@ -9,7 +9,8 @@ public enum ChatOrigin
 {
     Game,
     Website,
-    Discord,
+    /// <summary>A bridge to another chat service (a plugin's relay).</summary>
+    External,
 }
 
 /// <summary>
@@ -38,7 +39,7 @@ public sealed class ChatLog : BackgroundService
         _logger = logger;
     }
 
-    /// <summary>Raised for every recorded message (the Discord relay listens); handlers must be quick.</summary>
+    /// <summary>Raised for every recorded message (chat relays listen); handlers must be quick.</summary>
     public event Action<ChatLogEntry, ChatOrigin>? Recorded;
 
     /// <summary>Queues a delivered message. <paramref name="recipientId"/> is set for private messages.</summary>

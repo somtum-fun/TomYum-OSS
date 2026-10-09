@@ -317,7 +317,6 @@ public class ChatHandlerTests
         var player = await bot.TryHandleCommandAsync(Caller("Player"), "!help", BanchoPrivileges.Player);
         Assert.StartsWith("Commands: ", player, StringComparison.Ordinal);
         Assert.Contains("!roll [max]", player, StringComparison.Ordinal);
-        Assert.Contains("!link <code> (Discord)", player, StringComparison.Ordinal);
         Assert.Contains("!map <rank|love|qualify|unrank|reset> [set|map] (BN, after /np)", player, StringComparison.Ordinal);
         Assert.DoesNotContain("!restrict", player, StringComparison.Ordinal);
 

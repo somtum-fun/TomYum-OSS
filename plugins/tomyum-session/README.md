@@ -2,7 +2,7 @@
 
 A **loose-source** TomYum plugin that provides the website (frontend) authentication layer: it
 issues opaque session tokens on login, validates them, and lets a user see and revoke their active
-sessions. It is a clean-room port of the auth core of bancho.py+prod's `app/api/domains/session.py`,
+sessions. It is a clean-room port of the auth core of a bancho.py fork's `app/api/domains/session.py`,
 adapted to TomYum's schema and plugin ABI.
 
 > This is the **core auth subsystem only**. The upstream `session.py` also carries ~11k lines of

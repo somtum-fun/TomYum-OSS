@@ -139,7 +139,7 @@ public sealed class ScoreRankEvents : BackgroundService
     /// <summary>"Player achieved rank #1 on Map (ruleset)" in #announce: with links in-game, plain on the website.</summary>
     private void Announce(ScoreCard score)
     {
-        var ruleset = Discord.DiscordFormat.Ruleset(score.Ruleset);
+        var ruleset = Rulesets.Name(score.Ruleset);
         var map = $"{score.Artist} - {score.Title} [{score.Version}]";
         var user = string.Create(CultureInfo.InvariantCulture, $"{_site}/u/{score.UserId}");
         var beatmap = string.Create(CultureInfo.InvariantCulture, $"{_site}/b/{score.BeatmapId}");

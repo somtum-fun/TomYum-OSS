@@ -4,8 +4,8 @@
 # running TomYum.Server, using the correct host headers.
 #
 # Usage:
-#   scripts/test-stable.sh                      # against http://127.0.0.1:5099, domain example.com
-#   BASE=http://127.0.0.1:5099 DOMAIN=example.com scripts/test-stable.sh
+#   scripts/test-stable.sh                      # against http://127.0.0.1:5099, domain localhost
+#   BASE=http://127.0.0.1:5099 DOMAIN=localhost scripts/test-stable.sh
 #
 # The osu!stable client splits its surface across subdomains:
 #   c./c4./ce./cho.<domain>  -> bancho binary protocol (login, poll)
@@ -15,7 +15,7 @@
 set -euo pipefail
 
 BASE="${BASE:-http://127.0.0.1:5099}"
-DOMAIN="${DOMAIN:-example.com}"
+DOMAIN="${DOMAIN:-localhost}"
 
 USERNAME="${USERNAME:-TestPlayer}"
 EMAIL="${EMAIL:-testplayer@example.com}"

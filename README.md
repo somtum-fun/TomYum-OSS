@@ -13,8 +13,8 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 
 ## Progress
 
-> Status: **in production** at [sundei.eu](https://osu.sundei.eu) (osu!stable, osu!lazer and the
-> website on one account system). Version `0.1.0-dev`. The detailed checklist, with what's left, is
+> Status: **used in production** (osu!stable, osu!lazer and the website on one account system).
+> Version `0.3.0-dev`. The detailed checklist, with what's left, is
 > [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Features
@@ -30,7 +30,8 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 - Medals, rank history, country from the client's IP
 
 **osu!lazer**
-- Runs on the official [osu-web](https://github.com/ppy/osu-web) website and
+- Runs on [osu-web](https://github.com/ppy/osu-web) (with TomYum's changes:
+  [osu-web-tomyum](https://github.com/somtum-fun/osu-web-tomyum)) and
   [osu-server-spectator](https://github.com/ppy/osu-server-spectator) (spectating, multiplayer,
   playlists, the daily challenge), sharing accounts, scores and rankings with stable
 - Lazer plays with Relax get relax pp and leaderboards like stable's
@@ -42,23 +43,21 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
   (BN imports, GMT tools, admin, the daily challenge map picker, seasonal backgrounds, news,
   Ranked Play pools, badges, user titles)
 - A changelog made from the repositories' history on every deploy (`deploy/production/deploy.sh`)
-- Anti-cheat: hardware/client hash checks and alt detection, circleguard replay scans
+- Anti-cheat: hardware/client hash checks and alt detection; replay checks can be added as a plugin
 - Custom beatmaps (uploaded sets, graveyard, guest difficulties) next to the official ones
-- A Discord bot: profiles, `/recent`, `/best`, `/compare`, `/scan`, badges, staff tools
 - An IRC server (port 6667) for IRC clients and bots, logging in with the website's IRC key
 - Plugins: compiled `.dll` or loose `.cs`, with events, commands and HTTP routes
 - EF Core migrations, Docker Compose / k8s deployment, Caddy and a Cloudflare tunnel in front
 - Email (sign-up verification), downtime alerts by Discord DM, nightly backups
 
 **Not done yet** (see the roadmap): custom medals, multi-instance (Redis-backed) online state, and
-multi-target storage. osu!dan is a plugin of its own (`example-org/private-repo`). Put off for now: TomYum reading scores straight from
+multi-target storage. Put off for now: TomYum reading scores straight from
 the website's tables (they're mirrored today).
 
 ## Documentation by topic
 
 [osu-web](docs/osu-web.md) · [lazer](docs/lazer.md) · [spectating](docs/spectating.md) ·
-[custom beatmaps](docs/custom-beatmaps.md) · [anti-cheat](docs/anticheat.md) ·
-[achievements](docs/achievements.md) · [Discord](docs/discord.md) · [IRC](docs/irc.md) ·
+[custom beatmaps](docs/custom-beatmaps.md) · [achievements](docs/achievements.md) · [IRC](docs/irc.md) ·
 [plugins](docs/plugins.md) · [local testing](docs/local-testing.md)
 
 ## Building

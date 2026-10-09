@@ -2,8 +2,8 @@
 
 [pishifat/qat](https://github.com/pishifat/qat), the site osu!'s Beatmap Nominators and NAT use for BN
 applications, evaluations, reports, vetoes and qualified-map checks, runs next to TomYum as
-`bn.<domain>`. Players sign in with their account on this server. Our fork (`example-org/private-repo`, branch
-`prod`) makes the osu! server configurable; see its README, "Running on another osu! server".
+`bn.<domain>`. Players sign in with their account on this server. It needs a fork that makes the osu! server configurable
+(server address, group ids); upstream qat talks to osu.ppy.sh only.
 
 ## How it's deployed
 
@@ -70,7 +70,7 @@ The osu! link uses the same osu! OAuth app as TomYum (`OSU_LINK_CLIENT_ID`/`SECR
 callback on osu.ppy.sh must be `https://osu.<domain>/home/account/connections/osu_bancho/callback`.
 Discord needs its own application (`DISCORD_OAUTH_CLIENT_ID`/`SECRET`, callback
 `https://osu.<domain>/home/account/connections/discord/callback`); a Discord link is also written to
-TomYum's `discord_links`, so the Discord bot knows it.
+TomYum's `discord_links`, so a Discord plugin can use it.
 
 ## Off by default
 

@@ -46,7 +46,7 @@ public sealed class DailyChallengeOptions
     public int RulesetFor(DateOnly day)
     {
         var list = Rulesets.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(r => Discord.DiscordFormat.ParseRuleset(r) ?? (int.TryParse(r, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id is >= 0 and <= 3 ? id : (int?)null))
+            .Select(r => TomYum.Server.OsuWeb.Rulesets.Parse(r) ?? (int.TryParse(r, NumberStyles.None, CultureInfo.InvariantCulture, out var id) && id is >= 0 and <= 3 ? id : (int?)null))
             .OfType<int>().ToList();
         return list.Count == 0 ? 0 : list[day.DayNumber % list.Count];
     }
@@ -103,7 +103,7 @@ public sealed class DailyChallengeQueueJob : BackgroundService
             if (await challenge.PickMapAsync(ruleset, min, max, cancellationToken).ConfigureAwait(false) is not { } beatmapId)
             {
                 _logger.LogWarning("Daily challenge: no unused ranked {Ruleset} map between {Min} and {Max} stars left for {Day}.",
-                    Discord.DiscordFormat.Ruleset(ruleset), min, max, day);
+                    TomYum.Server.OsuWeb.Rulesets.Name(ruleset), min, max, day);
                 break;
             }
             await challenge.EnqueueAsync(beatmapId, ruleset, AllowedMods[ruleset], [], null, cancellationToken).ConfigureAwait(false);

@@ -92,7 +92,7 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
         // The spectator server saved player 3's lazer replay (named by its website score id).
         var lazerReplays = Directory.CreateTempSubdirectory().FullName;
         await File.WriteAllBytesAsync(Path.Combine(lazerReplays, "77"), [1, 2, 3]);
-        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Circleguard:LazerReplaysPath"] = lazerReplays }).Build();
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Replays:LazerPath"] = lazerReplays }).Build();
 
         async Task<JsonElement> Board(string? sort) => await Body(await AdminModeScoresEndpoints.LeaderboardAsync(
             10, 4, 2, viewerId: 3, mods: null, sort, stableOnly: null, new TomYum.Persistence.Repositories.BeatmapRepository(NewTomYumContext()), NewTomYumContext(), new RestrictedUsers(), configuration, CancellationToken.None));

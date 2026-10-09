@@ -33,7 +33,6 @@ public sealed class BanchoBotCommands
     private readonly PluginCommandRegistry _pluginCommands;
     private readonly LoadedPluginRegistry _loadedPlugins;
     private readonly ModerationCommands? _moderation;
-    private readonly Discord.DiscordLinkCodes? _discordCodes;
     private readonly MapCommands? _maps;
 
     public BanchoBotCommands(
@@ -46,7 +45,6 @@ public sealed class BanchoBotCommands
         PluginCommandRegistry pluginCommands,
         LoadedPluginRegistry loadedPlugins,
         ModerationCommands? moderation = null,
-        Discord.DiscordLinkCodes? discordCodes = null,
         MapCommands? maps = null)
     {
         _version = version;
@@ -58,7 +56,6 @@ public sealed class BanchoBotCommands
         _pluginCommands = pluginCommands;
         _loadedPlugins = loadedPlugins;
         _moderation = moderation;
-        _discordCodes = discordCodes;
         _maps = maps;
     }
 
@@ -137,9 +134,6 @@ public sealed class BanchoBotCommands
         ? "Moderation isn't available on this server."
         : await _moderation.RunAsync(context.Caller.UserId, context.Name, context.Args, context.CancellationToken).ConfigureAwait(false);
 
-    /// <summary><c>!link &lt;code&gt;</c>: links the caller's account to the Discord account that asked for the code.</summary>
-    [ChatCommand("link", Usage = "<code>", Help = "Discord")]
-    private Task<string> Link(ChatCommandContext context) => LinkDiscordAsync(context.Caller, context.Parts, context.CancellationToken);
 
     /// <summary>
     /// <c>!irc</c>: a new IRC password (the old one stops working), always sent as a private message,
@@ -166,24 +160,6 @@ public sealed class BanchoBotCommands
     [ChatCommand("report", Usage = "<player> <reason>")]
     private Task<string> Report(ChatCommandContext context) => ReportAsync(context.Caller, context.Parts, context.CancellationToken);
 
-    private async Task<string> LinkDiscordAsync(OnlinePlayer caller, string[] parts, CancellationToken cancellationToken)
-    {
-        if (_discordCodes is null)
-            return "There's no Discord bot on this server.";
-        if (parts.Length < 2)
-            return "Use /link in our Discord to get a code, then send !link <code> here.";
-        if (_discordCodes.Redeem(parts[1]) is not { } discordId)
-            return "That code is wrong or expired. Get a new one with /link in Discord.";
-
-        using (var scope = _scopeFactory.CreateScope())
-        {
-            await scope.ServiceProvider.GetRequiredService<IDiscordLinkRepository>()
-                .LinkAsync(caller.UserId, discordId, DateTime.UtcNow, cancellationToken).ConfigureAwait(false);
-        }
-        await _discordCodes.OnLinkedAsync(caller.UserId, discordId).ConfigureAwait(false);
-        return "Linked to Discord! Your roles will show up there in a moment.";
-    }
-
     /// <summary>Report reasons as players type them, and the website's name for each.</summary>
     private static readonly Dictionary<string, string> ReportReasons = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -196,7 +172,7 @@ public sealed class BanchoBotCommands
 
     /// <summary>
     /// <c>!report &lt;player&gt; &lt;reason&gt; [details]</c>: files a report like the website's (staff
-    /// see it in the GMT panel and on Discord). A few per hour at most.
+    /// see it in the GMT panel). A few per hour at most.
     /// </summary>
     private async Task<string> ReportAsync(OnlinePlayer caller, string[] parts, CancellationToken cancellationToken)
     {

@@ -87,7 +87,7 @@ public sealed class ClientVerificationTests : OsuWebDatabaseTest
         Assert.Equal(-1, unpatched.UserId);
         Assert.Contains($"https://osu.{Domain}/home/download", unpatched.Notice);
 
-        // Patched (step 12 of the prod patcher): its whole device and the capability. A new device: held.
+        // Patched (step 12 of the client patcher): its whole device and the capability. A new device: held.
         var held = Reply(await LogInAsync(login, version, laptop, "|tomyum-verify", name: name));
         Assert.Equal(-8, held.UserId);
         Assert.Contains($"https://osu.{Domain}/p/verify", held.Notice);

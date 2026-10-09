@@ -66,8 +66,7 @@ The spectator server tells lazer clients the room is open.
 TomYum keeps that queue filled (`DailyChallengeQueueJob`, hourly): a week ahead, each a random
 ranked map made for the day's ruleset, 1–5 minutes long, 4–6.5★, from a set that was never a daily
 challenge. Players may add EZ, NF, HD, HR (FI and MR in mania), SD, PF and FL, but no rate changes.
-The Discord bot announces each day's room in the map of the day channel and posts the top five when
-it closes. Settings (`tomyum.env`):
+Settings (`tomyum.env`):
 
 ```
 TOMYUM_DAILYCHALLENGE__ENABLED=true         # false: fill daily_challenge_queue yourself

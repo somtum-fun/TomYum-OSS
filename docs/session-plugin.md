@@ -6,7 +6,7 @@
 The Session plugin is TomYum's **website (frontend) authentication layer**: a browser or frontend
 app posts credentials, gets back an opaque session token (also set as a cookie), and uses it to stay
 logged in and to manage its active sessions. It is a clean-room port of the auth core of
-bancho.py+prod's `app/api/domains/session.py`, adapted to TomYum's schema and the plugin ABI.
+a bancho.py fork's `app/api/domains/session.py`, adapted to TomYum's schema and the plugin ABI.
 
 It ships as **one trusted, loose-source plugin** mounted on the **`session` subdomain**
 (`session.<domain>`). "Loose source" means the `.cs` files are compiled at runtime by Roslyn — no
