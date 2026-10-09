@@ -82,7 +82,8 @@ _The host works (Phase 1), but the production server runs **0 plugins**: nothing
 
 - [ ] Mount `deploy/production/plugins/` into the server container and document deploying one
       (compiled `.dll` or loose `.cs` with `Plugins:AllowLooseSource`).
-- [ ] Decide which to run: the Session plugin (`plugins/tomyum-session`), DAN mode (⏸ above), custom ones.
+- [x] The Session plugin (`plugins/tomyum-session`) isn't needed with osu-web (it does website logins); it's an optional
+      example for servers with their own frontend.
 - [ ] Publish the remaining hot-path events (`ScoreSubmitting` veto, `SpectateFrame`, `ChatMessage`) as
       their first consumers land.
 
