@@ -1038,6 +1038,14 @@ CREATE TABLE tomyum_account_flags (
   PRIMARY KEY (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+CREATE TABLE tomyum_site_settings (
+  name varchar(100) NOT NULL,
+  value text NULL,
+  created_at timestamp NULL,
+  updated_at timestamp NULL,
+  PRIMARY KEY (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 CREATE TABLE tomyum_login_history (
   id bigint unsigned NOT NULL AUTO_INCREMENT,
   user_id int unsigned NOT NULL,

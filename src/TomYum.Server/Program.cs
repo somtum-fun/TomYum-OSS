@@ -185,6 +185,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService(sp => sp.GetRequiredService<OsuWebChatBridge>());
     // Recent activity "achieved rank #N" entries and #1s in #announce, for stable and lazer plays.
     builder.Services.AddHostedService<ScoreRankEvents>();
+    // The pp cap (basic anti-cheat, the admin panel's Anti-cheat settings): over the cap and not whitelisted is restricted.
+    builder.Services.AddHostedService<PpCapWatch>();
     // Custom sets nobody updated for four weeks go to the graveyard, as on osu!.
     builder.Services.AddHostedService<CustomGraveyardJob>();
     // Lazer's Relax plays on TomYum's relax leaderboards (ppy's processor doesn't rank them).

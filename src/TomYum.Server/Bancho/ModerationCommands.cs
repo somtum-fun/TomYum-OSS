@@ -293,7 +293,7 @@ public sealed class ModerationCommands
     }
 
     /// <summary>Restricted players leave their country's ranking (and come back), as with the panel.</summary>
-    private static async Task RecalculateCountryAsync(IServiceProvider services, int userId, CancellationToken cancellationToken)
+    internal static async Task RecalculateCountryAsync(IServiceProvider services, int userId, CancellationToken cancellationToken)
     {
         if (services.GetService<OsuWebScoreMirror>() is not { } mirror || services.GetService<OsuWeb.OsuWebInterop>() is not { IsConfigured: true } interop)
             return;
