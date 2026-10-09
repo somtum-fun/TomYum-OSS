@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 using TomYum.Plugins.Abstractions;
+using TomYum.Server.Anticheat;
 
 namespace TomYum.Server.Plugins;
 
@@ -11,8 +12,9 @@ public static class PluginServiceCollectionExtensions
     /// <summary>
     /// Registers the plugin host: the shared event bus, command registry, HTTP route table,
     /// host-service registry, the loaded-plugin registry, the read-only player view and online
-    /// counts exposed to plugins, and the <see cref="PluginHostService"/> that loads + drives plugins on start.
-    /// Requires <c>DatabaseOptions</c> to be registered (used for trusted plugin data access).
+    /// counts exposed to plugins, the anti-cheat challenge service exposed to plugins, and the
+    /// <see cref="PluginHostService"/> that loads + drives plugins on start. Requires
+    /// <c>DatabaseOptions</c> to be registered (used for trusted plugin data access).
     /// </summary>
     public static IServiceCollection AddTomYumPlugins(this IServiceCollection services, IConfiguration configuration)
     {
@@ -33,6 +35,12 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<IHostOnlineCounts, HostOnlineCountsView>();
         services.AddSingleton<IHostMessenger, HostMessenger>();
         services.AddSingleton<IHostSpectating, HostSpectating>();
+
+        // Anti-cheat challenge service: exposed to plugins via GetHostService<IChallengeService>().
+        // Lives alongside plugin wiring because it is itself a host service, not an AC plugin.
+        services.Configure<AnticheatOptions>(configuration.GetSection(AnticheatOptions.SectionName));
+        services.AddSingleton<ChallengeService>();
+        services.AddSingleton<IChallengeService>(sp => sp.GetRequiredService<ChallengeService>());
 
         services.AddHostedService<PluginHostService>();
 

@@ -47,6 +47,7 @@ public sealed class BanchoLoginHandler
     private readonly TomYum.Plugins.Abstractions.IEventBus? _events;
     private readonly IClientHashRepository? _clientHashes;
     private readonly IStaffLogRepository? _staffLog;
+    private readonly TomYum.Server.Anticheat.OldClientProofOptions? _oldClientProof;
     private readonly PresenceStats? _presenceStats;
     private readonly IFriendRepository? _friends;
     private readonly TomYum.Persistence.OsuWeb.OsuWebPrivateMessages? _privateMessages;
@@ -56,6 +57,7 @@ public sealed class BanchoLoginHandler
     private readonly TomYum.Server.Admin.RestrictionNotices? _restrictionNotices;
     private readonly TomYum.Server.Admin.Maintenance? _maintenance;
     private readonly IServiceProvider? _services;
+    private readonly TomYum.Plugins.Abstractions.IChallengeService? _challengeService;
 
     /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
     public const int UnreadLimit = 50;
@@ -135,8 +137,11 @@ public sealed class BanchoLoginHandler
         TomYum.Persistence.OsuWeb.OsuWebAccountFlags? accountFlags = null,
         TomYum.Server.Admin.RestrictionNotices? restrictionNotices = null,
         TomYum.Server.Admin.Maintenance? maintenance = null,
-        IServiceProvider? services = null)
+        IServiceProvider? services = null,
+        Microsoft.Extensions.Options.IOptions<TomYum.Server.Anticheat.OldClientProofOptions>? oldClientProof = null,
+        TomYum.Plugins.Abstractions.IChallengeService? challengeService = null)
     {
+        _oldClientProof = oldClientProof?.Value is { IsEnabled: true } proofOptions ? proofOptions : null;
         _services = services;
         _maintenance = maintenance;
         _restrictionNotices = restrictionNotices;
@@ -155,7 +160,49 @@ public sealed class BanchoLoginHandler
         _events = events;
         _clientHashes = clientHashes;
         _staffLog = staffLog;
+        _challengeService = challengeService;
     }
+
+    /// <summary>The staff log action for an old build refused at login or with a score (Anticheat:OldClients).</summary>
+    public const string OldClientAction = "user.old_client_refused";
+
+    /// <summary>
+    /// Why an old build can't log in (Anticheat:OldClients), or null when it can: it must send a proof signed
+    /// with a patched build's key, with no flag raised. A raised flag goes to the staff log.
+    /// </summary>
+    private async Task<string?> OldClientRefusalAsync(User user, LoginRequest request, CancellationToken cancellationToken)
+    {
+        var options = _oldClientProof!;
+        var proof = TomYum.Server.Anticheat.OldClientProof.Parse(request.AntiCheatProof);
+        if (proof is null || !proof.Signs(options.Secret!, TomYum.Server.Anticheat.OldClientProof.LoginMessage(request.Username, request.PasswordMd5, proof.Flags)))
+        {
+            _logger.LogInformation("Old client check: {Username} (id {UserId}) on {Version} sent no patched build's proof{Refused}.", user.Username, user.Id, request.OsuVersion, options.Require ? "; refused" : string.Empty);
+            return OldClientProofNotice(Domain, DownloadsUrl);
+        }
+        if (proof.Flags == TomYum.Server.Anticheat.OldClientFindings.None)
+            return null;
+
+        _logger.LogWarning("Old client check: {Username} (id {UserId}) on {Build}: {Flags}{Refused}.", user.Username, user.Id, proof.Build, proof.FlagText(), options.Require ? "; refused" : string.Empty);
+        if (_staffLog is not null)
+        {
+            await _staffLog.AddAsync(new StaffLogEntry
+            {
+                CreatedAt = DateTime.UtcNow,
+                Action = OldClientAction,
+                TargetId = user.Id,
+                Summary = options.Require
+                    ? $"{user.Username}'s login on {proof.Build} was refused: {proof.FlagText()}."
+                    : $"{user.Username} logged in on {proof.Build} with: {proof.FlagText()} (not refused: Anticheat:OldClients:Require is off).",
+            }, cancellationToken).ConfigureAwait(false);
+        }
+        return "Something on your computer isn't allowed while playing here (a debugger or a cheat tool). Close it and log in again.";
+    }
+
+    /// <summary>The notice for an old build that isn't one of this server's patched builds.</summary>
+    /// <param name="domain">The server's domain.</param>
+    /// <param name="downloadsUrl">Where the patched builds are.</param>
+    public static string OldClientProofNotice(string domain, string downloadsUrl) =>
+        $"This old osu! build can't play on {domain} as it is. Get the patched builds at {downloadsUrl}.";
 
     /// <summary>The outcome of a login attempt: the framed response body and the new token (if any).</summary>
     /// <param name="Body">Framed bancho packets to write to the HTTP response body.</param>
@@ -245,10 +292,19 @@ public sealed class BanchoLoginHandler
         if (_clientHashes is not null && await IsEvadingAsync(user, request.ClientHashes, cancellationToken).ConfigureAwait(false))
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, EvasionNotice), null);
 
+        // Old builds must be this server's patched ones, signed and clean (Anticheat:OldClients).
+        var build = ClientBuild.Parse(request.OsuVersion) with { HandlesVerification = request.HandlesVerification };
+        if (_oldClientProof is not null && build.IsLegacy && user.Id != BanchoBot.UserId
+            && await OldClientRefusalAsync(user, request, cancellationToken).ConfigureAwait(false) is { } refusal
+            && _oldClientProof.Require)
+        {
+            await RecordLoginAsync(user.Id, "old_client", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, refusal), null);
+        }
+
         // A device the player hasn't confirmed (ClientVerificationOptions): the client opens the
         // website's verify page (osu.<domain>/p/verify), where they confirm it after signing in.
         // Builds that can't be asked (before b20151228, not patched for it) follow OldClients.
-        var build = ClientBuild.Parse(request.OsuVersion) with { HandlesVerification = request.HandlesVerification };
         if (_clientVerification is not null && user.Id != BanchoBot.UserId)
         {
             var hashes = request.ClientHashes;
@@ -326,6 +382,35 @@ public sealed class BanchoLoginHandler
         if (user.Country == "xx" && resolvedCountry != "xx")
         {
             await _users.UpdateCountryAsync(user.Id, resolvedCountry, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Plugin AC gate (osu!auth, build whitelist). Dev-mode skips the dispatch entirely so a
+        // broken AC plugin can't block logins; tournament sessions skip it too (BanchoBot-style
+        // extra windows, not a cheater surface). First veto wins — reason is shown to the player
+        // as a bancho notification, so plugins should keep it generic.
+        if (_events is not null && !tournament && _challengeService?.DevMode != true)
+        {
+            var attemptHashes = request.ClientHashes;
+            var attempt = new TomYum.Plugins.Abstractions.ClientLoginAttemptedEvent(
+                user.Id,
+                user.Username,
+                request.OsuVersion,
+                attemptHashes.OsuPathMd5,
+                attemptHashes.AdaptersMd5,
+                attemptHashes.AdaptersStr,
+                attemptHashes.UninstallMd5,
+                attemptHashes.DiskSignatureMd5,
+                resolvedCountry ?? string.Empty,
+                clientAddress);
+            await _events.PublishAsync(attempt, cancellationToken).ConfigureAwait(false);
+            if (attempt.IsVetoed)
+            {
+                _logger.LogInformation(
+                    "Login refused: {Username} (id {UserId}) vetoed by plugin: {Reason}.",
+                    user.Username, user.Id, attempt.VetoReason);
+                await RecordLoginAsync(user.Id, "plugin_veto", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+                return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, attempt.VetoReason ?? string.Empty), null);
+            }
         }
 
         var presence = new BanchoPresence

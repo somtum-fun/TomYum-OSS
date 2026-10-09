@@ -68,6 +68,7 @@ public static class ScoreSubmissionEndpoint
         IScoreQueue scoreQueue,
         IOsuWebSync osuWebSync,
         TomYum.Plugins.Abstractions.IEventBus events,
+        Microsoft.Extensions.Options.IOptions<TomYum.Server.Anticheat.OldClientProofOptions> oldClientProof,
         CancellationToken cancellationToken)
     {
         var logger = loggerFactory.CreateLogger("TomYum.ScoreSubmission");
@@ -187,6 +188,39 @@ public static class ScoreSubmissionEndpoint
         {
             logger.LogWarning("Score submission rejected: '{Username}' is a bot account", usernameFromScore);
             return Rejected();
+        }
+
+        // Old builds must sign each score as this server's patched builds, with nothing found (Anticheat:OldClients).
+        if (legacy && oldClientProof.Value is { IsEnabled: true } proofOptions)
+        {
+            var tac = context.Request.Query[TomYum.Server.Anticheat.OldClientProof.ScoreField].ToString() is { Length: > 0 } inQuery
+                ? inQuery
+                : form[TomYum.Server.Anticheat.OldClientProof.ScoreField].ToString();
+            var proof = TomYum.Server.Anticheat.OldClientProof.Parse(tac);
+            if (proof is null || !proof.Signs(proofOptions.Secret!, TomYum.Server.Anticheat.OldClientProof.ScoreMessage(decrypted, proof.Flags)))
+            {
+                logger.LogWarning("Old client check: '{Username}''s score has no valid patched-build proof{Refused}", usernameFromScore, proofOptions.Require ? "; rejected" : string.Empty);
+                if (proofOptions.Require)
+                    return Rejected();
+            }
+            else if (proof.Flags != TomYum.Server.Anticheat.OldClientFindings.None)
+            {
+                logger.LogWarning("Old client check: '{Username}''s score on {Build}: {Flags}{Refused}", usernameFromScore, proof.Build, proof.FlagText(), proofOptions.Require ? "; rejected" : string.Empty);
+                if (context.RequestServices.GetService<IStaffLogRepository>() is { } staffLog)
+                {
+                    await staffLog.AddAsync(new StaffLogEntry
+                    {
+                        CreatedAt = DateTime.UtcNow,
+                        Action = Bancho.BanchoLoginHandler.OldClientAction,
+                        TargetId = user.Id,
+                        Summary = proofOptions.Require
+                            ? $"{user.Username}'s score on {proof.Build} was rejected: {proof.FlagText()}."
+                            : $"{user.Username} submitted a score on {proof.Build} with: {proof.FlagText()} (not rejected: Anticheat:OldClients:Require is off).",
+                    }, cancellationToken).ConfigureAwait(false);
+                }
+                if (proofOptions.Require)
+                    return Rejected();
+            }
         }
 
         var player = registry.GetByUserId(user.Id);

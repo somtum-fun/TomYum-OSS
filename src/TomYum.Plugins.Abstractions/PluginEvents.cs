@@ -43,6 +43,142 @@ public sealed record PlayerLoginEvent(long UserId, string Username, string Count
 /// <param name="Held">Whether the login was held rather than refused for good.</param>
 public sealed record PlayerLoginRefusedEvent(string Username, bool Held) : IPluginEvent;
 
+/// <summary>
+/// Vetoable: raised just before an osu! login succeeds, after built-in gates (password, device
+/// verification, evasion check, maintenance) have passed. Carries the client-reported fields a
+/// plugin needs to run its own gate (osu!auth hash validation, build whitelist, nonce-signed
+/// challenge). A veto turns the login into an authentication failure with the veto reason shown
+/// to the player; keep reasons generic ("please update your game client") so an attacker reading the
+/// client text does not learn which check failed. The host skips this dispatch entirely when
+/// <see cref="IChallengeService.DevMode"/> is on.
+/// </summary>
+public sealed class ClientLoginAttemptedEvent : VetoableEvent
+{
+    /// <summary>Creates the pre-login event.</summary>
+    public ClientLoginAttemptedEvent(
+        long userId,
+        string username,
+        string osuVersion,
+        string osuPathMd5,
+        string adaptersMd5,
+        string adaptersRaw,
+        string uninstallMd5,
+        string diskSignatureMd5,
+        string countryIso,
+        string? clientAddress)
+    {
+        UserId = userId;
+        Username = username;
+        OsuVersion = osuVersion;
+        OsuPathMd5 = osuPathMd5;
+        AdaptersMd5 = adaptersMd5;
+        AdaptersRaw = adaptersRaw;
+        UninstallMd5 = uninstallMd5;
+        DiskSignatureMd5 = diskSignatureMd5;
+        CountryIso = countryIso;
+        ClientAddress = clientAddress;
+    }
+
+    /// <summary>The authenticated user's id.</summary>
+    public long UserId { get; }
+
+    /// <summary>Display name.</summary>
+    public string Username { get; }
+
+    /// <summary>Client-reported osu! version string (e.g. <c>b20231030.1</c> on stable).</summary>
+    public string OsuVersion { get; }
+
+    /// <summary>MD5 of the osu! install path (stable's uninstall-id sibling); empty on lazer.</summary>
+    public string OsuPathMd5 { get; }
+
+    /// <summary>MD5 of the enabled network adapters' MACs (stable); empty on lazer.</summary>
+    public string AdaptersMd5 { get; }
+
+    /// <summary>Raw adapters string (pre-hash) — osu!auth validators need the list before it was hashed.</summary>
+    public string AdaptersRaw { get; }
+
+    /// <summary>MD5 of the install-registry uninstall id (stable); empty on lazer.</summary>
+    public string UninstallMd5 { get; }
+
+    /// <summary>MD5 of the disk serial (stable); empty on lazer.</summary>
+    public string DiskSignatureMd5 { get; }
+
+    /// <summary>Two-letter country code resolved for this login (CF-IPCountry when present, else GeoIP, else <c>xx</c>).</summary>
+    public string CountryIso { get; }
+
+    /// <summary>The player's IP for this login, or null when none is available.</summary>
+    public string? ClientAddress { get; }
+}
+
+/// <summary>
+/// Vetoable: raised when the osu!stable in-game registration endpoint (<c>POST /users</c>) is
+/// about to validate or create an account. Carries the submitted username / email / IP /
+/// country. A veto turns the response into a <c>form_error</c> on the username field with the
+/// veto reason. The host skips this dispatch when <see cref="IChallengeService.DevMode"/> is on.
+/// </summary>
+public sealed class AccountRegistrationAttemptedEvent : VetoableEvent
+{
+    /// <summary>Creates the pre-registration event.</summary>
+    public AccountRegistrationAttemptedEvent(
+        string username,
+        string email,
+        string countryIso,
+        string? clientAddress,
+        bool isCreate)
+    {
+        Username = username;
+        Email = email;
+        CountryIso = countryIso;
+        ClientAddress = clientAddress;
+        IsCreate = isCreate;
+    }
+
+    /// <summary>Submitted username (unverified).</summary>
+    public string Username { get; }
+
+    /// <summary>Submitted email (unverified).</summary>
+    public string Email { get; }
+
+    /// <summary>Two-letter country code (CF-IPCountry, else GeoIP, else <c>xx</c>).</summary>
+    public string CountryIso { get; }
+
+    /// <summary>Submitter IP, or null when none is available.</summary>
+    public string? ClientAddress { get; }
+
+    /// <summary>True on the final submit (<c>check=0</c>); false on per-keystroke validation.</summary>
+    public bool IsCreate { get; }
+}
+
+/// <summary>
+/// Vetoable: raised when a client anti-cheat handshake flag has arrived AND
+/// <see cref="IChallengeService.Verify"/> has accepted it. Plugins may still veto on top of
+/// the signature check (build id not on allowlist, measurement not recognised). A veto drops
+/// the session with the veto reason.
+/// </summary>
+public sealed class ClientFlagReceivedEvent : VetoableEvent
+{
+    /// <summary>Creates the post-verify flag event.</summary>
+    public ClientFlagReceivedEvent(long userId, string sessionKey, string buildId, ReadOnlyMemory<byte> processMeasurement)
+    {
+        UserId = userId;
+        SessionKey = sessionKey;
+        BuildId = buildId;
+        ProcessMeasurement = processMeasurement;
+    }
+
+    /// <summary>The player's user id.</summary>
+    public long UserId { get; }
+
+    /// <summary>Session key the challenge was issued against.</summary>
+    public string SessionKey { get; }
+
+    /// <summary>Build id the client reported.</summary>
+    public string BuildId { get; }
+
+    /// <summary>Measurement the client supplied; empty when the plugin issuing the challenge did not require one.</summary>
+    public ReadOnlyMemory<byte> ProcessMeasurement { get; }
+}
+
 /// <summary>Raised when a player sends a chat message, before it is delivered to recipients.</summary>
 /// <param name="SenderUserId">Id of the sending player.</param>
 /// <param name="SenderUsername">Display name of the sending player.</param>

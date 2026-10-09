@@ -40,6 +40,16 @@ public interface IPluginContext
     /// <typeparam name="TService">A service type published by the host (e.g. a bot-spectate controller).</typeparam>
     /// <returns>The service instance, or <c>null</c> when the host does not expose it.</returns>
     TService? GetHostService<TService>() where TService : class;
+
+    /// <summary>
+    /// Offers a service of this plugin to the others (they get it with <see cref="GetHostService{TService}"/>),
+    /// e.g. an <see cref="IScoreCheckService"/>. <typeparamref name="TService"/> must be a type every plugin
+    /// shares (from this assembly), or no other plugin can use it.
+    /// </summary>
+    /// <typeparam name="TService">The shared type it's offered as.</typeparam>
+    /// <param name="service">The instance.</param>
+    void PublishHostService<TService>(TService service) where TService : class =>
+        throw new NotSupportedException("This host doesn't let plugins publish services.");
 }
 
 /// <summary>

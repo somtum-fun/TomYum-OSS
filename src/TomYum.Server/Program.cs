@@ -270,6 +270,8 @@ builder.Services.AddTomYumPlugins(builder.Configuration);
 // Named HttpClient for the mirror; options let operators point at any mino.pw-compatible mirror.
 builder.Services.Configure<DirectOptions>(builder.Configuration.GetSection(DirectOptions.Section));
 builder.Services.Configure<TomYum.Server.Bancho.ClientVerificationOptions>(builder.Configuration.GetSection(TomYum.Server.Bancho.ClientVerificationOptions.Section));
+// Old builds patched for a server prove it at login and with each score (docs/old-clients.md); off without a secret.
+builder.Services.Configure<TomYum.Server.Anticheat.OldClientProofOptions>(builder.Configuration.GetSection(TomYum.Server.Anticheat.OldClientProofOptions.Section));
 builder.Services.AddHttpClient(DirectEndpoints.HttpClientName, http =>
 {
     http.Timeout = TimeSpan.FromSeconds(15);

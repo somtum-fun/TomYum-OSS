@@ -40,6 +40,29 @@ public sealed record LoginRequest(
     public bool HandlesVerification { get; init; }
 
     /// <summary>
+    /// The capability a patched old build signs its login with (<c>tomyum-ac:&lt;build&gt;:&lt;flags&gt;:&lt;mac&gt;</c>,
+    /// checked by the server's <c>OldClientProof</c>), or null when it sent none.
+    /// </summary>
+    public string? AntiCheatProof { get; init; }
+
+    /// <summary>The first capability after the pm field that starts with <paramref name="prefix"/>, or null.</summary>
+    /// <param name="info">The login line's fields.</param>
+    /// <param name="prefix">The capability's name and colon, e.g. <c>tomyum-ac:</c>.</param>
+    public static string? CapabilityValue(string[] info, string prefix)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        for (var i = 5; i < info.Length; i++)
+        {
+            foreach (var part in info[i].Split(','))
+            {
+                if (part.Trim().StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                    return part.Trim();
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Whether the login line's fields (<c>version|utc|city|hashes|pm|...</c>, split on <c>|</c>) name
     /// <paramref name="capability"/> after the pm field (a comma-separated list).
     /// </summary>
@@ -128,6 +151,7 @@ public sealed record LoginRequest(
             PmPrivate: pmRaw.StartsWith('1'))
         {
             HandlesVerification = HasCapability(info, VerifyCapability),
+            AntiCheatProof = CapabilityValue(info, "tomyum-ac:"),
         };
         return true;
     }

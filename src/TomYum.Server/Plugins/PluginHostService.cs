@@ -31,6 +31,8 @@ internal sealed class PluginHostService : IHostedService
     private readonly IHostOnlineCounts _onlineCounts;
     private readonly IHostMessenger _messenger;
     private readonly IHostSpectating _spectating;
+    private readonly IServiceProvider _services;
+    private readonly IChallengeService _challengeService;
 
     private readonly List<IPlugin> _plugins = [];
     private PluginLoader? _loader;
@@ -49,8 +51,11 @@ internal sealed class PluginHostService : IHostedService
         IHostPlayerView playerView,
         IHostOnlineCounts onlineCounts,
         IHostMessenger messenger,
-        IHostSpectating spectating)
+        IHostSpectating spectating,
+        IServiceProvider services,
+        IChallengeService challengeService)
     {
+        _services = services;
         _options = options;
         _configuration = configuration;
         _environment = environment;
@@ -66,6 +71,7 @@ internal sealed class PluginHostService : IHostedService
         _onlineCounts = onlineCounts;
         _messenger = messenger;
         _spectating = spectating;
+        _challengeService = challengeService;
     }
 
     public async Task StartAsync(CancellationToken cancellationToken)
@@ -75,6 +81,9 @@ internal sealed class PluginHostService : IHostedService
         _hostServices.Register(_onlineCounts);
         _hostServices.Register(_messenger);
         _hostServices.Register(_spectating);
+        // Everything else, for trusted plugins only (PluginContext hands it out only with Data).
+        _hostServices.Register(_services);
+        _hostServices.Register(_challengeService);
 
         var directory = ResolvePluginsDirectory(_options.Directory);
         _loader = new PluginLoader(

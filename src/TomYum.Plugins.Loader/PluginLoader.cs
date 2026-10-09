@@ -17,6 +17,9 @@ namespace TomYum.Plugins.Loader;
 /// <list type="bullet">
 /// <item>Compiled: each top-level <c>plugins/*.dll</c> is loaded into its own collectible
 /// <see cref="PluginLoadContext"/> and scanned for a public parameterless <see cref="IPlugin"/>.</item>
+/// <item>Compiled with dependencies: <c>plugins/&lt;name&gt;/&lt;name&gt;.dll</c> (a folder without a <c>plugin.json</c>),
+/// its own NuGet dependencies next to it (resolved through its <c>.deps.json</c>); host assemblies it
+/// doesn't ship come from the host.</item>
 /// <item>Loose source: each immediate subdirectory containing a <c>plugin.json</c> has its
 /// <c>*.cs</c> files compiled in memory with Roslyn (referencing the host's assemblies), then
 /// loaded the same way. Gated by <c>allowLooseSource</c>.</item>
@@ -55,6 +58,22 @@ public sealed class PluginLoader : IPluginLoader
         // Compiled plugins: top-level *.dll files.
         foreach (var dll in Directory.EnumerateFiles(pluginsDirectory, "*.dll", SearchOption.TopDirectoryOnly))
         {
+            try
+            {
+                loaded.AddRange(LoadCompiled(dll));
+            }
+            catch (Exception ex)
+            {
+                _log?.Invoke($"plugin: failed to load assembly '{dll}'", ex);
+            }
+        }
+
+        // Compiled plugins with their own dependencies: plugins/<name>/<name>.dll (and no plugin.json).
+        foreach (var dir in Directory.EnumerateDirectories(pluginsDirectory))
+        {
+            var dll = Path.Combine(dir, Path.GetFileName(dir) + ".dll");
+            if (File.Exists(Path.Combine(dir, "plugin.json")) || !File.Exists(dll))
+                continue;
             try
             {
                 loaded.AddRange(LoadCompiled(dll));
