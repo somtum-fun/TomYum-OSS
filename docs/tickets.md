@@ -51,6 +51,6 @@ the fetching.
 ## Replying
 
 Replies go from the ticket's address (or `MAIL_ADDRESS` if the mail server refuses it; by SMTP the
-ticket's address is then the one to reply to) as "Hello, … Regards, production support", with `[Ticket #N]` in the
+ticket's address is then the one to reply to) as "Hello, … Regards, <server name> support", with `[Ticket #N]` in the
 subject so the answer threads back. Staff can add notes (staff only), take a ticket or add other
 handlers, move it to another category, close it with a reason, and reopen it.

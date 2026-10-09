@@ -28,9 +28,9 @@
     -->
     <NoWarn>$(NoWarn);CS1591;CA1848;CA1873;CA1716;CA1707</NoWarn>
 
-    <Authors>blueskychan-dev, production &amp; sundeiii</Authors>
+    <Authors>blueskychan-dev, somtum.fun &amp; sundeiii</Authors>
     <Product>TomYum</Product>
-    <Copyright>Copyright (c) 2026 blueskychan-dev, production &amp; sundeiii</Copyright>
+    <Copyright>Copyright (c) 2026 blueskychan-dev, somtum.fun &amp; sundeiii</Copyright>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
 
     <!--

@@ -138,10 +138,15 @@ not published with the source.
 - Push **to the Branch** `git push origin feature/AmazingFeature`
 - Open a **Pull Request**
 
+## AI use
+
+Our team uses AI as an assistant, always under human review. Low-effort AI-generated ("slop") pull requests
+or comments may be closed without notice.
+
 ## License
 
 TomYum is licensed under the MIT License. Please see the [LICENSE](LICENSE) file for more
-information. Copyright (c) 2026 blueskychan-dev & production.
+information. Copyright (c) 2026 blueskychan-dev, somtum.fun & sundeiii.
 
 ## Acknowledgments
 
