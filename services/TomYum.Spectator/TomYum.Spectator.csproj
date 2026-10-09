@@ -4,7 +4,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/TomYum.Domain/TomYum.Domain.csproj" />
     <ProjectReference Include="../../src/TomYum.Caching/TomYum.Caching.csproj" />
-    <ProjectReference Include="../../src/TomYum.Lazer/TomYum.Lazer.csproj" />
   </ItemGroup>
 
 </Project>

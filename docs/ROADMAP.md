@@ -35,7 +35,7 @@ _Before `1.0.0`: TomYum should run anyone's server without this one's choices ba
       everything from configuration, with examples.
 - [ ] Clean-up: dead code and leftovers (unused `Storage` stubs until implemented), consistent naming.
       Done 2026-10-02: `TomYum.Caching/PlaceHolder.cs` removed, the test projects build without warnings.
-      Kept for now by decision (2026-10-02): the empty `TomYum.Lazer` project and the `services/` stubs.
+      Kept for now by decision (2026-10-02): the `services/` stubs. `TomYum.Lazer` was removed (2026-10-09): lazer runs on osu-web and ppy's services.
 - [ ] Docs for operators (install, upgrade, backup, every setting) and contributors (architecture,
       plugin API), a changelog per version, a licence review of what's bundled.
 - [ ] Security review (admin API signing, InterOp, uploads, OAuth), and the open items above that

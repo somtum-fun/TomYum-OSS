@@ -27,7 +27,6 @@
   <ItemGroup>
     <ProjectReference Include="../TomYum.Domain/TomYum.Domain.csproj" />
     <ProjectReference Include="../TomYum.Bancho/TomYum.Bancho.csproj" />
-    <ProjectReference Include="../TomYum.Lazer/TomYum.Lazer.csproj" />
     <ProjectReference Include="../TomYum.Persistence/TomYum.Persistence.csproj" />
     <ProjectReference Include="../TomYum.Caching/TomYum.Caching.csproj" />
     <ProjectReference Include="../TomYum.Storage/TomYum.Storage.csproj" />
