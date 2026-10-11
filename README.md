@@ -1,5 +1,7 @@
 # TomYum
 
+![TomYum-OSS: an osu! server written in C#, for lazer, stable and many client versions](docs/assets/banner.png)
+
 An extensible, horizontally scalable [osu!](https://osu.ppy.sh) bancho server written in
 C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 
