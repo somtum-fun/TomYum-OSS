@@ -360,18 +360,22 @@ public sealed class BanchoLoginHandler
         var tournament = request.OsuVersion.EndsWith("tourney", StringComparison.OrdinalIgnoreCase);
 
         // One game client per account, as bancho.py does: while the session already online is still
-        // talking (heard from in the last 10 seconds) this login is refused; a quiet one (crashed,
-        // closed without logging out) is logged out to make room. IRC sessions give way as before.
+        // talking (heard from in the last 10 seconds) a login from another machine is refused. The same
+        // machine (osu! restarted, or crashed: it often can't send its LOGOUT on the way out), a session
+        // the server told to reconnect, and a quiet one are logged out to make room. IRC sessions give way.
+        var device = DeviceOf(request.ClientHashes);
         if (!tournament && _registry.GetByUserId(user.Id) is { IsIrc: false } online && user.Id != BanchoBot.UserId)
         {
-            if (DateTimeOffset.UtcNow - online.LastActivityUtc < ActiveSessionWindow)
+            var sameDevice = device.Length > 0 && string.Equals(device, online.Device, StringComparison.OrdinalIgnoreCase);
+            if (!sameDevice && !online.ReconnectRequested && DateTimeOffset.UtcNow - online.LastActivityUtc < ActiveSessionWindow)
             {
                 _logger.LogInformation("Login refused: {Username} (id {UserId}) is already online.", user.Username, user.Id);
                 await RecordLoginAsync(user.Id, "already_online", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
                 return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, AlreadyOnlineNotice), null);
             }
 
-            _logger.LogInformation("Login: {Username} (id {UserId})'s previous session was quiet; logging it out.", user.Username, user.Id);
+            _logger.LogInformation("Login: {Username} (id {UserId})'s previous session is logged out ({Why}).", user.Username, user.Id,
+                online.ReconnectRequested ? "told to reconnect" : sameDevice ? "same machine" : "quiet");
             await LogOutAsync(online).ConfigureAwait(false);
         }
 
@@ -426,6 +430,7 @@ public sealed class BanchoLoginHandler
 
         var player = tournament ? _registry.AddTournamentClient(presence) : _registry.Add(presence);
         player.Build = build;
+        player.Device = device;
         player.IsRestricted = user.IsRestricted;
         player.SilenceEndUtc = user.SilenceEndUtc;
         IReadOnlyList<int> friendIds = _friends is null ? [] : await _friends.GetFriendIdsAsync(user.Id, cancellationToken).ConfigureAwait(false);
@@ -434,9 +439,12 @@ public sealed class BanchoLoginHandler
         // Plugins (welcome messages, per-login state). A plugin fault is logged, never breaks login.
         if (_events is not null && !tournament)
             await _events.PublishAsync(new TomYum.Plugins.Abstractions.PlayerLoginEvent(user.Id, user.Username, resolvedCountry ?? string.Empty), cancellationToken).ConfigureAwait(false);
-        var welcome = string.Create(CultureInfo.InvariantCulture, $"Welcome to TomYum, {user.Username}!");
+        // The welcome is the admin panel's (BanchoWelcome); staff can turn it off.
+        var welcome = _services?.GetService<BanchoWelcome>() is { } welcomes
+            ? await welcomes.ForAsync(user.Username, cancellationToken).ConfigureAwait(false)
+            : BanchoWelcome.Format(BanchoWelcome.DefaultMessage, user.Username);
         if (HeldDevices.TryRemove((user.Id, request.ClientHashes.UninstallMd5), out _))
-            welcome = "This device is now verified. " + welcome;
+            welcome = ("This device is now verified. " + welcome).TrimEnd();
 
         // Auto-join the player to the auto-join channels (e.g. #osu) so they can chat immediately,
         // and advertise every channel in the login burst. CHANNEL_AUTO_JOIN tells the client to
@@ -530,21 +538,14 @@ public sealed class BanchoLoginHandler
     /// </summary>
     private async Task LogOutAsync(OnlinePlayer player)
     {
-        if (_services?.GetService<Packets.BanchoPacketDispatcher>() is not { } dispatcher)
+        if (_services?.GetService<Packets.BanchoPacketDispatcher>() is null)
             return;
-        try
-        {
-            var logout = new BanchoPacketWriter(16).WritePacket((ServerPacketId)ClientPacketId.Logout, w => w.WriteInt32(0)).ToArray();
-            await dispatcher.DispatchAsync(player, _registry, _channels,
-                _services.GetRequiredService<MatchRegistry>(), _services, logout).ConfigureAwait(false);
-        }
-#pragma warning disable CA1031 // the new login replaces the session in the registry either way
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            _logger.LogWarning(ex, "Couldn't log out {UserId}'s previous session.", player.UserId);
-        }
+        await SessionEnd.LogOutAsync(player, _services, _logger).ConfigureAwait(false);
     }
+
+    /// <summary>The login's machine, for <see cref="OnlinePlayer.Device"/>: its uninstall id, else its disk signature.</summary>
+    private static string DeviceOf(ClientHashes hashes) =>
+        ClientHashMatch.Usable(hashes.UninstallMd5) ?? ClientHashMatch.Usable(hashes.DiskSignatureMd5) ?? string.Empty;
 
     /// <summary>The server's public domain (<c>Server:Domain</c>), for the links in notices.</summary>
     private string Domain =>

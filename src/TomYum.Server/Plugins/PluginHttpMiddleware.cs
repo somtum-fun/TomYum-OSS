@@ -67,6 +67,9 @@ public static class PluginHttpMiddleware
                     context.Response.Headers[key] = value;
             }
 
+            // 204 and 304 have no body (Kestrel throws on a write, even an empty one).
+            if (response.StatusCode is StatusCodes.Status204NoContent or StatusCodes.Status304NotModified)
+                return;
             await context.Response.Body.WriteAsync(response.Body, context.RequestAborted).ConfigureAwait(false);
         });
     }

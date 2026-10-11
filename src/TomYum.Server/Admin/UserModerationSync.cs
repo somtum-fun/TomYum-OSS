@@ -12,8 +12,8 @@ public sealed record UserRefreshResult(int UserId, bool Restricted, DateTimeOffs
 
 /// <summary>
 /// Applies staff changes made on the website to the game, live (GMT/Admin panels call it after
-/// every change): restriction (hide from others + leaderboards, restricted notice), silences
-/// (countdown for the player, others hide their messages), and a reconnect when the name or
+/// every change): restriction (hide from others and leaderboards; BanchoBot says why), silences
+/// (countdown for the player, others hide their messages), and a reconnect when the restriction, name or
 /// privileges changed. Also re-indexes the player's website scores when the restriction changed.
 /// </summary>
 public sealed class UserModerationSync
@@ -57,20 +57,18 @@ public sealed class UserModerationSync
         var restrictionChanged = _restricted.Contains(userId) != user.IsRestricted;
         _restricted.Set(userId, user.IsRestricted);
 
-        var reconnected = false;
+        string? reconnect = null;
         var player = _players.GetByUserId(userId);
         if (player is not null)
         {
             var now = _time.GetUtcNow();
 
+            // Restricted, or no longer: everyone else's user list now (the player's own client learns it
+            // when it logs in again, below; BanchoBot tells them why).
+            var restrictionFlipped = user.IsRestricted != player.IsRestricted;
             if (user.IsRestricted && !player.IsRestricted)
             {
                 player.IsRestricted = true;
-                var restricted = new BanchoPacketWriter(256);
-                ModerationPackets.WriteRestricted(restricted);
-                player.Enqueue(restricted.ToArray());
-
-                // Disappear from everyone else's user list.
                 var gone = new BanchoPacketWriter(16);
                 gone.WriteInt32Packet(ServerPacketId.UserLogout, userId);
                 _players.EnqueueToAll(gone.ToArray(), exceptUserId: userId);
@@ -78,10 +76,6 @@ public sealed class UserModerationSync
             else if (!user.IsRestricted && player.IsRestricted)
             {
                 player.IsRestricted = false;
-                var notice = new BanchoPacketWriter(128);
-                notice.WriteStringPacket(ServerPacketId.Notification, "Your account is no longer restricted.");
-                player.Enqueue(notice.ToArray());
-
                 var back = new BanchoPacketWriter(128);
                 LoginResponseBuilder.WritePresence(back, player.Presence);
                 LoginResponseBuilder.WriteStats(back, player.Presence);
@@ -104,15 +98,16 @@ public sealed class UserModerationSync
                 _players.EnqueueToAll(others.ToArray(), exceptUserId: userId);
             }
 
-            // A new name or privileges only take effect on login: make the client reconnect.
-            if (!string.Equals(player.Presence.Username, user.Username, StringComparison.Ordinal)
+            // A restriction, a new name or new privileges only take effect on login: the client reconnects
+            // (after BanchoBot's message, below, so that arrives first).
+            if (restrictionFlipped)
+            {
+                reconnect = string.Empty;
+            }
+            else if (!string.Equals(player.Presence.Username, user.Username, StringComparison.Ordinal)
                 || player.Presence.Privileges != PrivilegeMapper.ToBancho(user.Privileges))
             {
-                var restart = new BanchoPacketWriter(128);
-                restart.WriteStringPacket(ServerPacketId.Notification, "Your account was updated by staff; reconnecting.");
-                restart.WritePacket(ServerPacketId.Restart, w => w.WriteInt32(0));
-                player.Enqueue(restart.ToArray());
-                reconnected = true;
+                reconnect = "Your account was updated by staff; reconnecting.";
             }
         }
 
@@ -123,7 +118,10 @@ public sealed class UserModerationSync
         if (_notices is not null)
             await _notices.NotifyAsync(userId, user.Username, user.IsRestricted, cancellationToken).ConfigureAwait(false);
 
-        return new UserRefreshResult(userId, user.IsRestricted, user.SilenceEndUtc, player is not null, reconnected);
+        if (player is not null && reconnect is not null)
+            player.RequestReconnect(reconnect);
+
+        return new UserRefreshResult(userId, user.IsRestricted, user.SilenceEndUtc, player is not null, reconnect is not null);
     }
 
     /// <summary>The website's ranks and score search leave restricted players out; bring them up to date.</summary>

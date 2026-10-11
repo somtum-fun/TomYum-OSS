@@ -161,6 +161,7 @@ public class BotSpectatingTests
         var spectating = new HostSpectating(registry);
         spectating.AttachBot(host.UserId);
 
+        host.LoggedInUtc = DateTimeOffset.UtcNow.AddMinutes(-1); // past osu!'s stray logout after login
         await new LogoutHandler().HandleAsync(Context(host, registry, []));
 
         Assert.Equal(0, host.SpectatorCount);

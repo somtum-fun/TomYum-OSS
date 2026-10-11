@@ -67,10 +67,7 @@ public static class AdminAccountEndpoints
         if (players.GetByUserId(userId) is not { } player)
             return Results.Ok(new { online = false });
 
-        var packets = new BanchoPacketWriter(256);
-        packets.WriteStringPacket(ServerPacketId.Notification, string.IsNullOrWhiteSpace(request?.Message) ? "You were disconnected by staff." : request.Message);
-        packets.WritePacket(ServerPacketId.Restart, w => w.WriteInt32(0));
-        player.Enqueue(packets.ToArray());
+        player.RequestReconnect(string.IsNullOrWhiteSpace(request?.Message) ? "You were disconnected by staff." : request.Message);
         return Results.Ok(new { online = true });
     }
 

@@ -336,23 +336,8 @@ internal sealed class TcpBanchoSession : IDisposable
     /// <summary>A dropped connection logs the player out, as a LOGOUT packet would (unless the session already ended).</summary>
     private async Task LogoutAsync(string token)
     {
-        try
-        {
-            using var scope = _services.CreateScope();
-            var sp = scope.ServiceProvider;
-            var registry = sp.GetRequiredService<PlayerRegistry>();
-            if (registry.GetByToken(token) is not { } player)
-                return;
-            var logout = new BanchoPacketWriter(16).WritePacket((ServerPacketId)ClientPacketId.Logout, w => w.WriteInt32(0)).ToArray();
-            await sp.GetRequiredService<BanchoPacketDispatcher>().DispatchAsync(player, registry,
-                sp.GetRequiredService<ChannelRegistry>(), sp.GetRequiredService<MatchRegistry>(), sp, logout).ConfigureAwait(false);
-        }
-#pragma warning disable CA1031 // the connection is gone either way
-        catch (Exception ex)
-#pragma warning restore CA1031
-        {
-            _logger.LogWarning(ex, "TCP bancho: logging out a closed connection failed.");
-        }
+        if (_services.GetRequiredService<PlayerRegistry>().GetByToken(token) is { } player)
+            await SessionEnd.LogOutAsync(player, _services, _logger).ConfigureAwait(false);
     }
 
     public void Dispose()

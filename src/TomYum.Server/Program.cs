@@ -82,6 +82,9 @@ builder.Services.AddSingleton(sp => new Maintenance(sp.GetRequiredService<Player
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Maintenance>());
 builder.Services.AddSingleton<ChatLog>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ChatLog>());
+// The in-game welcome (the admin panel), and logging out clients that stopped polling.
+builder.Services.AddSingleton(sp => new BanchoWelcome(TimeProvider.System, sp.GetRequiredService<ILogger<BanchoWelcome>>(), sp.GetService<IServiceScopeFactory>()));
+builder.Services.AddHostedService<IdleSessionReaper>();
 // pp reworks (every score in some modes worked out again; their rankings wait), from the admin panel.
 builder.Services.AddSingleton(sp => new PpReworks(sp.GetRequiredService<IServiceScopeFactory>(), sp.GetRequiredService<ILogger<PpReworks>>(), TimeProvider.System));
 builder.Services.AddHostedService(sp => sp.GetRequiredService<PpReworks>());

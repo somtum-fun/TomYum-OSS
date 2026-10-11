@@ -246,16 +246,12 @@ public sealed class Maintenance : BackgroundService
         _lockApplied = true;
         SayInOsu("Maintenance has started. See you soon!");
 
-        var writer = new BanchoPacketWriter(256);
-        writer.WriteStringPacket(ServerPacketId.Notification, Notice);
-        writer.WritePacket(ServerPacketId.Restart, w => w.WriteInt32(0));
-        var bytes = writer.ToArray();
         var kicked = 0;
         foreach (var player in _players.All)
         {
             if (player.IsIrc || IsStaff(player.Presence.Privileges))
                 continue;
-            player.Enqueue(bytes);
+            player.RequestReconnect(Notice);
             kicked++;
         }
         _logger.LogWarning("Maintenance lock started: {Count} player(s) disconnected.", kicked);

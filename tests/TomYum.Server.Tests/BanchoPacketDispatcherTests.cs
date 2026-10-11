@@ -178,6 +178,7 @@ public class BanchoPacketDispatcherTests
         payload.WriteInt32(0);
         var body = FrameClientPacket(ClientPacketId.Logout, payload.ToArray());
 
+        leaver.LoggedInUtc = DateTimeOffset.UtcNow.AddMinutes(-1); // past osu!'s stray logout after login
         await dispatcher.DispatchAsync(leaver, registry, new ChannelRegistry(), new MatchRegistry(), new ServiceCollection().BuildServiceProvider(), body);
 
         Assert.Null(registry.GetByUserId(2));

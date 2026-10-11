@@ -45,6 +45,35 @@ public sealed class OnlinePlayer
     /// <summary>When this session last sent or was sent data; used to reap dead sessions.</summary>
     public DateTimeOffset LastActivityUtc { get; set; }
 
+    /// <summary>When the session logged in (osu!'s stray LOGOUT right after a login is ignored, see <c>LogoutHandler</c>).</summary>
+    public DateTimeOffset LoggedInUtc { get; set; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    /// The machine the session logged in from (its uninstall id, else disk signature; empty when the build
+    /// sent neither): a login from the same machine replaces the session instead of being refused.
+    /// </summary>
+    public string Device { get; set; } = string.Empty;
+
+    /// <summary>The server told the client to reconnect (RESTART): its next login replaces this session.</summary>
+    public bool ReconnectRequested { get; set; }
+
+    /// <summary>The server is ending the session (replaced, reaped, connection closed): its LOGOUT is never ignored.</summary>
+    public bool EndedByServer { get; set; }
+
+    /// <summary>
+    /// Queues a RESTART (osu! reconnects after <paramref name="delayMs"/>), after an optional notice, and marks
+    /// the session so the login that follows replaces it rather than being refused as "already logged in".
+    /// </summary>
+    public void RequestReconnect(string? notice = null, int delayMs = 0)
+    {
+        var writer = new BanchoPacketWriter(256);
+        if (!string.IsNullOrEmpty(notice))
+            writer.WriteStringPacket(ServerPacketId.Notification, notice);
+        writer.WritePacket(ServerPacketId.Restart, w => w.WriteInt32(delayMs));
+        ReconnectRequested = true;
+        Enqueue(writer.ToArray());
+    }
+
     /// <summary>An IRC session (<see cref="Irc.IrcSession"/>) rather than a game client.</summary>
     public bool IsIrc { get; set; }
 

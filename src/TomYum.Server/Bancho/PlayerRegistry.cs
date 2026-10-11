@@ -24,6 +24,9 @@ public sealed class PlayerRegistry
     /// </summary>
     public IReadOnlyCollection<OnlinePlayer> All => _byToken.Values.Where(p => !p.IsTournamentClient).ToArray();
 
+    /// <summary>A snapshot of every session, tournament client windows included.</summary>
+    public IReadOnlyCollection<OnlinePlayer> AllSessions => _byToken.Values.ToArray();
+
     /// <summary>
     /// Adds a tournament client window for <paramref name="presence"/>'s account: its own token, next
     /// to (not instead of) the player's own session, which stays the one found by user id.

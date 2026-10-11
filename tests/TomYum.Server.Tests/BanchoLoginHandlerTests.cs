@@ -33,12 +33,12 @@ public class BanchoLoginHandlerTests
     private static string User_SafeEmail(string username) =>
         username.ToLowerInvariant().Replace(" ", string.Empty).Replace("_", string.Empty);
 
-    private static string LoginBody(string username, string plaintext, string version = "b20231228.1")
+    private static string LoginBody(string username, string plaintext, string version = "b20231228.1", string uninstall = "ghi")
     {
         var hasher = new BcryptPasswordHasher();
         var pwMd5 = hasher.ComputeMd5Hex(plaintext);
         // username\npassword_md5\nversion|utc|city|hashes|pm\n
-        return $"{username}\n{pwMd5}\n{version}|0|0|abc:runningunderwine:def:ghi:jkl:|0\n";
+        return $"{username}\n{pwMd5}\n{version}|0|0|abc:runningunderwine:def:{uninstall}:jkl:|0\n";
     }
 
     [Theory]
@@ -156,6 +156,48 @@ public class BanchoLoginHandlerTests
         Assert.NotNull(second.Token);
         Assert.Null(registry.GetByToken(first.Token!));
         Assert.Equal(second.Token, registry.GetByUserId(registry.GetByToken(second.Token!)!.UserId)!.Token);
+    }
+
+    [Fact]
+    public async Task SecondClient_FromTheSameMachine_ReplacesIt()
+    {
+        // osu! closed or crashed without its LOGOUT getting out, and the player started it again.
+        const string machine = "0123456789abcdef0123456789abcdef";
+        var (handler, registry) = NewHandler(out var users);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+        var first = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass", uninstall: machine), "TH", CancellationToken.None);
+
+        var second = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass", uninstall: machine), "TH", CancellationToken.None);
+        var elsewhere = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass", uninstall: "fedcba9876543210fedcba9876543210"), "TH", CancellationToken.None);
+
+        Assert.NotNull(second.Token);
+        Assert.Null(registry.GetByToken(first.Token!));
+        Assert.Null(elsewhere.Token); // another machine still waits its turn
+    }
+
+    [Fact]
+    public async Task SecondClient_AfterTheServerAskedForAReconnect_ReplacesIt()
+    {
+        var (handler, registry) = NewHandler(out var users);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+        var first = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+        registry.GetByToken(first.Token!)!.RequestReconnect();
+
+        var second = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+
+        Assert.NotNull(second.Token);
+        Assert.Null(registry.GetByToken(first.Token!));
+    }
+
+    [Fact]
+    public async Task Welcome_IsTheDefaultWithoutSettings()
+    {
+        var (handler, _) = NewHandler(out var users);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+
+        var outcome = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+
+        Assert.Contains("Welcome to TomYum, BlueSky!", System.Text.Encoding.UTF8.GetString(outcome.Body), StringComparison.Ordinal);
     }
 
     [Fact]

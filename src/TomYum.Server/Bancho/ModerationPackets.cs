@@ -5,13 +5,10 @@ namespace TomYum.Server.Bancho;
 /// <summary>Bancho packets for restrictions and silences.</summary>
 public static class ModerationPackets
 {
-    /// <summary>Tells the client its account is restricted (it shows the restricted notice).</summary>
+    /// <summary>Tells the client its account is restricted. No notice: BanchoBot's private message explains it (RestrictionNotices).</summary>
     public static void WriteRestricted(BanchoPacketWriter writer)
     {
         ArgumentNullException.ThrowIfNull(writer);
-
-        writer.WriteStringPacket(ServerPacketId.Notification,
-            "Your account is restricted: you can still play, but you're hidden from other players and rankings. Contact staff if you think this is a mistake.");
         writer.WritePacket(ServerPacketId.AccountRestricted, null);
     }
 

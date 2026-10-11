@@ -10,6 +10,13 @@ namespace TomYum.Server.Bancho.Packets;
 /// </summary>
 public sealed class LogoutHandler : IClientPacketHandler
 {
+    /// <summary>
+    /// osu! sometimes sends a LOGOUT a moment after logging in (bancho.py measured 300 to 800 ms and ignores
+    /// any within a second). Taken at its word, the session ended, the client's next poll found its token
+    /// gone, and it was told the server restarted and logged in again: two welcomes, two reconnects.
+    /// </summary>
+    public static readonly TimeSpan IgnoreAfterLogin = TimeSpan.FromSeconds(1);
+
     /// <inheritdoc />
     public ClientPacketId PacketId => ClientPacketId.Logout;
 
@@ -17,6 +24,9 @@ public sealed class LogoutHandler : IClientPacketHandler
     public async Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
+
+        if (!context.Player.EndedByServer && DateTimeOffset.UtcNow - context.Player.LoggedInUtc < IgnoreAfterLogin)
+            return;
 
         // A tournament client window closing: only what it did itself (the player is still online).
         if (context.Player.IsTournamentClient)

@@ -48,7 +48,7 @@ public static class LoginResponseBuilder
     /// menu icon, friends list, silence-end, and the player's own presence + stats.
     /// </summary>
     /// <param name="self">The freshly authenticated player.</param>
-    /// <param name="welcome">Welcome message shown as a NOTIFICATION (id 24).</param>
+    /// <param name="welcome">Welcome message shown as a NOTIFICATION (id 24); empty sends none.</param>
     /// <param name="writeChannels">
     /// Optional callback that writes CHANNEL_INFO (65) / CHANNEL_AUTO_JOIN (67) packets for the
     /// visible channels. Invoked before CHANNEL_INFO_END (89) so the client has the full list
@@ -71,8 +71,9 @@ public static class LoginResponseBuilder
         // 3. Client-side privilege bitmask (drives UI: supporter, tournament, etc.).
         writer.WriteInt32Packet(ServerPacketId.Privileges, (int)self.Privileges);
 
-        // 4. Welcome notification.
-        writer.WriteStringPacket(ServerPacketId.Notification, welcome);
+        // 4. Welcome notification (none when it's empty: staff turned it off).
+        if (!string.IsNullOrEmpty(welcome))
+            writer.WriteStringPacket(ServerPacketId.Notification, welcome);
 
         // 5. Advertise the visible channels (CHANNEL_INFO / CHANNEL_AUTO_JOIN), then terminate
         //    the list so the client stops waiting for more CHANNEL_INFO packets.

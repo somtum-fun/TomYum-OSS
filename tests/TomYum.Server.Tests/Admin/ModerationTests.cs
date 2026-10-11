@@ -123,14 +123,22 @@ public sealed class ModerationTests
         Assert.True(result!.Restricted);
         Assert.True(player.IsRestricted);
         Assert.True(restricted.Contains(user.Id));
-        Assert.Contains((ushort)ServerPacketId.AccountRestricted, PacketIds(player.DequeueAll()));
+        // The client reconnects (its login says it's restricted), with no notice: BanchoBot explains.
+        Assert.True(result.Reconnected);
+        Assert.True(player.ReconnectRequested);
+        var told = PacketIds(player.DequeueAll());
+        Assert.Contains((ushort)ServerPacketId.Restart, told);
+        Assert.DoesNotContain((ushort)ServerPacketId.Notification, told);
         Assert.Contains((ushort)ServerPacketId.UserLogout, PacketIds(other.DequeueAll()));
 
-        // And back: they reappear for others.
+        // And back: they reappear for others, and reconnect again.
+        player.ReconnectRequested = false;
         await users.UpdateAsync(Copy(user, restricted: false));
-        await sync.RefreshAsync(user.Id);
+        var lifted = await sync.RefreshAsync(user.Id);
         Assert.False(player.IsRestricted);
         Assert.False(restricted.Contains(user.Id));
+        Assert.True(lifted!.Reconnected);
+        Assert.Contains((ushort)ServerPacketId.Restart, PacketIds(player.DequeueAll()));
         Assert.Contains((ushort)ServerPacketId.UserPresence, PacketIds(other.DequeueAll()));
     }
 

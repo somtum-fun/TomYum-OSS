@@ -213,6 +213,7 @@ public class SpectatingTests
         await new StartSpectatingHandler().HandleAsync(Context(spectator, registry, TargetId(host.UserId)));
         host.DequeueAll();
 
+        spectator.LoggedInUtc = DateTimeOffset.UtcNow.AddMinutes(-1); // past osu!'s stray logout after login
         await new LogoutHandler().HandleAsync(Context(spectator, registry, []));
 
         Assert.DoesNotContain(spectator.UserId, host.Spectators);
@@ -228,6 +229,7 @@ public class SpectatingTests
 
         await new StartSpectatingHandler().HandleAsync(Context(spectator, registry, TargetId(host.UserId)));
 
+        host.LoggedInUtc = DateTimeOffset.UtcNow.AddMinutes(-1); // past osu!'s stray logout after login
         await new LogoutHandler().HandleAsync(Context(host, registry, []));
 
         Assert.Null(spectator.SpectatingUserId); // no stale pointer to a gone host
