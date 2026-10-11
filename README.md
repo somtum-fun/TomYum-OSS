@@ -17,48 +17,59 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 > Version `0.3.0-dev`. The detailed checklist, with what's left, is
 > [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Features
+## Supported rulesets
 
-**osu!stable (bancho)**
-- Login, in-game registration, presence, stats, chat channels and PMs, friends (shared with lazer
-  and the website), away messages, friends-only PMs, spectating
-- Score submission with pp for all four modes, plus Relax and Autopilot leaderboards and stats
-- Leaderboards (global, selected mods, friends, country), replays, map updates, song select statuses
-  and grades, favourites, screenshots, star ratings with mods, osu!direct, in-game comments
-- Multiplayer: lobby, rooms, the full match lifecycle, BanchoBot's `!mp` commands, the tournament client
-- BanchoBot `!`-commands, staff tiers and supporter mapped to client badges
-- Medals, rank history, country from the client's IP
+| Ruleset | ID | ShortName (lazer) | osu!stable | osu!lazer | pp algorithm |
+|---|:-:|:-:|:-:|:-:|---|
+| osu! | 0 | `osu` | ✅ | ✅ | ppy's official calculator |
+| osu!taiko | 1 | `taiko` | ✅ | ✅ | ppy's official calculator |
+| osu!catch | 2 | `fruits` | ✅ | ✅ | ppy's official calculator |
+| osu!mania | 3 | `mania` | ✅ | ✅ | ppy's official calculator |
+| osu! (Relax) | 4 | `osu` + RX | ✅ | ✅ | [akatsuki-pp-rs](https://github.com/osuAkatsuki/akatsuki-pp-rs) (Akatsuki's `osu_2019` relax formula) |
+| osu!taiko (Relax) | 5 | `taiko` + RX | ✅ | ✅ | akatsuki-pp-rs |
+| osu!catch (Relax) | 6 | `fruits` + RX | ✅ | ✅ | akatsuki-pp-rs |
+| osu! (Autopilot) | 8 | `osu` + AP | ✅ | ✅ | akatsuki-pp-rs |
 
-**osu!lazer**
-- Runs on [osu-web](https://github.com/ppy/osu-web) (with TomYum's changes:
-  [osu-web-tomyum](https://github.com/somtum-fun/osu-web-tomyum)) and
-  [osu-server-spectator](https://github.com/ppy/osu-server-spectator) (spectating, multiplayer,
-  playlists, the daily challenge), sharing accounts, scores and rankings with stable
-- Lazer plays with Relax get relax pp and leaderboards like stable's
-- Relax and Autopilot on the website: profiles, rank graphs, rankings and score pages
-- Ranked Play (matchmaking pools set up from the admin panel)
+IDs follow bancho.py: Relax is the mode + 4 and Autopilot the mode + 8 (osu!mania has no Relax).
+Relax and Autopilot have their own leaderboards, stats and rankings, ranked by pp, and lazer plays
+with those mods count towards them too. Their pp comes from the `pp-sidecar` (`sidecars/pp-sidecar`).
+Custom lazer rulesets (Sentakki, tau, Rush!, ...) aren't supported yet.
 
-**Everything around it**
-- Moderation: restrictions, silences, a chat log, score removal, staff panels on the website
-  (BN imports, GMT tools, admin, the daily challenge map picker, seasonal backgrounds, news,
-  Ranked Play pools, badges, user titles)
-- A changelog made from the repositories' history on every deploy (`deploy/production/deploy.sh`)
-- Anti-cheat: hardware/client hash checks and alt detection; replay checks can be added as a plugin
-- Custom beatmaps (uploaded sets, graveyard, guest difficulties) next to the official ones
-- An IRC server (port 6667) for IRC clients and bots, logging in with the website's IRC key
-- Plugins: compiled `.dll` or loose `.cs`, with events, commands and HTTP routes
-- EF Core migrations, Docker Compose / k8s deployment, Caddy and a Cloudflare tunnel in front
-- Email (sign-up verification), downtime alerts by Discord DM, nightly backups
+## Core features
 
-**Not done yet** (see the roadmap): custom medals, multi-instance (Redis-backed) online state, and
-multi-target storage. Put off for now: TomYum reading scores straight from
-the website's tables (they're mirrored today).
+* Login and in-game registration, one account for osu!stable, osu!lazer and the website
+* Score submission and leaderboards (global, selected mods, friends, country), with replays
+* Chat: channels, PMs, away messages, friends-only PMs, friends shared with lazer and the website
+* BanchoBot with `!`-commands, and an IRC server (port 6667) for IRC clients and bots
+* Multiplayer: lobby, rooms, the full match lifecycle, `!mp` commands, the tournament client
+* Spectating (stable, and lazer through [osu-server-spectator](https://github.com/ppy/osu-server-spectator))
+* osu!lazer: multiplayer, playlists, the daily challenge and Ranked Play (matchmaking)
+* Server website: [osu-web](https://github.com/ppy/osu-web) with TomYum's changes ([osu-web-tomyum](https://github.com/somtum-fun/osu-web-tomyum))
+* Support for non-standard modes: Relax and Autopilot, ScoreV2 in multiplayer
+* Custom beatmaps (uploaded sets, graveyard, guest difficulties) next to the official ones
+* osu!direct, favourites, screenshots, in-game comments, star ratings with mods
+* Beatmap hype and nominations on the website, with BN imports
+* Achievements (medals)
+* Rank snapshots (rank history for every mode)
+* Seasonal backgrounds, uploaded from the admin panel
+* Moderation: restrictions, silences, a chat log, score removal and staff panels on the website
+* Anti-cheat hooks: hardware/client hash checks and alt detection; replay checks can be added as a plugin
+* Plugins: compiled `.dll` or loose `.cs`, with events, commands and HTTP routes
 
-## Documentation by topic
+## Additional features
 
-[osu-web](docs/osu-web.md) · [lazer](docs/lazer.md) · [spectating](docs/spectating.md) ·
-[custom beatmaps](docs/custom-beatmaps.md) · [achievements](docs/achievements.md) · [IRC](docs/irc.md) ·
-[plugins](docs/plugins.md) · [local testing](docs/local-testing.md)
+* Automated tests (unit tests, plus integration tests against a real MySQL)
+* pp reworks from the admin panel, and an updater that keeps the pp libraries current
+* Metrics for Prometheus (the `tomyum-metrics` plugin) and a watchdog that sends alerts by Discord DM
+* Redis for caching and shared state
+* Docker Compose, k8s and k3s deployment, with Caddy in front
+* Database migrations (EF Core)
+* Nightly database backups
+* A changelog made from the repositories' history on every deploy
+* Email (sign-up verification)
+
+**Not done yet** (see the [roadmap](docs/ROADMAP.md)): custom medals, multi-instance (Redis-backed)
+online state, and multi-target storage.
 
 ## Building
 
@@ -125,10 +136,15 @@ Docker, k8s, k3s, and Caddy scaffolding lives under `deploy/`.
 
 ## Documentation
 
-Configuration samples live under `config/`, and deployment scaffolding (Docker, k8s, k3s,
-Caddy) under `deploy/`. The project also keeps an internal knowledge base — protocols,
-architecture decisions, and contributor onboarding notes — that is maintained privately and
-not published with the source.
+A step-by-step guide to running TomYum (setup, configuration, deployment) is coming on its own
+docs website. Until then, the docs live in this repository:
+
+[osu-web](docs/osu-web.md) · [lazer](docs/lazer.md) · [spectating](docs/spectating.md) ·
+[custom beatmaps](docs/custom-beatmaps.md) · [achievements](docs/achievements.md) · [IRC](docs/irc.md) ·
+[plugins](docs/plugins.md) · [local testing](docs/local-testing.md)
+
+Configuration samples are under `config/`, and deployment scaffolding (Docker, k8s, k3s, Caddy)
+under `deploy/`.
 
 ## Contributing
 
