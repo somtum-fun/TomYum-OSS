@@ -97,6 +97,23 @@ public class SpectatingTests
     }
 
     [Fact]
+    public async Task Restricted_players_can_be_watched_only_by_staff()
+    {
+        var registry = new PlayerRegistry();
+        var host = AddPlayer(registry, 10, "Host");
+        host.IsRestricted = true;
+        var player = AddPlayer(registry, 20, "Player");
+        var moderator = registry.Add(new BanchoPresence { UserId = 30, Username = "Mod", Privileges = BanchoPrivileges.Player | BanchoPrivileges.Moderator });
+
+        await new StartSpectatingHandler().HandleAsync(Context(player, registry, TargetId(host.UserId)));
+        await new StartSpectatingHandler().HandleAsync(Context(moderator, registry, TargetId(host.UserId)));
+
+        Assert.Null(player.SpectatingUserId);
+        Assert.Equal(host.UserId, moderator.SpectatingUserId);
+        Assert.Equal([moderator.UserId], host.Spectators);
+    }
+
+    [Fact]
     public async Task Second_spectator_exchanges_fellow_notifications()
     {
         var registry = new PlayerRegistry();

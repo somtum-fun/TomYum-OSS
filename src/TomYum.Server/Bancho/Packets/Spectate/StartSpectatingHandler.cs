@@ -25,6 +25,11 @@ public sealed class StartSpectatingHandler : IClientPacketHandler
         if (host is null || host.UserId == spectator.UserId)
             return Task.CompletedTask; // unknown host, or trying to spectate self
 
+        // A restricted player is invisible to everyone else; only staff may still watch them.
+        const BanchoPrivileges Staff = BanchoPrivileges.Moderator | BanchoPrivileges.Developer | BanchoPrivileges.Owner;
+        if (!PlayerRegistry.IsVisibleTo(host, spectator.UserId) && (spectator.Presence.Privileges & Staff) == 0)
+            return Task.CompletedTask;
+
         if (spectator.SpectatingUserId == targetId)
         {
             SpectatorManager.Reannounce(host, spectator, context.Registry);
