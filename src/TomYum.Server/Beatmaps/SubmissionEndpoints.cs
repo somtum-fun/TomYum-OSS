@@ -193,6 +193,7 @@ public static class SubmissionEndpoints
         var passwords = context.RequestServices.GetRequiredService<IPasswordHasher>();
         return await users.GetByUsernameAsync(username, cancellationToken).ConfigureAwait(false) is { } user
                && passwords.Verify(passwordMd5, user.PasswordBcrypt)
+               && await TomYum.Server.Bancho.AccountAccess.CanAuthenticateAsync(user, context.RequestServices, cancellationToken).ConfigureAwait(false)
             ? user
             : null;
     }

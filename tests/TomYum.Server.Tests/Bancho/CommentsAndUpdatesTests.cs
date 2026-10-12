@@ -47,6 +47,16 @@ public sealed class CommentsAndUpdatesTests
     }
 
     [Fact]
+    public async Task DeletedAndBotAccounts_CantComment_EvenWithTheRightPassword()
+    {
+        await AddUserAsync("Gone", deleted: true);
+        await AddUserAsync("Bot", bot: true);
+
+        Assert.IsType<UnauthorizedHttpResult>(await CallAsync(Form("Gone", "a", "post", "target", "song", "starttime", "1", "comment", "hi", password: "password")));
+        Assert.IsType<UnauthorizedHttpResult>(await CallAsync(Form("Bot", "a", "post", "target", "song", "starttime", "1", "comment", "hi", password: "password")));
+    }
+
+    [Fact]
     public void StatusUpdates_FollowEachPlayersFilter()
     {
         var registry = new PlayerRegistry();
@@ -122,7 +132,7 @@ public sealed class CommentsAndUpdatesTests
 
     private static string Text(IResult result) => Assert.IsType<ContentHttpResult>(result).ResponseContent ?? string.Empty;
 
-    private async Task AddUserAsync(string name, UserPrivileges privileges = UserPrivileges.Normal, bool silenced = false)
+    private async Task AddUserAsync(string name, UserPrivileges privileges = UserPrivileges.Normal, bool silenced = false, bool deleted = false, bool bot = false)
     {
         var hasher = new BcryptPasswordHasher();
         await _users.AddAsync(new User
@@ -133,6 +143,8 @@ public sealed class CommentsAndUpdatesTests
             PasswordBcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("password")),
             Privileges = privileges,
             SilenceEndUtc = silenced ? DateTimeOffset.UtcNow.AddHours(1) : null,
+            IsDeleted = deleted,
+            IsBot = bot,
         });
     }
 }

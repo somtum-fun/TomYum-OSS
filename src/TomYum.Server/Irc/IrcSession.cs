@@ -153,17 +153,28 @@ public sealed class IrcSession : IDisposable
         using var scope = _scopes.CreateScope();
         var user = await scope.ServiceProvider.GetRequiredService<IUserRepository>()
             .GetBySafeNameAsync(User.MakeSafeName(nick), cancellationToken).ConfigureAwait(false);
-        if (user is null || password is null || !await _tokens.VerifyAsync(user.Id, password).ConfigureAwait(false))
+        // Wrong IRC passwords count like the game's (PasswordGuesses): past the limit even the right one is refused for a while.
+        var guesses = scope.ServiceProvider.GetService<PasswordGuesses>();
+        var guessAccount = user is null ? null : PasswordGuesses.AccountKey("irc:" + user.Id.ToString(CultureInfo.InvariantCulture));
+        var address = ((_connection as NetworkStream)?.Socket.RemoteEndPoint as System.Net.IPEndPoint)?.Address.ToString();
+        var refused = guesses is not null && guessAccount is not null && password is not null
+            && (guesses.IsRefused(guessAccount, address) || guesses.IsKnownWrong(guessAccount, password));
+        if (user is null || password is null || refused || !await _tokens.VerifyAsync(user.Id, password).ConfigureAwait(false))
         {
+            if (!refused && guessAccount is not null && password is not null)
+                guesses?.Failed(guessAccount, address, password);
             await SendAsync(Host, "464", nick, _tokens.FromWebsite
                 ? $"Bad username or IRC key. Make your IRC key in the website's account settings{(_options.KeyPageUrl is { } page ? ": " + page : ".")}"
                 : "Bad username or IRC password. Send !irc to BanchoBot in the game or on the website for your IRC password.").ConfigureAwait(false);
             await ErrorAsync("Bad authentication").ConfigureAwait(false);
             return false;
         }
-        if (user.IsDeleted)
+        if (guessAccount is not null)
+            guesses?.Succeeded(guessAccount);
+        // Deleted or locked accounts can't sign in anywhere (AccountAccess); bot accounts belong on IRC.
+        if (await AccountAccess.RefusalAsync(user, scope.ServiceProvider, allowBots: true, cancellationToken).ConfigureAwait(false) is { } refusal)
         {
-            await ErrorAsync("This account has been deleted.").ConfigureAwait(false);
+            await ErrorAsync(refusal).ConfigureAwait(false);
             return false;
         }
         if (user.IsRestricted)

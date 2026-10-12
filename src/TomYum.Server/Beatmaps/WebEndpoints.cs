@@ -322,7 +322,8 @@ public static class WebEndpoints
     {
         var query = context.Request.Query;
         var user = await users.GetBySafeNameAsync(User.MakeSafeName(query["u"].ToString()), cancellationToken).ConfigureAwait(false);
-        if (user is null || query["p"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt))
+        if (user is null || query["p"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt)
+            || !await AccountAccess.CanAuthenticateAsync(user, context.RequestServices, cancellationToken).ConfigureAwait(false))
             return (RateAnswer.AuthFail, 0);
         if (context.RequestServices.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is not { } website)
             return (RateAnswer.Ok, 0);
@@ -346,7 +347,8 @@ public static class WebEndpoints
     {
         var query = context.Request.Query;
         var user = await users.GetBySafeNameAsync(User.MakeSafeName(query["us"].ToString()), cancellationToken).ConfigureAwait(false);
-        if (user is null || query["ha"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt))
+        if (user is null || query["ha"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt)
+            || !await AccountAccess.CanAuthenticateAsync(user, context.RequestServices, cancellationToken).ConfigureAwait(false))
             return Results.Unauthorized();
         if (Anticheat.ClientFlags.Parse(query["b"].ToString()) is not { } flags)
             return Results.Text("-3", "text/plain");
