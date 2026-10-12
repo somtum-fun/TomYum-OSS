@@ -116,7 +116,7 @@ public sealed class BanchoBotCommands
     private string StatsCommand(ChatCommandContext context) => Stats();
 
     [ChatCommand("setpriv", Usage = "<user> <role>", Access = CommandAccess.Staff)]
-    private Task<string> SetPriv(ChatCommandContext context) => SetPrivAsync(context.Parts, context.CancellationToken);
+    private Task<string> SetPriv(ChatCommandContext context) => SetPrivAsync(context.Caller.UserId, context.Parts, context.CancellationToken);
 
     // ---- moderation (ModerationCommands checks the caller: moderators count as staff there) ----
 
@@ -550,7 +550,12 @@ public sealed class BanchoBotCommands
 
     // ---- !setpriv ----
 
-    private async Task<string> SetPrivAsync(string[] parts, CancellationToken cancellationToken)
+    /// <summary>
+    /// Sets a user's role. Judged by the caller's account as stored now (not the session's privileges
+    /// from login, as ModerationCommands does): nobody changes their own role, and only someone whose
+    /// role is above both the user's and the new one can change it.
+    /// </summary>
+    private async Task<string> SetPrivAsync(int callerId, string[] parts, CancellationToken cancellationToken)
     {
         if (parts.Length < 3)
             return "Usage: !setpriv <username> <owner|admin|dev|mod|supporter|normal>";
@@ -569,10 +574,28 @@ public sealed class BanchoBotCommands
         if (user is null)
             return string.Create(CultureInfo.InvariantCulture, $"No such user \"{targetName}\".");
 
+        var caller = await users.GetByIdAsync(callerId, cancellationToken).ConfigureAwait(false);
+        if (caller is null || RoleRank(caller.Privileges) < RoleRank(UserPrivileges.Administrator))
+            return StaffOnly;
+        if (user.Id == caller.Id)
+            return "You can't change your own role.";
+        if (RoleRank(user.Privileges) >= RoleRank(caller.Privileges))
+            return string.Create(CultureInfo.InvariantCulture, $"{user.Username}'s role isn't below yours, so you can't change it.");
+        if (RoleRank(privileges) >= RoleRank(caller.Privileges))
+            return "You can only give roles below your own.";
+
         await users.UpdateAsync(WithPrivileges(user, privileges), cancellationToken).ConfigureAwait(false);
         return string.Create(CultureInfo.InvariantCulture,
             $"{user.Username} is now {privileges}. (Takes effect on their next login.)");
     }
+
+    /// <summary>How high a role is: developer (and owner) 4, administrator 3, moderator 2, supporter 1, player 0.</summary>
+    private static int RoleRank(UserPrivileges privileges) =>
+        privileges.HasFlag(UserPrivileges.Developer) ? 4
+        : privileges.HasFlag(UserPrivileges.Administrator) ? 3
+        : privileges.HasFlag(UserPrivileges.Moderator) ? 2
+        : privileges.HasFlag(UserPrivileges.Supporter) ? 1
+        : 0;
 
     private static bool TryParseRole(string role, out UserPrivileges privileges)
     {
