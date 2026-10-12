@@ -35,6 +35,16 @@ public static class GameMode
     /// </summary>
     public static bool UsesPpLeaderboard(int gameMode) => gameMode >= RelaxOffset;
 
+    /// <summary>
+    /// Whether a play beats another as the player's best on a map, as the board ranks them: by pp on
+    /// Relax and Autopilot boards (score breaks ties, and decides alone on maps without pp), by score on
+    /// vanilla ones.
+    /// </summary>
+    public static bool BeatsBest(int gameMode, double pp, long score, double bestPp, long bestScore) =>
+        UsesPpLeaderboard(gameMode)
+            ? pp > bestPp || (!(pp < bestPp) && score > bestScore)
+            : score > bestScore;
+
     private const int RelaxBit = 1 << 7;       // osu! legacy mod bit for Relax
     private const int AutopilotBit = 1 << 13;  // osu! legacy mod bit for Autopilot (Relax2)
 

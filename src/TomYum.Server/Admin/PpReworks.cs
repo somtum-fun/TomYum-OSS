@@ -254,15 +254,18 @@ public sealed class PpReworks : BackgroundService
                 .ConfigureAwait(false);
         }
 
-        // Each player's best per map: the most pp (score breaks ties, and decides alone on maps
-        // without pp), as score submission picks it. Held scores take part like any other.
+        // Each player's best per map, as score submission picks it (GameMode.BeatsBest): the most pp on
+        // Relax/Autopilot boards (score breaks ties, and decides alone on maps without pp), the most score
+        // on vanilla ones. Held scores take part like any other.
         foreach (var mode in modes)
         {
             var scores = await db.Scores.AsNoTracking().Where(s => s.Mode == mode && s.Passed)
                 .Select(s => new { s.Id, s.UserId, s.BeatmapMd5, s.Pp, s.ScoreValue, s.Status })
                 .ToListAsync(cancellationToken).ConfigureAwait(false);
             var bests = scores.GroupBy(s => (s.UserId, s.BeatmapMd5))
-                .Select(g => g.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue).ThenBy(s => s.Id).First().Id)
+                .Select(g => (GameMode.UsesPpLeaderboard(mode)
+                        ? g.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue)
+                        : g.OrderByDescending(s => s.ScoreValue)).ThenBy(s => s.Id).First().Id)
                 .ToHashSet();
             var toBest = scores.Where(s => bests.Contains(s.Id) && s.Status != ScoreStatus.Best).Select(s => s.Id).ToList();
             var toSubmitted = scores.Where(s => !bests.Contains(s.Id) && s.Status == ScoreStatus.Best).Select(s => s.Id).ToList();

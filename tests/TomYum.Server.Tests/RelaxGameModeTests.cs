@@ -39,6 +39,19 @@ public class RelaxGameModeTests
     public void UsesPpLeaderboard_only_for_relax_and_autopilot(int gameMode, bool expected)
         => Assert.Equal(expected, GameMode.UsesPpLeaderboard(gameMode));
 
+    [Theory]
+    [InlineData(0, 100.0, 900_000, 200.0, 1_000_000, false)] // vanilla: more pp, less score isn't a new best
+    [InlineData(0, 100.0, 1_100_000, 200.0, 1_000_000, true)]
+    [InlineData(0, 0.0, 1_100_000, 0.0, 1_000_000, true)] // loved/qualified (no pp): score decides
+    [InlineData(0, 0.0, 1_000_000, 0.0, 1_000_000, false)] // a tie stays
+    [InlineData(4, 250.0, 900_000, 200.0, 1_000_000, true)] // relax: pp decides
+    [InlineData(4, 150.0, 1_100_000, 200.0, 1_000_000, false)]
+    [InlineData(4, 0.0, 1_100_000, 0.0, 1_000_000, true)] // relax on a loved map: score breaks the 0 pp tie
+    [InlineData(8, 200.0, 1_100_000, 200.0, 1_000_000, true)]
+    [InlineData(8, 200.0, 900_000, 200.0, 1_000_000, false)]
+    public void A_new_best_beats_the_old_as_the_board_ranks(int gameMode, double pp, long score, double bestPp, long bestScore, bool expected)
+        => Assert.Equal(expected, GameMode.BeatsBest(gameMode, pp, score, bestPp, bestScore));
+
     [Fact]
     public async Task Leaderboard_separates_relax_from_vanilla_and_sorts_each_correctly()
     {

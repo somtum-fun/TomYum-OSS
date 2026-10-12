@@ -425,10 +425,11 @@ public static class ScoreSubmissionEndpoint
             }
         }
 
-        // A passed score is Best only if the player has no prior best or this score beats it by pp.
+        // A passed score is Best only if the player has no prior best or this score beats it as the board
+        // ranks plays: by pp on Relax/Autopilot boards, by score on vanilla ones (and on maps without pp).
         // Old best scores remain in the DB as Submitted (not shown on leaderboard) for history.
         var scoreStatus = passed
-            ? (!held && !offBoard && (prevBest is null || ppValue > prevBest.Pp) ? ScoreStatus.Best : ScoreStatus.Submitted)
+            ? (!held && !offBoard && (prevBest is null || GameMode.BeatsBest(gameMode, ppValue, scoreValue, prevBest.Pp, prevBest.ScoreValue)) ? ScoreStatus.Best : ScoreStatus.Submitted)
             : ScoreStatus.Failed;
 
         // Plugins may reject the score before anything is stored (e.g. a mode's own rules).
