@@ -62,6 +62,63 @@ public sealed class PreviewClipsTests : IDisposable
         Assert.Equal(0, await new CustomPreviewBackfill(store, NullLogger<CustomPreviewBackfill>.Instance).RunAsync());
     }
 
+    [Fact]
+    public async Task Backfill_LeavesSongsThatArentAudioAlone()
+    {
+        var store = Store();
+        var playlist = Encoding.UTF8.GetBytes("#EXTM3U\nhttp://169.254.169.254/latest/meta-data/\n");
+        var osz = Osz(("song.m3u8", playlist), ("map.osu", Encoding.UTF8.GetBytes("osu file format v14\n\n[General]\nAudioFilename: song.m3u8\n")));
+        Directory.CreateDirectory(Path.GetDirectoryName(store.OszPath(5_000_004))!);
+        await File.WriteAllBytesAsync(store.OszPath(5_000_004), osz);
+
+        Assert.Null(CustomPreviewBackfill.ReadSong(store.OszPath(5_000_004)));
+    }
+
+    [Theory]
+    [InlineData(".m3u8")]
+    [InlineData(".m3u")]
+    [InlineData(".txt")]
+    [InlineData(".flac")]
+    [InlineData("")]
+    public async Task OnlyMp3OggAndWav_ReachFfmpeg(string extension)
+    {
+        var (ffmpeg, log) = RecordingFfmpeg();
+
+        Assert.Null(await PreviewClips.MakeAsync(FakeMp3(), extension, 1000, ffmpeg));
+        Assert.False(File.Exists(log));
+        Assert.Null(PreviewClips.InputFormat(extension));
+    }
+
+    [Theory]
+    [InlineData(".mp3", "mp3")]
+    [InlineData(".OGG", "ogg")]
+    [InlineData("wav", "wav")]
+    public async Task Ffmpeg_ReadsLocalFilesOnly_AsTheSongsFormat(string extension, string format)
+    {
+        if (OperatingSystem.IsWindows())
+            return;
+        var (ffmpeg, log) = RecordingFfmpeg();
+
+        await PreviewClips.MakeAsync(FakeMp3(), extension, 1000, ffmpeg);
+
+        // Both runs (the length, then the clip) name the format and allow nothing but files.
+        var runs = await File.ReadAllLinesAsync(log);
+        Assert.Equal(2, runs.Length);
+        Assert.All(runs, run => Assert.Contains($" -protocol_whitelist file -f {format} -i ", run, StringComparison.Ordinal));
+    }
+
+    // A stand-in ffmpeg that writes down its arguments (one run per line) and says the song is 10 s long.
+    private (string Ffmpeg, string Log) RecordingFfmpeg()
+    {
+        Directory.CreateDirectory(_root);
+        var log = Path.Combine(_root, "ffmpeg.log");
+        var script = Path.Combine(_root, "ffmpeg.sh");
+        File.WriteAllText(script, $"#!/bin/sh\necho \" $*\" >> '{log}'\necho 'Duration: 00:00:10.00, start' >&2\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        return (script, log);
+    }
+
     private static byte[] Osz(params (string Name, byte[] Bytes)[] files)
     {
         using var memory = new MemoryStream();

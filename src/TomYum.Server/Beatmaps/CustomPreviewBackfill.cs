@@ -63,6 +63,9 @@ public sealed class CustomPreviewBackfill : BackgroundService
                 var audio = file.Get("General", "AudioFilename");
                 if (string.IsNullOrEmpty(audio))
                     continue;
+                // Only songs ffmpeg is allowed to read (PreviewClips.InputFormat); other sets keep no preview.
+                if (PreviewClips.InputFormat(Path.GetExtension(audio)) is null)
+                    return null;
 
                 var songEntry = archive.Entries.FirstOrDefault(e => e.FullName.Equals(audio, StringComparison.OrdinalIgnoreCase));
                 if (songEntry is null || songEntry.Length is 0 or > 20L * 1024 * 1024)

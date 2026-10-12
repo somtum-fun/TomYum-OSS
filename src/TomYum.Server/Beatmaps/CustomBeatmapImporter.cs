@@ -463,10 +463,11 @@ public sealed class CustomBeatmapImporter
                 }
             }
 
-            // The song, for the preview (cut from its preview point when stored).
+            // The song, for the preview (cut from its preview point when stored); MP3, Ogg or WAV only.
             PreviewSong? song = null;
             var audio = maps[0].File.Get("General", "AudioFilename");
-            if (audio is not null && Find(archive, audio) is { Length: > 0 and <= MaxPreviewBytes } songEntry)
+            if (audio is not null && PreviewClips.InputFormat(Path.GetExtension(audio)) is not null
+                && Find(archive, audio) is { Length: > 0 and <= MaxPreviewBytes } songEntry)
                 song = new PreviewSong(ReadEntry(songEntry), Path.GetExtension(audio).ToLowerInvariant(), maps[0].File.GetInt("General", "PreviewTime", -1));
 
             var storyboardFile = archive.Entries.Any(e => e.FullName.EndsWith(".osb", StringComparison.OrdinalIgnoreCase));
