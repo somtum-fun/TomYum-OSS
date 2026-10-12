@@ -268,6 +268,13 @@ public static class ScoreSubmissionEndpoint
         var passed = parts[14].Equals("True", StringComparison.OrdinalIgnoreCase);
         var grade = parts[12];
 
+        // Numbers no client sends: refused before anything is stored or counted.
+        if (ScoreChecks.ValuesProblem(mode, (n300, n100, n50, ngeki, nkatu, nmiss), scoreValue, maxCombo, grade) is { } valuesProblem)
+        {
+            logger.LogWarning("Score submission rejected: {Problem} in '{Username}''s score", valuesProblem, usernameFromScore);
+            return Rejected();
+        }
+
         // Old clients (docs/old-clients.md): their mods in today's numbering, and Co-op refused.
         var build = legacy ? LegacyScoreRules.BuildOf(parts, player?.Build) : LegacyScoreRules.BuildOf(parts);
         mods = LegacyScoreRules.Mods(mods, build);
@@ -289,10 +296,25 @@ public static class ScoreSubmissionEndpoint
             return Rejected();
         }
 
+        // Autoplay, Cinema and mods osu! won't pick together. Nightcore and Perfect come with Double Time and Sudden Death.
+        mods = ScoreChecks.NormalizeMods(mods);
+        if (ScoreChecks.ModsProblem(mods) is { } modsProblem)
+        {
+            logger.LogWarning("Score submission rejected: {Problem} in '{Username}''s mods ({Mods})", modsProblem, usernameFromScore, mods);
+            return Rejected();
+        }
+
         var beatmap = await beatmaps.GetByMd5Async(bmk, cancellationToken).ConfigureAwait(false);
         if (beatmap is null)
         {
             logger.LogWarning("Score submission rejected: beatmap MD5 '{Bmk}' not found", bmk);
+            return Rejected();
+        }
+
+        // More judgements or combo than the map has room for (when its object counts and max combo are known).
+        if (ScoreChecks.MapProblem(mode, (n300, n100, n50, ngeki, nkatu, nmiss), maxCombo, beatmap) is { } mapProblem)
+        {
+            logger.LogWarning("Score submission rejected: {Problem} ('{Username}' on beatmap {BeatmapId})", mapProblem, usernameFromScore, beatmap.Id);
             return Rejected();
         }
 
