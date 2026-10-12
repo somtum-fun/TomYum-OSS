@@ -338,7 +338,7 @@ public sealed class BanchoBotCommands
             "abort"     => TomYum.Server.Admin.MatchModeration.Abort(match, _players) ? null : "Nothing to abort.",
             "countdown" => await MpCountdownAsync(match, parts).ConfigureAwait(false),
             "host"      => MpHost(match, parts, caller, privileges),
-            "kick"      => MpKick(match, parts, privileges),
+            "kick"      => MpKick(match, parts, caller, privileges),
             "invite"    => MpInvite(match, parts, caller),
             _ => string.Create(CultureInfo.InvariantCulture, $"Unknown !mp subcommand \"{sub}\"."),
         };
@@ -498,8 +498,10 @@ public sealed class BanchoBotCommands
         return string.Create(CultureInfo.InvariantCulture, $"Invited {target.Presence.Username}.");
     }
 
-    private string MpKick(Match match, string[] parts, BanchoPrivileges privileges)
+    private string MpKick(Match match, string[] parts, OnlinePlayer caller, BanchoPrivileges privileges)
     {
+        if (!IsStaff(privileges) && match.HostUserId != caller.UserId)
+            return "Only the host can kick players.";
         if (parts.Length < 3)
             return "Usage: !mp kick <username>";
 
@@ -507,16 +509,25 @@ public sealed class BanchoBotCommands
         var target = _players.GetByUsername(targetName);
         if (target is null)
             return string.Create(CultureInfo.InvariantCulture, $"\"{targetName}\" is not online.");
+        if (target.UserId == caller.UserId)
+            return "You can't kick yourself; leave the room instead.";
 
+        int? newHost = null;
         lock (match.SyncRoot)
         {
             var slotIdx = match.IndexOf(target.UserId);
             if (slotIdx < 0)
                 return string.Create(CultureInfo.InvariantCulture, $"{target.Presence.Username} is not in this room.");
             match.Slots[slotIdx].Reset();
+
+            // A kicked host (by staff) hands the room to whoever is left (the caller is).
+            if (match.HostUserId == target.UserId && match.PlayerIds() is [var next, ..])
+                newHost = match.HostUserId = next;
         }
 
         match.History?.Kicked(match, target.UserId);
+        if (newHost is { } host)
+            match.History?.HostChanged(match, host);
         match.Channel.Leave(target.UserId);
         target.LeaveChannel("#multiplayer");
 
