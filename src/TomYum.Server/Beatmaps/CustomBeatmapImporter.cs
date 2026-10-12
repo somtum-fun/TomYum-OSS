@@ -87,13 +87,14 @@ public sealed class CustomBeatmapImporter
     public async Task<CustomUploadResult> ImportAsync(byte[] osz, int uploaderId, int? updateSetId = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(osz);
+        CustomUploadResult result;
+        PreviewSong? song;
         await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var result = await ImportCoreAsync(osz, uploaderId, updateSetId, cancellationToken).ConfigureAwait(false);
+            (result, song) = await ImportCoreAsync(osz, uploaderId, updateSetId, cancellationToken).ConfigureAwait(false);
             await LogAsync(result.SetId, uploaderId, result.Updated ? "updated" : "uploaded",
                 Invariant($"{result.Artist} - {result.Title} ({result.Creator}), {result.Difficulties.Count} {(result.Difficulties.Count == 1 ? "difficulty" : "difficulties")}"), cancellationToken).ConfigureAwait(false);
-            return result;
         }
         catch (CustomUploadException ex)
         {
@@ -104,6 +105,8 @@ public sealed class CustomBeatmapImporter
         {
             Gate.Release();
         }
+        await SavePreviewAsync(result.SetId, song).ConfigureAwait(false);
+        return result;
     }
 
     /// <summary>
@@ -115,13 +118,14 @@ public sealed class CustomBeatmapImporter
     public async Task<CustomUploadResult> SubmitAsync(byte[] osz, int setId, int userId, string client, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(osz);
+        CustomUploadResult result;
+        PreviewSong? song;
         await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var result = await SubmitCoreAsync(osz, setId, userId, cancellationToken).ConfigureAwait(false);
+            (result, song) = await SubmitCoreAsync(osz, setId, userId, cancellationToken).ConfigureAwait(false);
             await LogAsync(result.SetId, userId, result.Updated ? "updated" : "uploaded",
                 Invariant($"{result.Artist} - {result.Title} ({result.Creator}), {result.Difficulties.Count} {(result.Difficulties.Count == 1 ? "difficulty" : "difficulties")}, from {client}"), cancellationToken).ConfigureAwait(false);
-            return result;
         }
         catch (CustomUploadException ex)
         {
@@ -132,12 +136,32 @@ public sealed class CustomBeatmapImporter
         {
             Gate.Release();
         }
+        await SavePreviewAsync(result.SetId, song).ConfigureAwait(false);
+        return result;
     }
 
     /// <summary>Held while custom ids are handed out or files stored: new ids are "one past the highest".</summary>
     internal static SemaphoreSlim Gate { get; } = new(1, 1);
 
-    private async Task<CustomUploadResult> ImportCoreAsync(byte[] osz, int uploaderId, int? updateSetId, CancellationToken cancellationToken)
+    /// <summary>
+    /// The set's preview, made once the gate is let go: ffmpeg can take a while, and other uploads
+    /// needn't wait for it. Not the uploader's token: the set is stored, so its preview is made even
+    /// if they've stopped waiting.
+    /// </summary>
+    private async Task SavePreviewAsync(int setId, PreviewSong? song)
+    {
+        try
+        {
+            await _store.SavePreviewAsync(setId, song, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (IOException ex)
+        {
+            // The set is stored either way; the backfill makes missing previews at the next start.
+            _logger.LogWarning(ex, "Couldn't store the preview of custom set {SetId}.", setId);
+        }
+    }
+
+    private async Task<(CustomUploadResult Result, PreviewSong? Song)> ImportCoreAsync(byte[] osz, int uploaderId, int? updateSetId, CancellationToken cancellationToken)
     {
         var package = ReadChecked(osz);
         var first = package.Maps[0].File;
@@ -184,10 +208,10 @@ public sealed class CustomBeatmapImporter
 
         var rebuilt = Rebuild(osz, ids.ToDictionary(m => m.Map.EntryName, m => m.Bytes, StringComparer.Ordinal));
         var target = record?.Target ?? CustomBeatmapSet.Pending;
-        return await StoreAsync(setId, ownerId, uploaderId, target, record, package, ids, rebuilt, existing, cancellationToken).ConfigureAwait(false);
+        return (await StoreAsync(setId, ownerId, uploaderId, target, record, package, ids, rebuilt, existing, cancellationToken).ConfigureAwait(false), package.Song);
     }
 
-    private async Task<CustomUploadResult> SubmitCoreAsync(byte[] osz, int setId, int userId, CancellationToken cancellationToken)
+    private async Task<(CustomUploadResult Result, PreviewSong? Song)> SubmitCoreAsync(byte[] osz, int setId, int userId, CancellationToken cancellationToken)
     {
         if (_sets is null || await _sets.GetAsync(setId, cancellationToken).ConfigureAwait(false) is not { } record)
             throw new CustomUploadException(Invariant($"Set {setId} hasn't been created for submission."));
@@ -213,7 +237,7 @@ public sealed class CustomBeatmapImporter
             throw new CustomUploadException(Invariant($"The package is missing the difficulties with ids {string.Join(", ", missing)}."));
 
         await RefuseKnownAsync(package, setId, m => m.OriginalMd5, cancellationToken).ConfigureAwait(false);
-        return await StoreAsync(setId, userId, userId, record.Target, record, package, ids, osz, existing, cancellationToken).ConfigureAwait(false);
+        return (await StoreAsync(setId, userId, userId, record.Target, record, package, ids, osz, existing, cancellationToken).ConfigureAwait(false), package.Song);
     }
 
     private async Task<CustomUploadResult> StoreAsync(
@@ -225,7 +249,8 @@ public sealed class CustomBeatmapImporter
         // Read before the maps are mirrored: their new status takes the set out of the graveyard.
         var revived = existing.Count > 0 && _website is not null
             && await _website.IsGraveyardedAsync(setId, cancellationToken).ConfigureAwait(false);
-        await _store.SaveAsync(setId, archive, package.Background, package.Song, cancellationToken).ConfigureAwait(false);
+        // The old preview goes now; the new one is made once the gate is let go (SavePreviewAsync).
+        await _store.SaveAsync(setId, archive, package.Background, song: null, cancellationToken).ConfigureAwait(false);
 
         var maps = ids.Select(m => (m.Map, Beatmap: ToBeatmap(m.Map.File, m.Id, setId, OsuFileText.Md5(m.Bytes), package.HasStoryboardFile, target, now), m.Bytes)).ToList();
         var difficulties = new List<CustomUploadDifficulty>();
