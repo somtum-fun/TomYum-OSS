@@ -25,6 +25,11 @@ public static partial class StableClientEndpoints
 {
     private const int MaxScreenshotBytes = 8 * 1024 * 1024;
 
+    /// <summary>Screenshots a player may upload in an hour (each is up to 8 MB on the server's disk).</summary>
+    public const int ScreenshotsPerHour = 30;
+
+    internal static PerUserLimit ScreenshotLimit { get; } = new(ScreenshotsPerHour, TimeSpan.FromHours(1));
+
     public static void MapStableClient(this IEndpointRouteBuilder app, params string[] hosts)
     {
         ArgumentNullException.ThrowIfNull(app);
@@ -371,10 +376,12 @@ public static partial class StableClientEndpoints
         var query = context.Request.Query;
         var username = form["u"].ToString() is { Length: > 0 } inForm ? inForm : query["u"].ToString();
         var passwordMd5 = form["p"].ToString() is { Length: > 0 } passInForm ? passInForm : query["p"].ToString();
-        if (await UserAsync(context, username, passwordMd5, cancellationToken).ConfigureAwait(false) is null)
+        if (await UserAsync(context, username, passwordMd5, cancellationToken).ConfigureAwait(false) is not { } user)
             return Results.Unauthorized();
         if (form.Files.GetFile("ss") is not { Length: > 0 and <= MaxScreenshotBytes } upload)
             return Results.BadRequest();
+        if (!ScreenshotLimit.TryTake(user.Id))
+            return Results.Text(string.Create(CultureInfo.InvariantCulture, $"You've uploaded {ScreenshotsPerHour} screenshots in the last hour. Please wait a little before uploading more."), "text/plain", statusCode: StatusCodes.Status429TooManyRequests);
 
         using var buffer = new MemoryStream();
         await upload.CopyToAsync(buffer, cancellationToken).ConfigureAwait(false);
