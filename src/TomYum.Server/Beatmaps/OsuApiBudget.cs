@@ -59,10 +59,41 @@ public sealed class OsuApiBudget : IDisposable
         }
     }
 
-    /// <summary>Waits until a request may be made, then counts it.</summary>
-    public async Task WaitAsync(CancellationToken cancellationToken = default)
+    private static readonly AsyncLocal<bool> BackgroundFlow = new();
+
+    private int _interactiveWaiting;
+
+    /// <summary>
+    /// Until disposed, requests on this flow are background work (a backfill, a bulk import): they
+    /// only use half the budget and step aside whenever a player's request is waiting, so a job that
+    /// goes through thousands of sets never makes a stable client wait for its leaderboard.
+    /// </summary>
+    public static IDisposable Background()
     {
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var previous = BackgroundFlow.Value;
+        BackgroundFlow.Value = true;
+        return new Restore(previous);
+    }
+
+    private sealed class Restore(bool previous) : IDisposable
+    {
+        public void Dispose() => BackgroundFlow.Value = previous;
+    }
+
+    /// <summary>Whether the current flow is background work (<see cref="Background"/>).</summary>
+    public static bool IsBackgroundFlow => BackgroundFlow.Value;
+
+    /// <summary>Waits until a request may be made, then counts it (background work waits more, see <see cref="Background"/>).</summary>
+    public Task WaitAsync(CancellationToken cancellationToken = default) => WaitAsync(BackgroundFlow.Value, cancellationToken);
+
+    /// <summary>
+    /// Waits until a request may be made, then counts it. Background work gets at most half the
+    /// budget and waits while any player's request is waiting; players' requests use it all.
+    /// </summary>
+    public async Task WaitAsync(bool background, CancellationToken cancellationToken = default)
+    {
+        if (!background)
+            Interlocked.Increment(ref _interactiveWaiting);
         try
         {
             while (true)
@@ -72,19 +103,24 @@ public sealed class OsuApiBudget : IDisposable
                 {
                     var now = _time.GetUtcNow();
                     Forget(now);
-                    if (_sent.Count < PerMinute)
+                    var limit = background ? Math.Max(1, PerMinute / 2) : PerMinute;
+                    if (_sent.Count < limit && (!background || Volatile.Read(ref _interactiveWaiting) == 0))
                     {
                         _sent.Enqueue(now);
                         return;
                     }
-                    wait = _sent.Peek() + _window - now;
+                    wait = _sent.Count > 0 ? _sent.Peek() + _window - now : TimeSpan.FromMilliseconds(100);
+                    // Background work looks again soon: a player's request it waited for may be done.
+                    if (background)
+                        wait = TimeSpan.FromMilliseconds(Math.Clamp(wait.TotalMilliseconds, 100, 1000));
                 }
                 await Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.FromMilliseconds(1), _time, cancellationToken).ConfigureAwait(false);
             }
         }
         finally
         {
-            _gate.Release();
+            if (!background)
+                Interlocked.Decrement(ref _interactiveWaiting);
         }
     }
 

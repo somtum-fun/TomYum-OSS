@@ -17,6 +17,9 @@ public sealed class BeatmapsetExtrasBackfill : BackgroundService
     // v3: mappers (the set's creator and each difficulty's) too.
     public const string DoneName = "tomyum_beatmapset_extras_v3";
 
+    /// <summary>The last set brought up to date (osu_counts), so a restart carries on instead of starting over.</summary>
+    public const string CursorName = "tomyum_beatmapset_extras_v3_cursor";
+
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<BeatmapsetExtrasBackfill> _logger;
 
@@ -40,27 +43,41 @@ public sealed class BeatmapsetExtrasBackfill : BackgroundService
                 .SingleAsync(cancellationToken).ConfigureAwait(false) > 0)
             return null;
 
-        // osu!'s sets only: custom sets (TomYum's own id range) aren't on the API.
+        // osu!'s sets only: custom sets (TomYum's own id range) aren't on the API. In id order, from
+        // where the last run stopped (after an import of thousands of sets this takes hours).
         var floor = (uint)Beatmap.CustomIdFloor;
-        var sets = await db.Beatmapsets.AsNoTracking().Where(s => s.BeatmapsetId < floor)
+        var cursor = (await db.Database.SqlQuery<long>($"SELECT CAST(count AS SIGNED) AS Value FROM osu_counts WHERE name = {CursorName}")
+            .ToListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault();
+        var sets = await db.Beatmapsets.AsNoTracking().Where(s => s.BeatmapsetId < floor && s.BeatmapsetId > cursor)
             .OrderBy(s => s.BeatmapsetId).Select(s => (int)s.BeatmapsetId)
             .ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (cursor > 0 && sets.Count > 0)
+            _logger.LogInformation("Bringing beatmap sets up to date: carrying on after set {Cursor} ({Count} to go).", cursor, sets.Count);
         var updated = 0;
-        // Every set: the mirror would count that as crawling, so osu! (paced by the shared budget).
+        var done = 0;
+        // Every set: the mirror would count that as crawling, so osu! (paced by the shared budget), as
+        // background work: players' lookups go first.
         using var _ = TomYum.Server.Beatmaps.BeatmapMirror.Bypass();
+        using var __ = OsuApiBudget.Background();
         foreach (var setId in sets)
         {
-            if (await api.GetBeatmapsetExtrasAsync(setId, cancellationToken).ConfigureAwait(false) is not { } extras)
-                continue;
-            try
+            if (await api.GetBeatmapsetExtrasAsync(setId, cancellationToken).ConfigureAwait(false) is { } extras)
             {
-                await interop.SyncBeatmapsetExtrasAsync(setId, extras, cancellationToken).ConfigureAwait(false);
-                await interop.IndexBeatmapsetAsync(setId, cancellationToken).ConfigureAwait(false);
-                updated++;
+                try
+                {
+                    await interop.SyncBeatmapsetExtrasAsync(setId, extras, cancellationToken).ConfigureAwait(false);
+                    await interop.IndexBeatmapsetAsync(setId, cancellationToken).ConfigureAwait(false);
+                    updated++;
+                }
+                catch (HttpRequestException ex)
+                {
+                    _logger.LogWarning(ex, "Bringing beatmap set {SetId} up to date on the website failed.", setId);
+                }
             }
-            catch (HttpRequestException ex)
+            if (++done % 25 == 0)
             {
-                _logger.LogWarning(ex, "Bringing beatmap set {SetId} up to date on the website failed.", setId);
+                await db.Database.ExecuteSqlAsync(
+                    $"INSERT INTO osu_counts (name, count) VALUES ({CursorName}, {setId}) ON DUPLICATE KEY UPDATE count = VALUES(count)", cancellationToken).ConfigureAwait(false);
             }
             // Gentle on osu!'s API.
             await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken).ConfigureAwait(false);
