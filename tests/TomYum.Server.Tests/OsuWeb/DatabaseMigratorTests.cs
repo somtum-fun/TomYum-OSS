@@ -47,7 +47,7 @@ public sealed class DatabaseMigratorTests : OsuWebDatabaseTest
             // A column added by a later migration (after saving: the model still has it).
             await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE scores DROP COLUMN FromLazer");
             await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE staff_log DROP COLUMN Via");
-            await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE scores DROP INDEX IX_scores_OsuWebScoreId, DROP COLUMN OsuWebScoreId, DROP COLUMN PpHeld, DROP COLUMN LargeTickHits, DROP COLUMN SliderEndHits");
+            await legacy.Database.ExecuteSqlRawAsync("ALTER TABLE scores DROP INDEX IX_scores_OsuWebScoreId, DROP COLUMN OsuWebScoreId, DROP COLUMN PpHeld, DROP COLUMN LargeTickHits, DROP COLUMN SliderEndHits, DROP COLUMN OffBoard");
         }
 
         await using var db = NewTomYumContext();
