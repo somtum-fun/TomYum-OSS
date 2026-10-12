@@ -193,6 +193,11 @@ public sealed class IrcSession : IDisposable
             await ErrorAsync("You're online in osu!; IRC and the game can't be used at the same time here.").ConfigureAwait(false);
             return false;
         }
+        if (_players.GetByUserId(user.Id) is { IsIrc: true } previous)
+        {
+            // A new IRC login replaces the old one: logged out properly, so it leaves its channels too.
+            await SessionEnd.LogOutAsync(previous, scope.ServiceProvider, _logger).ConfigureAwait(false);
+        }
 
         _nick = IrcLine.Nick(user.Username);
         _player = _players.Add(new BanchoPresence

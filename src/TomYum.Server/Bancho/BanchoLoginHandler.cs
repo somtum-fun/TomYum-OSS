@@ -386,6 +386,10 @@ public sealed class BanchoLoginHandler
             await LogOutAsync(online).ConfigureAwait(false);
         }
 
+        // An IRC session gives way to the game: logged out properly, so it leaves its channels too.
+        if (!tournament && _registry.GetByUserId(user.Id) is { IsIrc: true } irc)
+            await LogOutAsync(irc).ConfigureAwait(false);
+
         // Resolve the country for this session: prefer the live CF-IPCountry header, fall back
         // to the stored user country. If the stored country is "xx" and we have a real one
         // now, persist it so future logins don't need the header to show the correct flag.

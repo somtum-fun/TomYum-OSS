@@ -73,6 +73,26 @@ public sealed class IrcTests
     }
 
     [Fact]
+    public async Task ASecondIrcLogin_LogsTheFirstOut_ChannelsAndAll()
+    {
+        await using var server = await IrcHarness.StartAsync();
+        var password = await server.Tokens.CreateAsync(server.Ids["Some Player"]);
+        using var first = await server.ConnectAsync("Some_Player", password);
+        await first.UntilAsync(" 376 ");
+        await first.SendAsync("JOIN #osu");
+        await first.UntilAsync(" 366 ");
+        var old = server.Players.GetByUserId(server.Ids["Some Player"])!;
+        Assert.Contains(old, server.Channels.Get("#osu")!.Members);
+
+        using var second = await server.ConnectAsync("Some_Player", password);
+        await second.UntilAsync(" 376 ");
+
+        Assert.DoesNotContain(old, server.Channels.Get("#osu")!.Members);
+        Assert.Null(server.Players.GetByToken(old.Token));
+        Assert.Contains(await first.UntilAsync("ERROR"), l => l.StartsWith("ERROR :", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task AWrongPassword_IsRefused_AndSoIsSomeoneInTheGame()
     {
         await using var server = await IrcHarness.StartAsync();

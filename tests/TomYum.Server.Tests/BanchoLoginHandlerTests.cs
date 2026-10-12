@@ -1,3 +1,4 @@
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using TomYum.Bancho;
 using TomYum.Server.Bancho;
@@ -223,5 +224,31 @@ public class BanchoLoginHandlerTests
         var game = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
 
         Assert.NotNull(game.Token);
+    }
+
+    [Fact]
+    public async Task GameClient_WhileOnIrc_LogsTheIrcSessionOut()
+    {
+        var users = new InMemoryUserRepository();
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var services = new ServiceCollection()
+            .AddSingleton(new TomYum.Server.Bancho.Packets.BanchoPacketDispatcher(
+                [new TomYum.Server.Bancho.Packets.LogoutHandler()], NullLogger<TomYum.Server.Bancho.Packets.BanchoPacketDispatcher>.Instance))
+            .AddSingleton(new MatchRegistry()).AddSingleton(registry).AddSingleton(channels)
+            .BuildServiceProvider();
+        var handler = new BanchoLoginHandler(users, new BcryptPasswordHasher(), new InMemoryUserStatsRepository(), registry, channels,
+            NullLogger<BanchoLoginHandler>.Instance, services: services);
+        await RegisterAsync(users, "BlueSky", "s3cure-pass");
+        var user = await users.GetBySafeNameAsync("bluesky", CancellationToken.None);
+        var irc = registry.Add(new BanchoPresence { UserId = user!.Id, Username = "BlueSky" });
+        irc.IsIrc = true;
+        channels.Get("#lobby")!.Join(irc);
+
+        var game = await handler.HandleAsync(LoginBody("BlueSky", "s3cure-pass"), "TH", CancellationToken.None);
+
+        Assert.NotNull(game.Token);
+        Assert.Null(registry.GetByToken(irc.Token));
+        Assert.DoesNotContain(irc, channels.Get("#lobby")!.Members);
     }
 }
