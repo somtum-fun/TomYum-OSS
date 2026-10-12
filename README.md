@@ -139,12 +139,14 @@ Docker, k8s, k3s, and Caddy scaffolding lives under `deploy/`.
 
 ## Documentation
 
-A step-by-step guide to running TomYum (setup, configuration, deployment) is coming on its own
-docs website. Until then, the docs live in this repository:
+The docs are at **[docs.somtum.fun](https://docs.somtum.fun)**: requirements, a step-by-step production setup, your domain
+and Cloudflare, configuration, updating and backups.
 
-[osu-web](docs/osu-web.md) · [lazer](docs/lazer.md) · [spectating](docs/spectating.md) ·
-[custom beatmaps](docs/custom-beatmaps.md) · [achievements](docs/achievements.md) · [IRC](docs/irc.md) ·
-[plugins](docs/plugins.md) · [local testing](docs/local-testing.md)
+[Introduction](https://docs.somtum.fun/guide/introduction) · [production setup](https://docs.somtum.fun/guide/production) ·
+[domain setup](https://docs.somtum.fun/guide/domain-setup) · [osu-web](https://docs.somtum.fun/guide/osu-web) · [lazer](https://docs.somtum.fun/clients/lazer) ·
+[old clients](https://docs.somtum.fun/clients/old-clients) · [custom beatmaps](https://docs.somtum.fun/features/custom-beatmaps) ·
+[plugins](https://docs.somtum.fun/operations/plugins) · [configuration](https://docs.somtum.fun/reference/configuration) ·
+[local testing](https://docs.somtum.fun/guide/local-testing) · [roadmap](https://docs.somtum.fun/reference/roadmap)
 
 Configuration samples are under `config/`, and deployment scaffolding (Docker, k8s, k3s, Caddy)
 under `deploy/`.
