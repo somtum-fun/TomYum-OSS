@@ -71,7 +71,7 @@ public sealed class IrcSession : IDisposable
         try
         {
             var stream = _connection;
-            using var reader = new StreamReader(stream, new UTF8Encoding(false), detectEncodingFromByteOrderMarks: false, bufferSize: 1024, leaveOpen: true);
+            var reader = new IrcLineReader(stream);
             _writer = new StreamWriter(stream, new UTF8Encoding(false), bufferSize: 1024, leaveOpen: true) { NewLine = "\r\n", AutoFlush = true };
 
             if (!await RegisterAsync(reader, cancel.Token).ConfigureAwait(false))
@@ -114,7 +114,7 @@ public sealed class IrcSession : IDisposable
 
     // ── logging in ────────────────────────────────────────────────────────────────────────
 
-    private async Task<bool> RegisterAsync(StreamReader reader, CancellationToken cancellationToken)
+    private async Task<bool> RegisterAsync(IrcLineReader reader, CancellationToken cancellationToken)
     {
         string? password = null, nick = null;
         var hasUser = false;
@@ -510,14 +510,14 @@ public sealed class IrcSession : IDisposable
 
     // ── the wire ──────────────────────────────────────────────────────────────────────────
 
-    private static async Task<string?> ReadLineAsync(StreamReader reader, TimeSpan timeout, CancellationToken cancellationToken)
+    /// <summary>The next line; null when the client went quiet, left, or sent a line longer than IRC allows.</summary>
+    private static async Task<string?> ReadLineAsync(IrcLineReader reader, TimeSpan timeout, CancellationToken cancellationToken)
     {
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         wait.CancelAfter(timeout);
         try
         {
-            var line = await reader.ReadLineAsync(wait.Token).ConfigureAwait(false);
-            return line is { Length: > IrcLine.MaxLength } ? line[..IrcLine.MaxLength] : line;
+            return await reader.ReadLineAsync(wait.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
