@@ -85,7 +85,7 @@ online state, and object storage.
 
 1. Clone the repository to your local machine.
 ```bash
-git clone https://github.com/sundeiii/TomYum.git
+git clone https://github.com/somtum-fun/TomYum-OSS.git
 ```
 2. Navigate to the project directory.
 ```bash

@@ -243,7 +243,7 @@ services:
       db:
         condition: service_healthy
 
-  # ppy's spectator server with TomYum's changes (sundeiii/tomyum-spectator, a checkout next to TomYum).
+  # ppy's spectator server with TomYum's changes (somtum-fun/tomyum-spectator, a checkout next to TomYum).
   spectator:
     build:
       context: ${SPECTATOR_PATH:-../../../tomyum-spectator}

@@ -16,7 +16,7 @@ Done (2026-09-27):
     has the new values.
 
 - **Multiplayer, spectating, online presence, lazer replays**: osu-web's compose builds ppy's
-  spectator server (`spectator`, from [sundeiii/tomyum-spectator](https://github.com/sundeiii/tomyum-spectator), a checkout next to TomYum) with one change: replays go
+  spectator server (`spectator`, from [somtum-fun/tomyum-spectator](https://github.com/somtum-fun/tomyum-spectator), a checkout next to TomYum) with one change: replays go
   to `public/uploads/replay` (where the website reads them) instead of Amazon S3. Caddy serves it
   as `https://spectator.localtest.me` (`deploy/caddy/Caddyfile.local`).
 

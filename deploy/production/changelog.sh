@@ -33,4 +33,4 @@ import() {
 		| docker compose exec -T php php artisan tomyum:changelog-import "$2" --repository="$3" $authors $skip $4
 }
 
-import ../.. server sundeiii/TomYum $reset && import "$web" web sundeiii/osu-web && echo "$layout" > "$state"
+import ../.. server somtum-fun/TomYum-OSS $reset && import "$web" web somtum-fun/osu-web-tomyum && echo "$layout" > "$state"

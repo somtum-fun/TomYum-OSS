@@ -30,7 +30,7 @@ done in two phases:
 
 ### 1. Start osu-web
 
-In an osu-web checkout (ours is the private `sundeiii/osu-web`, an unmodified import of upstream):
+In an osu-web checkout (ours is the private `somtum-fun/osu-web-tomyum`, an unmodified import of upstream):
 
 ```bash
 # osu-web's nginx defaults to 8080, which TomYum.Server uses — move it.

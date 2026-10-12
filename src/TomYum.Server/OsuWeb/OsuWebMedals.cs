@@ -86,7 +86,7 @@ public sealed partial class OsuWebMedals
         try
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, OfficialListUrl);
-            request.Headers.UserAgent.ParseAdd("TomYum (+https://github.com/sundeiii/TomYum)");
+            request.Headers.UserAgent.ParseAdd("TomYum (+https://github.com/somtum-fun/TomYum-OSS)");
             using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
                 return null;

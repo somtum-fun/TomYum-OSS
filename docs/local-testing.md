@@ -28,7 +28,7 @@ osu! client / browser ──https──> Caddy (Windows) ──> localhost:8080 
 
 ```bash
 mkdir -p ~/src && cd ~/src
-git clone https://github.com/sundeiii/osu-web.git
+git clone https://github.com/somtum-fun/osu-web-tomyum.git
 cd osu-web
 NGINX_PORT=8180 bin/docker_dev.sh -d     # first run builds images and installs deps: takes a while
 ```
@@ -73,7 +73,7 @@ Check <http://localhost:8180> shows the osu-web front page.
 
 ```bash
 cd ~/src
-git clone https://github.com/sundeiii/TomYum.git
+git clone https://github.com/somtum-fun/TomYum-OSS.git
 cd TomYum
 cp config/.env.example config/.env
 ```
