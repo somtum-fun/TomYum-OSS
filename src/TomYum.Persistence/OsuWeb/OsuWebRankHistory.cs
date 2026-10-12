@@ -43,7 +43,8 @@ public sealed class OsuWebRankHistory
     public async Task<bool> IsDueAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
     {
         var today = long.Parse(now.UtcDateTime.ToString("yyyyMMdd", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
-        return await CountAsync(DoneName, cancellationToken).ConfigureAwait(false) < today;
+        // Never recorded (a new database) counts as due.
+        return (await CountAsync(DoneName, cancellationToken).ConfigureAwait(false) ?? 0) < today;
     }
 
     /// <summary>Writes every player's current global rank into the next day's column for <paramref name="ruleset"/>.</summary>
