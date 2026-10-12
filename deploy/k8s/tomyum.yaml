@@ -55,7 +55,7 @@ metadata:
 spec:
   # Keep at 1 for now: online players, channels, matches and spectators still live in each
   # pod's memory (PlayerRegistry/ChannelRegistry/MatchRegistry), so two pods would split the
-  # player base. Scale out once online state moves to Redis (ADR-0003, ROADMAP cross-cutting).
+  # player base. Scale out once online state moves to Redis (ADR-0003, ROADMAP scaling).
   replicas: 1
   selector:
     matchLabels:

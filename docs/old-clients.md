@@ -4,7 +4,7 @@ osu!stable builds from late 2013 to 2015 can play on a TomYum server: log in, ch
 leaderboards and scores, on the **same leaderboards** as today's stable. They have no `-devserver`
 option, so players connect them with [Titanic! Hook](https://github.com/osuTitanic/hook), a loader
 from the osuTitanic project that redirects the game's `ppy.sh` addresses to your server in memory,
-without changing any game files. Plan and status: [ROADMAP.md](ROADMAP.md) ("Old clients").
+without changing any game files.
 
 ## For players
 

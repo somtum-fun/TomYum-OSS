@@ -16,7 +16,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 ## Progress
 
 > Status: **used in production** (osu!stable, osu!lazer and the website on one account system).
-> Version `0.3.0-dev`. The detailed checklist, with what's left, is
+> Version `0.5.0`, production-ready. Docs: [docs.somtum.fun](https://docs.somtum.fun). What's left is in
 > [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Supported rulesets
@@ -71,7 +71,7 @@ Custom lazer rulesets (Sentakki, tau, Rush!, ...) aren't supported yet.
 * Email (sign-up verification)
 
 **Not done yet** (see the [roadmap](docs/ROADMAP.md)): custom medals, multi-instance (Redis-backed)
-online state, and multi-target storage.
+online state, and object storage.
 
 ## Building
 

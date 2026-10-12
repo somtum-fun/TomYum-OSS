@@ -11,7 +11,7 @@ namespace TomYum.Server.Bancho;
 public sealed class TomYumVersion
 {
     /// <summary>Fallback used when no informational version is baked into the assembly.</summary>
-    public const string Fallback = "0.1.0-dev";
+    public const string Fallback = "0.5.0";
 
     /// <summary>Used for <see cref="Commit"/> when no git revision is baked into the assembly.</summary>
     public const string UnknownCommit = "unknown";
@@ -47,8 +47,8 @@ public sealed class TomYumVersion
     public string ServerName { get; }
 
     /// <summary>
-    /// The server and the build, for the bot's posts and <c>!version</c>: <c>example · TomYum 0.3.0-dev</c>,
-    /// or <c>TomYum 0.3.0-dev</c> for a server without a name of its own.
+    /// The server and the build, for the bot's posts and <c>!version</c>: <c>example · TomYum 0.5.0</c>,
+    /// or <c>TomYum 0.5.0</c> for a server without a name of its own.
     /// </summary>
     public string Label => ServerName == Product ? $"{Product} {Display}" : $"{ServerName} · {Product} {Display}";
 

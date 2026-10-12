@@ -17,8 +17,7 @@ namespace TomYum.Performance;
 /// osu.ppy.sh. This caches the source bytes on disk: it survives restarts, is shared across every
 /// mods/ruleset combination of the same beatmap, and is the seam that will serve locally-hosted
 /// custom beatmaps (id ≥ <c>10000000</c>, ADR-0009) once upload lands — a custom map's <c>.osu</c>
-/// dropped into the cache directory is served without ever hitting osu.ppy.sh. See
-/// <c>docs/ROADMAP.md</c> Phase 0.
+/// dropped into the cache directory is served without ever hitting osu.ppy.sh.
 /// </remarks>
 public sealed class OsuFileCache
 {
