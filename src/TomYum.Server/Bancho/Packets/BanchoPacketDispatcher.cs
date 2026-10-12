@@ -17,6 +17,18 @@ namespace TomYum.Server.Bancho.Packets;
 /// </remarks>
 public sealed class BanchoPacketDispatcher
 {
+    /// <summary>
+    /// The most packets one request is read for: a client sends a handful a poll. The rest of a
+    /// request with more is dropped.
+    /// </summary>
+    internal const int MaxPacketsPerRequest = 512;
+
+    /// <summary>
+    /// The most one packet's payload may be. The largest a client sends is an old build's beatmap info
+    /// request, about a megabyte at its 4,500 maps; a packet that says it's longer ends the request.
+    /// </summary>
+    internal const int MaxPayloadBytes = 2 * 1024 * 1024;
+
     private readonly FrozenDictionary<ClientPacketId, IClientPacketHandler> _handlers;
     private readonly ILogger<BanchoPacketDispatcher> _logger;
 
@@ -47,25 +59,33 @@ public sealed class BanchoPacketDispatcher
         // Decode one packet's header + payload, then dispatch. The ref struct reader is fully
         // consumed before any await (it never crosses the handler call), so async handlers are safe.
         var offset = 0;
+        var count = 0;
         while (body.Length - offset >= PacketHeader.Size)
         {
+            if (++count > MaxPacketsPerRequest)
+            {
+                _logger.LogWarning("User {UserId} sent more than {Max} packets at once; the rest are dropped.", player.UserId, MaxPacketsPerRequest);
+                break;
+            }
+
             // The ref struct reader cannot live in an async method, so parse the header in a
             // synchronous helper that returns plain values before any await.
             var header = ReadHeader(body.Span.Slice(offset, PacketHeader.Size));
             var id = header.Id;
-            var payloadLength = checked((int)header.Length);
+            long payloadLength = header.Length;
 
+            // As longs: a length near 4 GB must not wrap around past the bounds check.
             var payloadStart = offset + PacketHeader.Size;
-            if (payloadStart + payloadLength > body.Length)
+            if (payloadLength > MaxPayloadBytes || payloadStart + payloadLength > body.Length)
             {
                 _logger.LogWarning(
-                    "Truncated packet {PacketId} from user {UserId}: declared {Length} bytes, {Remaining} remaining.",
+                    "Truncated or oversized packet {PacketId} from user {UserId}: declared {Length} bytes, {Remaining} remaining.",
                     id, player.UserId, payloadLength, body.Length - payloadStart);
                 break;
             }
 
-            var payload = body.Slice(payloadStart, payloadLength);
-            offset = payloadStart + payloadLength;
+            var payload = body.Slice(payloadStart, (int)payloadLength);
+            offset = payloadStart + (int)payloadLength;
 
             if (_handlers.TryGetValue(id, out var handler))
             {
@@ -74,7 +94,9 @@ public sealed class BanchoPacketDispatcher
                 {
                     await handler.HandleAsync(context).ConfigureAwait(false);
                 }
-                catch (Exception ex) when (ex is InvalidDataException or InvalidOperationException)
+#pragma warning disable CA1031 // one bad packet (or a handler's bug) must not end the rest of the request
+                catch (Exception ex) when (ex is not (OutOfMemoryException or StackOverflowException or AccessViolationException))
+#pragma warning restore CA1031
                 {
                     _logger.LogWarning(ex, "Handler for {PacketId} (user {UserId}) failed.", id, player.UserId);
                 }

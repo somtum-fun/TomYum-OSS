@@ -100,7 +100,7 @@ public sealed class TcpBanchoServer : BackgroundService
 internal sealed class TcpBanchoSession : IDisposable
 {
     private const int MaxLoginBytes = 4096;
-    private const int MaxPacketBytes = 8 * 1024 * 1024;
+    private const int MaxPacketBytes = BanchoPacketDispatcher.MaxPayloadBytes;
     private static readonly TimeSpan LoginTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan PushInterval = TimeSpan.FromMilliseconds(50);
 

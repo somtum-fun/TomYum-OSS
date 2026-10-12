@@ -244,7 +244,7 @@ public sealed class BanchoBotCommands
     {
         var max = 100;
         if (parts.Length > 1 && int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out var requested) && requested > 0)
-            max = requested;
+            max = Math.Min(requested, 1_000_000); // capped: int.MaxValue + 1 overflows below
 
         var value = Random.Shared.Next(1, max + 1);
         return string.Create(CultureInfo.InvariantCulture, $"{sender} rolls {value} point(s)! (1-{max})");
