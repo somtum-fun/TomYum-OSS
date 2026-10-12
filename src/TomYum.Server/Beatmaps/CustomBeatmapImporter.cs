@@ -434,6 +434,9 @@ public sealed class CustomBeatmapImporter
                 throw new CustomUploadException("The file has too many entries.");
             if (archive.Entries.Sum(e => e.Length) > MaxUnpackedBytes)
                 throw new CustomUploadException("The file unpacks to too much data.");
+            // Players' clients unpack it by these names: none may point outside the set's folder.
+            if (PackageNames.FirstUnsafe(archive) is { } unsafeName)
+                throw new CustomUploadException(Invariant($"The file has a file name that isn't allowed: \"{unsafeName}\". Rename it and try again."));
 
             var maps = new List<PackagedMap>();
             foreach (var entry in archive.Entries.Where(e => e.FullName.EndsWith(".osu", StringComparison.OrdinalIgnoreCase)))

@@ -253,14 +253,9 @@ public sealed class Osz2Package
     private static bool IsBeatmapFile(string name) =>
         Path.GetExtension(name).ToLowerInvariant() is ".osu" or ".osc";
 
-    /// <summary>Forward slashes, no <c>..</c> or rooted paths.</summary>
-    private static string CanonicalPath(string name)
-    {
-        var parts = name.Replace('\\', '/').Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (parts.Length == 0 || parts.Any(p => p is "." or ".." || p.Contains(':', StringComparison.Ordinal)) || name.StartsWith('/'))
-            throw new InvalidDataException("The .osz2 package has an invalid file name.");
-        return string.Join('/', parts);
-    }
+    /// <summary>Forward slashes, no <c>..</c> or rooted paths (<see cref="PackageNames.Canonical"/>).</summary>
+    private static string CanonicalPath(string name) =>
+        PackageNames.Canonical(name) ?? throw new InvalidDataException("The .osz2 package has an invalid file name.");
 
     /// <summary>The file table: every field was encrypted as its own write, so it's decrypted the same way.</summary>
     private sealed class FrameReader(byte[] buffer, Osz2Crypto crypto)

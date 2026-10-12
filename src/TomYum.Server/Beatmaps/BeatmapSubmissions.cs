@@ -182,7 +182,7 @@ public sealed class BeatmapSubmissions
         await OwnedSetAsync(user, setId, cancellationToken).ConfigureAwait(false);
         if (!_store.HasSet(setId))
             throw new SubmissionException(404, "This beatmap set has no files to change yet.");
-        if (changed.Keys.Concat(deleted).Any(IsUnsafeName))
+        if (!changed.Keys.Concat(deleted).All(PackageNames.IsSafe))
             throw new SubmissionException(422, "Invalid filename detected");
 
         byte[] patched;
@@ -314,9 +314,6 @@ public sealed class BeatmapSubmissions
         user.Privileges.HasFlag(UserPrivileges.Supporter) ? 8 + Math.Min(12, ranked) : 4 + Math.Min(4, ranked);
 
     private static bool IsInactive(CustomBeatmapSet set, DateTime now) => now - set.UpdatedAt > InactiveAfter;
-
-    private static bool IsUnsafeName(string name) =>
-        name.Length == 0 || name.Contains("..", StringComparison.Ordinal) || name.StartsWith('/') || name.StartsWith('\\') || name.Contains(':', StringComparison.Ordinal);
 
     private static string Invariant(FormattableString value) => value.ToString(CultureInfo.InvariantCulture);
 }
