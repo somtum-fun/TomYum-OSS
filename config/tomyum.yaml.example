@@ -173,8 +173,7 @@ storage:
     # Beatmap (.osu) and BeatmapMedia fall back to defaultProviders (local) here.
 
 # --------------------------------------------------------------------------
-# Plugins: runtime drop-ins from the plugins/ directory. DAN Mode and Session
-# ship as plugins (ADR-0007). Each plugin's own config lives under plugins.<id>.
+# Plugins: runtime drop-ins from the plugins/ directory (ADR-0007). Each plugin's own config lives under plugins.<id>.
 # --------------------------------------------------------------------------
 plugins:
   directory: "plugins"
@@ -184,8 +183,7 @@ plugins:
 
   # Ids granted raw DB access (IPluginContext.Data). Only list plugins you trust to
   # own their own tables and run ad-hoc SQL against the shared database (ADR-0007).
-  trusted:
-    - "tomyum.session"
+  trusted: []
 
   # Per-plugin config blocks go here: plugins.<plugin-id> with whatever settings
   # that plugin reads. See each plugin's README for its config schema.
@@ -193,19 +191,4 @@ plugins:
   #   "your.plugin.name":
   #     enabled: true
   #     someOption: value
-
-  # Session (web auth) plugin — plugins/tomyum-session. See its README.md for all keys.
-  "tomyum.session":
-    ttlHours: 720               # session lifetime (default 720h = 30 days)
-    bindClient: false           # enforce IP-prefix (/24,/64) + UA-hash binding
-    allowBodyToken: true        # accept a session_token field in the JSON body
-    passwordIsMd5: false        # true if the frontend md5s the password client-side
-    requireNormalPrivilege: true # block restricted/banned accounts (Normal bit cleared)
-    cookieSecure: true          # set false only for local http cookie round-trips
-    cookieSameSite: "Lax"
-    cookieDomain: ""            # optional "; Domain=" (empty = host-only)
-    frontendProxyToken: ""      # shared secret to trust X-TomYum-Client-IP behind a proxy
-    rateLimitWindowSeconds: 300
-    rateLimitMaxAttempts: 10
-    reaperIntervalMinutes: 60
 

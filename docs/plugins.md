@@ -5,8 +5,7 @@
 
 TomYum loads plugins at startup from a `plugins/` directory. A plugin is a small piece of code that
 hooks into the server through one interface — `IPluginContext` — and can add commands, react to
-events, serve HTTP, and inspect live state. **DAN Mode** and the **Session** frontend ship as plugins
-on this same system.
+events, serve HTTP, and inspect live state.
 
 The fastest way to start is the plugin template repo:
 **[somtum-fun/tomyum-plugin-template](https://github.com/somtum-fun/tomyum-plugin-template)** — compiled
@@ -105,7 +104,7 @@ plugins:
   directory: plugins
   allowLooseSource: true
   trusted:
-    - tomyum.session          # only trusted plugins get IPluginContext.Data
+    - example.my-plugin       # only trusted plugins get IPluginContext.Data
   example.my-plugin:          # <- your manifest Id; becomes IPluginContext.Config
     greeting: "sawasdee"
 ```

@@ -82,8 +82,7 @@ _The host works (Phase 1), but the production server runs **0 plugins**: nothing
 
 - [ ] Mount `deploy/production/plugins/` into the server container and document deploying one
       (compiled `.dll` or loose `.cs` with `Plugins:AllowLooseSource`).
-- [x] The Session plugin (`plugins/tomyum-session`) isn't needed with osu-web (it does website logins); it's an optional
-      example for servers with their own frontend.
+- [x] The Session plugin (website logins for servers without osu-web) was removed on 2026-10-11: nothing used it.
 - [ ] Publish the remaining hot-path events (`ScoreSubmitting` veto, `SpectateFrame`, `ChatMessage`) as
       their first consumers land.
 
@@ -136,16 +135,7 @@ _Clean-room reimplementations of the old server's DAN mode and session.py (that 
       `IHostSpectating` (BanchoBot spectates for plugins), `SpectateFrameEvent.Action`, `ActionChangedEvent.CanCheckFrames`,
       `ScoreSubmittedEvent`, beatmap id/set/difficulty on `ScoreSubmittingEvent`. The plugin keeps courses and clears in
       `plugin_dan_*`; a play that breaks a rule stays a normal score (no veto). The website's staff panel edits the courses.
-- [~] **Session** plugin — `session.<domain>` vhost, opaque web-session table (IP/UA binding).
-  - [x] **Auth core** (loose source `plugins/tomyum-session/`): `/login` (bcrypt, mint token, cookie),
-        `/check-session`, `/logout`, `GET`/`DELETE /user/sessions/web` (list + masked-suffix revoke),
-        `/health`, expiry reaper. Trusted plugin owns its `sessions` table. Auth resolved in-plugin
-        (`requireAuth:false`). Verified live vs MySQL. Docs: `docs/session-plugin.md`. (2026-07-08)
-  - [ ] Feature endpoints (profile, beatmap mode-status, clans, donations, admin, uploads,
-        change-password) — the other ~11k lines of `session.py`. Scope out Thai-deployment specifics
-        (TrueMoney/PromptPay/OAuth/email) as optional plugin config.
-  - [ ] Flip to `requireAuth:true` once the host grows an auth-resolver hook (Session provides it).
-  - [ ] Ship compiled `.dll` variant (net10.0 lib ref Abstractions + BCrypt.Net-Next).
+- [x] ~~**Session** plugin~~: removed 2026-10-11 (unused; osu-web does website logins).
 
 ## Phase 5 — Custom beatmaps 🔒 Phase 0 (storage/migrations); `!map` needs none
 _Custom sets are uploaded as `.osz` from the BN panel, or submitted from either game's editor, and

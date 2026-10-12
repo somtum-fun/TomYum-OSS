@@ -112,8 +112,6 @@ value as `TOMYUM_DATABASE__OSUWEBINDEXPREFIX`.
 - **Replays** aren't served by the site (TomYum keeps them); scores are marked as having none.
 - **History** from before the switch is copied by `tools/MigrateToOsuWeb` (run before switching).
   The server itself only mirrors new plays: it never guesses whose an old TomYum user id was.
-- **Session plugin** (`plugins/tomyum-session`) reads TomYum's own `users` table, so it doesn't see
-  osu-web accounts. The osu-web site has its own login; leave the plugin off in osu-web mode.
 
 ### Beatmap packs
 

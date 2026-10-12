@@ -2,8 +2,7 @@
 
 This is the **runtime drop-in directory** for TomYum plugins. The server scans it on
 startup (and, where supported, on change) and loads anything it finds. Plugins extend
-the server without modifying core code — **DAN Mode** and **Session** ship as plugins,
-not core features.
+the server without modifying core code.
 
 See `memories/architecture/decisions/0007-plugin-model.md` and
 `memories/features/plugins.md` for the full design, and
