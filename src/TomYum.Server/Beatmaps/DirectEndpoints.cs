@@ -38,7 +38,9 @@ public static partial class DirectEndpoints
 
         // One difficulty's .osu file, like osu.ppy.sh/osu/{id}: ppy's score processor reads maps
         // from here (BEATMAP_DOWNLOAD_PATH), so custom maps (whose files are only in TomYum's
-        // .osu cache) get pp too. No host restriction: it's called by the compose service name.
+        // .osu cache) get pp too. It's called by the compose service name (http://server:8080), so
+        // only such internal hosts get an answer (IsInternalCaller): every id asked for is fetched
+        // from osu! and kept, which nobody outside should be able to make the server do.
         app.MapGet("/osu/{beatmapId:int}", HandleOsuFileAsync);
 
         // Custom sets' covers, where the website links them (Caddy sends these paths here; the
@@ -66,9 +68,28 @@ public static partial class DirectEndpoints
     private static string ContentTypeOf(string path) =>
         path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
 
-    private static async Task<IResult> HandleOsuFileAsync(int beatmapId, TomYum.Performance.OsuFileCache files, CancellationToken cancellationToken)
+    /// <summary>
+    /// Whether a request came from the server's own network: to a one-word host (a compose service
+    /// name, <c>localhost</c>) or a loopback or private address, and not through Cloudflare. The
+    /// public sites always arrive with their own names.
+    /// </summary>
+    internal static bool IsInternalCaller(HttpRequest request)
     {
-        if (beatmapId <= 0)
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Headers.ContainsKey("CF-Connecting-IP"))
+            return false;
+        var host = request.Host.Host;
+        if (host.Length == 0)
+            return false;
+        if (System.Net.IPAddress.TryParse(host.Trim('[', ']'), out var address))
+            return !Admin.BadgeImages.IsPublic(address);
+        return !host.Contains('.', StringComparison.Ordinal);
+    }
+
+    internal static async Task<IResult> HandleOsuFileAsync(HttpContext context, int beatmapId, TomYum.Performance.OsuFileCache files, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        if (beatmapId <= 0 || !IsInternalCaller(context.Request))
             return Results.NotFound();
 
         try

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.IO;
 using System.Net.Http;
@@ -30,6 +31,11 @@ public sealed class OsuFileCache
     private readonly string _directory;
     private readonly HttpClient _http;
     private readonly ILogger<OsuFileCache> _log;
+
+    // Ids osu.ppy.sh didn't have (404 or empty), not asked for again for a while: a bounded list.
+    private const int MaxMissing = 10_000;
+    private static readonly TimeSpan MissingRemembered = TimeSpan.FromMinutes(30);
+    private readonly ConcurrentDictionary<int, DateTimeOffset> _missing = new();
 
     /// <summary>Creates the cache over <paramref name="directory"/>, creating it if absent.</summary>
     public OsuFileCache(string directory, HttpClient http, ILogger<OsuFileCache> log)
@@ -74,10 +80,25 @@ public sealed class OsuFileCache
             }
         }
 
+        if (_missing.TryGetValue(beatmapId, out var until) && until > DateTimeOffset.UtcNow)
+            throw new InvalidOperationException($"osu.ppy.sh didn't have beatmap {beatmapId} a moment ago.");
+
         var url = string.Format(CultureInfo.InvariantCulture, DownloadUrl, beatmapId);
-        var bytes = await _http.GetByteArrayAsync(url, cancellationToken).ConfigureAwait(false);
+        byte[] bytes;
+        try
+        {
+            bytes = await _http.GetByteArrayAsync(url, cancellationToken).ConfigureAwait(false);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            RememberMissing(beatmapId);
+            throw;
+        }
         if (bytes.Length == 0)
+        {
+            RememberMissing(beatmapId);
             throw new InvalidOperationException($"osu.ppy.sh returned an empty .osu for beatmap {beatmapId}.");
+        }
 
         await WriteAtomicAsync(path, bytes, cancellationToken).ConfigureAwait(false);
         _log.LogDebug("osu-cache: downloaded + cached beatmap {BeatmapId} ({Bytes} bytes)", beatmapId, bytes.Length);
@@ -91,6 +112,7 @@ public sealed class OsuFileCache
     public Task StoreAsync(int beatmapId, byte[] bytes, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bytes);
+        _missing.TryRemove(beatmapId, out _);
         return WriteAtomicAsync(Path.Combine(_directory, beatmapId.ToString(CultureInfo.InvariantCulture) + ".osu"), bytes, cancellationToken);
     }
 
@@ -102,6 +124,14 @@ public sealed class OsuFileCache
     {
         var path = Path.Combine(_directory, beatmapId.ToString(CultureInfo.InvariantCulture) + ".osu");
         return File.Exists(path) ? File.GetLastWriteTimeUtc(path).Ticks : 0;
+    }
+
+    private void RememberMissing(int beatmapId)
+    {
+        // Bounded: a flood of made-up ids only starts the list over.
+        if (_missing.Count >= MaxMissing)
+            _missing.Clear();
+        _missing[beatmapId] = DateTimeOffset.UtcNow + MissingRemembered;
     }
 
     private static async Task WriteAtomicAsync(string path, byte[] bytes, CancellationToken cancellationToken)
