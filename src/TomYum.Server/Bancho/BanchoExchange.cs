@@ -26,8 +26,15 @@ public static class BanchoExchange
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(services);
 
-        // Builds up to 2013 gzip what they send from 150 bytes on (header byte 2); today's never do.
-        body = LegacyPackets.Incoming(LegacyPackets.Decompress(body), player.Build);
+        // Numbered builds before b1807 gzip what they send from 150 bytes on (header byte 2); later ones
+        // never do. A request that unpacks to more than any build sends is a gzip bomb: none of it is run.
+        var unpacked = LegacyPackets.Decompress(body, player.Build);
+        if (unpacked is null)
+        {
+            services.GetService<ILoggerFactory>()?.CreateLogger(typeof(BanchoExchange))
+                .LogWarning("Refused a request from user {UserId}: its packets unpack to more than {Limit} bytes.", player.UserId, LegacyPackets.MaxUnpackedBytes);
+        }
+        body = LegacyPackets.Incoming(unpacked ?? [], player.Build);
         var produced = body.Length == 0
             ? []
             : await dispatcher.DispatchAsync(player, registry, channels, matches, services, body).ConfigureAwait(false);

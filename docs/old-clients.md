@@ -59,8 +59,9 @@ translates b337–b1704, `LegacyPackets` the rest):
 | b20120916 – b20121223 | today's | 32-bit mods; mania from b20121003; 4 grades from b20121115; today's presence from b20121203; the menu icon is an image URL until b20121223. Rooms without free mods or seed. |
 | b20130303 – b20130802.1 | today's | Messages from the client have the sender id; rooms get free mods; from b20130513 frame bundles start with the extra int and rooms end with a seed (today's 8-slot room). |
 
-Every build up to 2013 gzips client packets of 150 bytes or more (header byte 2); TomYum unpacks them
-first. Before b20130513 spectator frame bundles lose today's leading int (and get one, plus the tag byte
+The numbered builds before b1807 gzip client packets of 150 bytes or more (header byte 2); TomYum unpacks
+them first, for those builds only (up to 2 MB a request in all; more is refused as a gzip bomb).
+Before b20130513 spectator frame bundles lose today's leading int (and get one, plus the tag byte
 on b337–b534's 27-byte score frames, when they come in). A login refusal a build doesn't know reads as a
 successful login there, so refusals below its lowest code go out as -1 ("failed"), even before there's a
 session (the build is read from the login itself). Not sent to these builds: packets their table doesn't

@@ -21,6 +21,13 @@ public sealed partial record ClientBuild(string Version, DateOnly? Date)
     /// </summary>
     public bool HasEarlyPackets => Number is not null && !Has(BanchoFeature.TodaysIds);
 
+    /// <summary>
+    /// Whether the build gzips the packets it sends (header byte 2) when they're 150 bytes or more: the
+    /// numbered builds before b1807 do; from b1807 on the client always writes 0 there (read from the
+    /// decompiled clients), as today's does.
+    /// </summary>
+    public bool SendsCompressedPackets => HasEarlyPackets;
+
     /// <summary>The build's date for the checks below: numbered builds are older than any dated one.</summary>
     private DateOnly? Era => Date ?? (Number is null ? null : DateOnly.MinValue);
 

@@ -346,6 +346,8 @@ public partial class OldBanchoTests
 
     // ---- compression ----
 
+    private static readonly ClientBuild Compressing = ClientBuild.Parse("b1122");
+
     [Fact]
     public void GzippedPackets_AreUnpacked()
     {
@@ -355,7 +357,7 @@ public partial class OldBanchoTests
         stream.AddRange(Frame(1, 1, Gzip(message)));
         stream.AddRange(Frame(3, 0, []));
 
-        var packets = Packets(LegacyPackets.Decompress([.. stream]));
+        var packets = Packets(LegacyPackets.Decompress([.. stream], Compressing)!);
 
         Assert.Equal([4, 1, 3], packets.Select(p => (int)p.Id));
         Assert.Equal(message, packets[1].Payload);
@@ -367,8 +369,44 @@ public partial class OldBanchoTests
         byte[] plain = [.. Frame(4, 0, []), .. Frame(3, 0, [])];
         byte[] broken = [.. Frame(1, 1, [1, 2, 3]), .. Frame(4, 0, [])];
 
-        Assert.Same(plain, LegacyPackets.Decompress(plain));
-        Assert.Equal([4], Packets(LegacyPackets.Decompress(broken)).Select(p => (int)p.Id));
+        Assert.Same(plain, LegacyPackets.Decompress(plain, Compressing));
+        Assert.Equal([4], Packets(LegacyPackets.Decompress(broken, Compressing)!).Select(p => (int)p.Id));
+    }
+
+    [Theory]
+    [InlineData("b1807")]
+    [InlineData("b20121223")]
+    [InlineData("b20130802.1")]
+    [InlineData("b20240123")]
+    [InlineData("")]
+    public void BuildsThatNeverCompress_AreNotUnpacked(string version)
+    {
+        // From b1807 on the client writes 0 in header byte 2: a set one is passed on as it is (and fails to read).
+        byte[] stream = [.. Frame(1, 1, Gzip(new byte[300])), .. Frame(4, 0, [])];
+
+        Assert.Same(stream, LegacyPackets.Decompress(stream, ClientBuild.Parse(version)));
+    }
+
+    [Fact]
+    public void AGzipBomb_IsRefused()
+    {
+        // ~2,000 bytes of gzipped zeros that unpack to 3 MB: more than any build sends at once.
+        var bomb = Gzip(new byte[3 * 1024 * 1024]);
+
+        Assert.Null(LegacyPackets.Decompress([.. Frame(1, 1, bomb)], Compressing));
+    }
+
+    [Fact]
+    public void ManySmallBombs_AreRefusedTogether()
+    {
+        // Each is under the limit on its own; what a request unpacks to in all is what counts.
+        var piece = Gzip(new byte[300 * 1024]);
+        var stream = new List<byte>();
+        for (var i = 0; i < 10; i++)
+            stream.AddRange(Frame(1, 1, piece));
+
+        Assert.Null(LegacyPackets.Decompress([.. stream], Compressing));
+        Assert.NotNull(LegacyPackets.Decompress([.. Frame(1, 1, piece), .. Frame(1, 1, piece)], Compressing));
     }
 
     // ---- rooms ----

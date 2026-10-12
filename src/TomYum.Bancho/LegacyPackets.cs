@@ -154,13 +154,24 @@ public static class LegacyPackets
     }
 
     /// <summary>
-    /// <paramref name="stream"/> (framed client packets) with every gzip-compressed payload (header byte 2
-    /// set) unpacked: builds up to 2013 compress what they send when it's 150 bytes or more. The stream
-    /// itself when nothing is compressed; a payload that doesn't unpack is left out.
+    /// The most a request's gzipped payloads may unpack to, all together. A build's own packets are a
+    /// few kilobytes at most; more than this is a gzip bomb, and the request is refused.
     /// </summary>
-    public static byte[] Decompress(byte[] stream)
+    public const int MaxUnpackedBytes = 2 * 1024 * 1024;
+
+    /// <summary>
+    /// <paramref name="stream"/> (framed client packets) with every gzip-compressed payload (header byte 2
+    /// set) unpacked: numbered builds before b1807 compress what they send when it's 150 bytes or more
+    /// (<see cref="ClientBuild.SendsCompressedPackets"/>); other builds' streams are passed as they are.
+    /// The stream itself when nothing is compressed; a payload that doesn't unpack is left out. Null when
+    /// the payloads unpack to more than <see cref="MaxUnpackedBytes"/> in all (the request is refused).
+    /// </summary>
+    public static byte[]? Decompress(byte[] stream, ClientBuild build)
     {
         ArgumentNullException.ThrowIfNull(stream);
+        ArgumentNullException.ThrowIfNull(build);
+        if (!build.SendsCompressedPackets)
+            return stream;
         long offset = 0;
         var compressed = false;
         while (offset + 7 <= stream.Length)
@@ -172,24 +183,39 @@ public static class LegacyPackets
             return stream;
 
         var writer = new BanchoPacketWriter(stream.Length * 2);
+        var budget = MaxUnpackedBytes;
         var at = 0;
         while (at + 7 <= stream.Length)
         {
             var id = BinaryPrimitives.ReadUInt16LittleEndian(stream.AsSpan(at));
             var length = (int)BinaryPrimitives.ReadUInt32LittleEndian(stream.AsSpan(at + 3));
             var payload = stream.AsSpan(at + 7, length).ToArray();
-            var unpacked = stream[at + 2] == 0 ? payload : Gunzip(payload);
-            if (unpacked is not null)
-                writer.WritePacket((ServerPacketId)id, w => w.WriteRaw(unpacked));
+            var gzipped = stream[at + 2] != 0;
             at += 7 + length;
+            if (!gzipped)
+            {
+                writer.WritePacket((ServerPacketId)id, w => w.WriteRaw(payload));
+                continue;
+            }
+            switch (Gunzip(payload, budget))
+            {
+                case { Unpacked: { } unpacked }:
+                    budget -= unpacked.Length;
+                    writer.WritePacket((ServerPacketId)id, w => w.WriteRaw(unpacked));
+                    break;
+                case { TooLarge: true }:
+                    return null;
+            }
         }
         return writer.ToArray();
     }
 
-    /// <summary>A gzip stream's content; null when it isn't one (or unpacks to more than a packet should be).</summary>
-    private static byte[]? Gunzip(byte[] payload)
+    /// <summary>
+    /// A gzip stream's content; Unpacked is null when it isn't one, or when it unpacks to more than
+    /// <paramref name="budget"/> bytes (then TooLarge is set).
+    /// </summary>
+    private static (byte[]? Unpacked, bool TooLarge) Gunzip(byte[] payload, int budget)
     {
-        const int MaxBytes = 8 * 1024 * 1024;
         try
         {
             using var input = new MemoryStream(payload);
@@ -200,14 +226,14 @@ public static class LegacyPackets
             while ((read = gzip.Read(buffer, 0, buffer.Length)) > 0)
             {
                 output.Write(buffer, 0, read);
-                if (output.Length > MaxBytes)
-                    return null;
+                if (output.Length > budget)
+                    return (null, true);
             }
-            return output.ToArray();
+            return (output.ToArray(), false);
         }
         catch (InvalidDataException)
         {
-            return null;
+            return (null, false);
         }
     }
 
