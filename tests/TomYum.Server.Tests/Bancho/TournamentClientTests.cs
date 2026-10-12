@@ -140,7 +140,7 @@ public sealed class TournamentClientTests
     {
         var registry = new PlayerRegistry();
         var matches = new MatchRegistry();
-        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" });
+        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" })!;
         var match = matches.Create(2, "OWC: A vs B", string.Empty, "map", 1, "md5", 0, default, default, false, 0, 0);
         match.Slots[0].Join(2);
         await new TournamentJoinMatchChannelHandler().HandleAsync(Context(window, registry, matches, match.Id, new BanchoPacketWriter(64)));

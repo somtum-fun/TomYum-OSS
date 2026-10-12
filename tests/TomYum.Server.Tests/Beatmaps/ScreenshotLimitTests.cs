@@ -48,6 +48,8 @@ public sealed class ScreenshotLimitTests : IDisposable
         var users = new InMemoryUserRepository();
         await users.AddAsync(new User
         {
+            // The limit is shared by the whole process: an id no other test uses, so this test fills only its own.
+            Id = 990_001,
             Username = "Snapper", SafeName = "snapper", Email = "s@x.dev", Country = "nl",
             PasswordBcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("pw")),
         });
