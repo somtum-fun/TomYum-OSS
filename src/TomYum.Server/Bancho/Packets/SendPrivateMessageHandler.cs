@@ -43,6 +43,15 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
         }
 
         var sender = context.Player.Presence.Username;
+
+        // Long messages are cut; too many too fast are dropped (BanchoBot commands too), and the sender is told.
+        text = ChatLimits.Cut(text, ChatLimits.MaxMessageLength);
+        if (!context.Player.ChatRate.TryTake(DateTimeOffset.UtcNow))
+        {
+            ChatEncoder.WriteMessage(context.Response, new BanchoMessage(BanchoBot.Name, ChatLimits.TooFast, sender, BanchoBot.UserId));
+            return;
+        }
+
         var nowPlaying = NowPlaying.TryParse(text);
         if (nowPlaying is not null)
             context.Services.GetService<NowPlayingStore>()?.Set(context.Player.UserId, nowPlaying);

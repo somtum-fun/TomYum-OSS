@@ -405,6 +405,13 @@ public sealed class IrcSession : IDisposable
                 _connection.Close();
                 return;
             }
+            if (_player.QueueOverflowed)
+            {
+                // More waited for the session than the connection took: it ends (RunAsync logs it out).
+                await ErrorAsync("Too much was waiting for this session; please reconnect.").ConfigureAwait(false);
+                _connection.Close();
+                return;
+            }
             _player.LastActivityUtc = DateTimeOffset.UtcNow;
             var queued = _player.DequeueAll();
             if (queued.Length > 0)

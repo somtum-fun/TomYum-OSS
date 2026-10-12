@@ -128,11 +128,45 @@ public sealed class OnlinePlayer
     /// </summary>
     public int? SpectatingUserId { get; set; }
 
-    /// <summary>Appends already-framed packet bytes to this player's outbound queue.</summary>
+    /// <summary>
+    /// The most that may wait in a session's outbound queue. A client that polls takes what's queued
+    /// every second or so: a few kilobytes, more while spectating (the login burst is the login's reply,
+    /// never queued). Past this the client has stopped reading, and the session is ended.
+    /// </summary>
+    public const int MaxQueuedBytes = 4 * 1024 * 1024;
+
+    /// <summary>
+    /// Set when the queue went past <see cref="MaxQueuedBytes"/>: what was queued is dropped, nothing more
+    /// is queued, and the session is logged out at its next exchange (the client reconnects).
+    /// </summary>
+    public bool QueueOverflowed
+    {
+        get
+        {
+            lock (_queueLock)
+                return _queueOverflowed;
+        }
+    }
+
+    private bool _queueOverflowed;
+
+    /// <summary>The player's chat messages (<see cref="ChatLimits"/>).</summary>
+    public RateLimit ChatRate { get; } = new(ChatLimits.MessagesPerWindow, ChatLimits.Window);
+
+    /// <summary>Appends already-framed packet bytes to this player's outbound queue (up to <see cref="MaxQueuedBytes"/>).</summary>
     public void Enqueue(ReadOnlySpan<byte> framedPackets)
     {
         lock (_queueLock)
         {
+            if (_queueOverflowed)
+                return;
+            if (_outbound.Count + framedPackets.Length > MaxQueuedBytes)
+            {
+                _queueOverflowed = true;
+                _outbound.Clear();
+                _outbound.TrimExcess();
+                return;
+            }
             _outbound.AddRange(framedPackets);
         }
     }
@@ -153,20 +187,20 @@ public sealed class OnlinePlayer
         }
     }
 
-    /// <summary>
-    /// Atomically takes everything queued so far, clearing the queue. Returns an empty
-    /// array when nothing is pending. Called when flushing a poll response.
-    /// </summary>
-    /// <summary>Whether anything is queued for the player (TCP sessions push it as it comes).</summary>
+    /// <summary>Whether anything is queued for the player (TCP sessions push it as it comes), or the queue overflowed.</summary>
     public bool HasQueued
     {
         get
         {
             lock (_queueLock)
-                return _outbound.Count > 0;
+                return _outbound.Count > 0 || _queueOverflowed;
         }
     }
 
+    /// <summary>
+    /// Atomically takes everything queued so far, clearing the queue. Returns an empty
+    /// array when nothing is pending. Called when flushing a poll response.
+    /// </summary>
     public byte[] DequeueAll()
     {
         lock (_queueLock)

@@ -53,7 +53,7 @@ public sealed class SetAwayMessageHandler : IClientPacketHandler
     public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        var text = FriendPackets.ReadMessageText(context.Payload.Span).Trim();
+        var text = ChatLimits.Cut(FriendPackets.ReadMessageText(context.Payload.Span).Trim(), ChatLimits.MaxMessageLength);
         context.Player.AwayMessage = text.Length == 0 ? null : text;
         return Task.CompletedTask;
     }

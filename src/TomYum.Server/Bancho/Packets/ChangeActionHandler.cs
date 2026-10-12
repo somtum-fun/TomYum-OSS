@@ -16,6 +16,9 @@ namespace TomYum.Server.Bancho.Packets;
 /// </summary>
 public sealed class ChangeActionHandler : IClientPacketHandler
 {
+    /// <summary>The status text is cut to this (a map's "Artist - Title [Difficulty]" is well under it).</summary>
+    internal const int MaxInfoLength = 512;
+
     /// <inheritdoc />
     public ClientPacketId PacketId => ClientPacketId.ChangeAction;
 
@@ -28,8 +31,8 @@ public sealed class ChangeActionHandler : IClientPacketHandler
         var presence = context.Player.Presence;
 
         presence.Action     = reader.ReadByte();
-        presence.ActionInfo = reader.ReadString();
-        presence.BeatmapMd5 = reader.ReadString();
+        presence.ActionInfo = ChatLimits.Cut(reader.ReadString(), MaxInfoLength);
+        presence.BeatmapMd5 = ChatLimits.Cut(reader.ReadString(), 32);
         presence.Mods       = (Mods)reader.ReadUInt32();
         var newMode         = reader.ReadByte();
         presence.BeatmapId  = reader.ReadInt32();

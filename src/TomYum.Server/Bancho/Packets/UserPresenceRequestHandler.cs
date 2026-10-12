@@ -9,6 +9,9 @@ namespace TomYum.Server.Bancho.Packets;
 /// </summary>
 public sealed class UserPresenceRequestHandler : IClientPacketHandler
 {
+    /// <summary>The most players one request is answered for.</summary>
+    internal const int MaxIds = 4096;
+
     /// <inheritdoc />
     public ClientPacketId PacketId => ClientPacketId.UserPresenceRequest;
 
@@ -18,7 +21,8 @@ public sealed class UserPresenceRequestHandler : IClientPacketHandler
         ArgumentNullException.ThrowIfNull(context);
 
         var reader = new BanchoPacketReader(context.Payload.Span);
-        var ids = reader.ReadInt32List();
+        // Each player once, and no more than a client's user list could ask for.
+        var ids = reader.ReadInt32List().Distinct().Take(MaxIds);
 
         foreach (var id in ids)
         {

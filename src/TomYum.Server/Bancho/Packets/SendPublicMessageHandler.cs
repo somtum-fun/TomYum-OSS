@@ -42,6 +42,14 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             return;
         }
 
+        // Long messages are cut; too many too fast are dropped, and the sender is told.
+        text = ChatLimits.Cut(text, ChatLimits.MaxMessageLength);
+        if (!context.Player.ChatRate.TryTake(DateTimeOffset.UtcNow))
+        {
+            ChatEncoder.WriteMessage(context.Response, new BanchoMessage(BanchoBot.Name, ChatLimits.TooFast, target, BanchoBot.UserId));
+            return;
+        }
+
         // A /np in a channel (e.g. #multiplayer) also sets the map for BanchoBot's !map.
         if (NowPlaying.TryParse(text) is { } nowPlaying)
             context.Services.GetService<NowPlayingStore>()?.Set(context.Player.UserId, nowPlaying);

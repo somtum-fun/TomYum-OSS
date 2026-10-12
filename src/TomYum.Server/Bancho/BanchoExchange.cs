@@ -26,6 +26,18 @@ public static class BanchoExchange
         ArgumentNullException.ThrowIfNull(dispatcher);
         ArgumentNullException.ThrowIfNull(services);
 
+        // A session whose queue overflowed (the client stopped reading it) is ended; the client is
+        // told to reconnect, and gets everything afresh in its new login.
+        if (player.QueueOverflowed)
+        {
+            var log = services.GetService<ILoggerFactory>()?.CreateLogger(typeof(BanchoExchange))
+                ?? Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+            log.LogWarning("Ended user {UserId}'s session: more than {Limit} bytes were waiting for it.", player.UserId, OnlinePlayer.MaxQueuedBytes);
+            await SessionEnd.LogOutAsync(player, services, log).ConfigureAwait(false);
+            var restart = new BanchoPacketWriter(32).WritePacket(ServerPacketId.Restart, w => w.WriteInt32(0)).ToArray();
+            return LegacyPackets.Outgoing(restart, player.Build);
+        }
+
         // Numbered builds before b1807 gzip what they send from 150 bytes on (header byte 2); later ones
         // never do. A request that unpacks to more than any build sends is a gzip bomb: none of it is run.
         var unpacked = LegacyPackets.Decompress(body, player.Build);
