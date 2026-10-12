@@ -91,8 +91,18 @@ internal sealed class PluginHostService : IHostedService
             (message, exception) => _log.LogWarning(exception, "{Message}", message));
 
         var discovered = await _loader.LoadAllAsync(directory, cancellationToken).ConfigureAwait(false);
+        var shared = SharedIds(discovered.Select(p => p.Manifest));
         foreach (var plugin in discovered)
         {
+            // Trust and settings go by the id a plugin declares, and the folders come in no set order:
+            // when two plugins claim one id, neither is loaded (one could take the other's trust).
+            if (shared.Contains(plugin.Manifest.Id))
+            {
+                _log.LogError("plugin {Id}: more than one plugin claims this id; none of them is loaded", plugin.Manifest.Id);
+                await _loader.UnloadAsync(plugin, cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
             try
             {
                 var context = BuildContext(plugin.Manifest);
@@ -114,6 +124,13 @@ internal sealed class PluginHostService : IHostedService
         _loaded.SetLoaded(_plugins.Select(p => p.Manifest));
         _log.LogInformation("plugin host: {Count} plugin(s) active from {Directory}", _plugins.Count, directory);
     }
+
+    /// <summary>The ids (any case) that more than one of <paramref name="manifests"/> declares.</summary>
+    internal static HashSet<string> SharedIds(IEnumerable<PluginManifest> manifests) =>
+        manifests.GroupBy(m => m.Id, StringComparer.OrdinalIgnoreCase)
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     public async Task StopAsync(CancellationToken cancellationToken)
     {
