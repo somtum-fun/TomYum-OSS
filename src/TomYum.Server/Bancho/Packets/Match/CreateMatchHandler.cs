@@ -25,6 +25,17 @@ public sealed class CreateMatchHandler : IClientPacketHandler
         try { args = MatchEncoder.ReadCreateArgs(context.Payload.Span); }
         catch (InvalidDataException) { return Task.CompletedTask; }
 
+        if (!context.Player.RoomRate.TryTake(DateTimeOffset.UtcNow))
+        {
+            context.Response.WriteStringPacket(ServerPacketId.Notification, "You're making rooms a little too fast. Wait a minute, then try again.");
+            context.Response.WritePacket(ServerPacketId.MatchJoinFail, null);
+            return Task.CompletedTask;
+        }
+
+        // One room at a time: the one the player is in is left first.
+        if (context.Matches.GetByUserId(context.Player.UserId) is { } current)
+            MatchBroadcast.RemovePlayer(current, context.Player, context.Registry, context.Matches);
+
         var match = context.Matches.Create(
             context.Player.UserId, args.Name, args.Password,
             args.MapName, args.MapId, args.MapMd5,

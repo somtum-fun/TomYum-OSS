@@ -5,7 +5,8 @@ namespace TomYum.Server.Bancho;
 
 /// <summary>
 /// In-memory registry of all live multiplayer match rooms, analogous to
-/// <see cref="PlayerRegistry"/>. Assigns monotonically increasing ushort match ids.
+/// <see cref="PlayerRegistry"/>. Assigns increasing ushort match ids, skipping 0 and the ids of
+/// rooms still open when they wrap around.
 /// Thread-safe for concurrent add/remove; per-match mutation uses the match's own
 /// <see cref="Match.SyncRoot"/>.
 /// </summary>
@@ -23,17 +24,23 @@ public sealed class MatchRegistry
     /// <summary>Snapshot of all active matches.</summary>
     public IReadOnlyCollection<Match> All => _matches.Values.ToArray();
 
-    /// <summary>Creates a new match, registers it, and returns it.</summary>
+    /// <summary>Creates a new match, registers it, and returns it (InvalidOperationException when every id is taken).</summary>
     public Match Create(int hostUserId, string name, string password,
         string mapName, int mapId, string mapMd5,
         byte mode, MatchWinCondition winCondition, MatchTeamType teamType,
         bool freeMods, uint mods, int seed)
     {
-        var id = (ushort)Interlocked.Increment(ref _nextId);
-        var match = new Match(id, hostUserId, name, password, mapName, mapId, mapMd5,
-            mode, winCondition, teamType, freeMods, mods, seed) { History = History };
-        _matches[id] = match;
-        return match;
+        for (var tries = 0; tries < ushort.MaxValue; tries++)
+        {
+            var id = unchecked((ushort)Interlocked.Increment(ref _nextId));
+            if (id == 0)
+                continue;
+            var match = new Match(id, hostUserId, name, password, mapName, mapId, mapMd5,
+                mode, winCondition, teamType, freeMods, mods, seed) { History = History };
+            if (_matches.TryAdd(id, match))
+                return match;
+        }
+        throw new InvalidOperationException("Every match id is taken.");
     }
 
     /// <summary>Looks up a match by id, or <c>null</c>.</summary>

@@ -153,6 +153,9 @@ public sealed class OnlinePlayer
     /// <summary>The player's chat messages (<see cref="ChatLimits"/>).</summary>
     public RateLimit ChatRate { get; } = new(ChatLimits.MessagesPerWindow, ChatLimits.Window);
 
+    /// <summary>The multiplayer rooms the player makes: a few a minute.</summary>
+    public RateLimit RoomRate { get; } = new(5, TimeSpan.FromMinutes(1));
+
     /// <summary>Appends already-framed packet bytes to this player's outbound queue (up to <see cref="MaxQueuedBytes"/>).</summary>
     public void Enqueue(ReadOnlySpan<byte> framedPackets)
     {

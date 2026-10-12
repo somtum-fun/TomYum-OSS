@@ -22,14 +22,25 @@ public sealed class JoinMatchHandler : IClientPacketHandler
         }
 
         var reader   = new BanchoPacketReader(context.Payload.Span);
-        var matchId  = (ushort)reader.ReadInt32();
+        var rawId    = reader.ReadInt32();
         var password = reader.ReadString();
 
-        var match = context.Matches.Get(matchId);
+        var match = rawId is > 0 and <= ushort.MaxValue ? context.Matches.Get((ushort)rawId) : null;
         if (match is null)
         {
             context.Response.WritePacket(ServerPacketId.MatchJoinFail, null);
             return Task.CompletedTask;
+        }
+
+        // One room at a time: the one the player is in is left first (joining it again just says so).
+        if (context.Matches.GetByUserId(context.Player.UserId) is { } current)
+        {
+            if (current == match)
+            {
+                MatchEncoder.WriteMatchPacket(context.Response, ServerPacketId.MatchJoinSuccess, match, sendPassword: true);
+                return Task.CompletedTask;
+            }
+            MatchBroadcast.RemovePlayer(current, context.Player, context.Registry, context.Matches);
         }
 
         lock (match.SyncRoot)
