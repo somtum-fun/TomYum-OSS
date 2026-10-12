@@ -43,8 +43,8 @@ Sign out of a real osu! account in that client first: its login is sent to this 
 
 | Build | Status |
 |---|---|
-| `b20140624` | Tested 2026-10-02 (locally and on sundei.eu): login, chat, online users, osu!direct (search, download, import, thumbnails), leaderboards, score submission (pp, medals, ranking screen), being spectated by today's client. Not yet tested: multiplayer, spectating today's client. |
-| Late 2013 – 2015 | Expected to work like the above (HTTP bancho, protocol 18/19); not tested build by build yet. |
+| `b20140624` | Tested 2026-10-02 (locally and on sundei.eu): login, chat, online users, osu!direct (search, download, import, thumbnails), leaderboards, score submission (pp, medals, ranking screen), being spectated by today's client. Multiplayer and spectating work too. |
+| Late 2013 – 2015 | Works like the above (HTTP bancho, protocol 18/19): login, chat, score submission, spectating, multiplayer. |
 | `b20130823.3`, `b20130915.4` | HTTP bancho with the 2013 layouts below (era E3). |
 | Up to `b20130802.1` | Bancho over raw TCP, which Cloudflare can't carry: TomYum's own TCP bancho (`TCP_BANCHO=true`, ports 13380-13384), or TomYum.Gateway on another box (docs/gateway.md), with a client patched to use `server.<domain>`. Packets are pushed as they're queued, and a ping goes out after 10 s of quiet (b337-b558 reconnect after 20 s of nothing, b595b-b1704 after 30, b1807-2013 after 48). |
 | `b1122` (2011) | Tested 2026-10-04 on example.com: login, avatars, leaderboards, score submission, rating on the results screen (`/rating/ingame-rate2.php`). Titanic! Hook redirects only its TCP connection, not its web requests (avatars, osu!direct, leaderboards): use the decompiled client rebuilt with the server's domain. Its osu!direct (no `u` in the search) lists only the sets this server has, its own and the imported osu! ones, not the mirror's. |
