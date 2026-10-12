@@ -176,9 +176,8 @@ public static class ScoreSubmissionEndpoint
         }
 
         var passwordMd5 = plainInQuery ? context.Request.Query["pass"].ToString() : form["pass"].ToString();
-        // An unencrypted score always needs the password (nothing else ties it to the player).
-        if ((plainScore is not null && string.IsNullOrEmpty(passwordMd5))
-            || (!string.IsNullOrEmpty(passwordMd5) && !hasher.Verify(passwordMd5, user.PasswordBcrypt)))
+        // Every score needs the password: nothing else ties it to the player (the encryption keys are public).
+        if (string.IsNullOrEmpty(passwordMd5) || !hasher.Verify(passwordMd5, user.PasswordBcrypt))
         {
             logger.LogWarning("Score submission rejected: pass verification failed for '{Username}'", usernameFromScore);
             return Rejected();
@@ -187,6 +186,15 @@ public static class ScoreSubmissionEndpoint
         if (user.IsBot)
         {
             logger.LogWarning("Score submission rejected: '{Username}' is a bot account", usernameFromScore);
+            return Rejected();
+        }
+
+        // Deleted or locked by staff (the admin panel): no scores, as no logins.
+        if (user.IsDeleted
+            || (context.RequestServices.GetService<TomYum.Persistence.OsuWeb.OsuWebAccountFlags>() is { } accountFlags
+                && await accountFlags.IsLockedAsync(user.Id, cancellationToken).ConfigureAwait(false)))
+        {
+            logger.LogWarning("Score submission rejected: '{Username}''s account is deleted or locked", usernameFromScore);
             return Rejected();
         }
 
