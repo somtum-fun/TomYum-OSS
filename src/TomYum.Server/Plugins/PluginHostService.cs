@@ -144,7 +144,7 @@ internal sealed class PluginHostService : IHostedService
         var config = new PluginConfig(section);
         var logger = new PluginLogger(_loggerFactory.CreateLogger($"plugin:{manifest.Id}"));
         var commands = new ScopedCommandRegistry(_commands, manifest.Id);
-        var http = new ScopedHttpRouteRegistry(_routes, manifest.Id);
+        var http = new ScopedHttpRouteRegistry(_routes, manifest.Id, _log);
 
         IPluginDataAccess? data = null;
         if (_database.Enabled && _options.Trusted.Contains(manifest.Id, StringComparer.OrdinalIgnoreCase))

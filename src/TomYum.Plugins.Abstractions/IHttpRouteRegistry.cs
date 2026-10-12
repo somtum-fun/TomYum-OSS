@@ -16,7 +16,9 @@ public interface IHttpRouteRegistry
     /// <param name="requireAuth">When <c>true</c>, the host enforces a valid session before invoking the handler.</param>
     /// <param name="subdomain">
     /// Host subdomain this route is served from, e.g. <c>session</c> binds the route to
-    /// <c>session.&lt;domain&gt;</c> (the Session plugin's own vhost). <c>null</c> serves it on the primary host.
+    /// <c>session.&lt;domain&gt;</c> (the Session plugin's own vhost). <c>null</c> serves it on <em>every</em>
+    /// host the server answers (the internal one too), so a route meant for one host checks the request's
+    /// <c>Host</c> header itself. Paths under <c>/_admin</c> and <c>/_gateway</c> are the server's and are never mapped.
     /// </param>
     /// <returns>A disposable that removes the route when disposed.</returns>
     IDisposable Map(
