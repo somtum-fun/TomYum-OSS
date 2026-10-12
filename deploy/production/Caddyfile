@@ -27,7 +27,21 @@
 			roll_keep 5
 			roll_uncompressed
 		}
-		format json
+		# osu!stable sends the password's md5 in the query string (h, ha, p, pass): it logs in as well
+		# as the password does, so it never reaches the log. (Cookies and Authorization are left out by Caddy.)
+		format filter {
+			wrap json
+			fields {
+				request>uri query {
+					replace h REDACTED
+					replace ha REDACTED
+					replace p REDACTED
+					replace pass REDACTED
+					replace password REDACTED
+					replace k REDACTED
+				}
+			}
+		}
 	}
 }
 

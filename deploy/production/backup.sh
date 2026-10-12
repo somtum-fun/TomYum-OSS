@@ -5,6 +5,8 @@
 # also copied to Proton Drive (tomyum-backups/, 30 days kept there). The search index isn't kept:
 # it's rebuilt from the database. Cron (crontab -e): 30 4 * * * ~/TomYum/deploy/production/backup.sh
 set -euo pipefail
+# The backups hold the secrets (env files) and every account: readable by their owner only.
+umask 077
 cd "$(dirname "$0")"
 
 dest=${BACKUP_DIR:-$HOME/backups}
@@ -14,7 +16,11 @@ mkdir -p "$dir"
 exec > >(tee "$dir/backup.log") 2>&1
 echo "Backup $stamp"
 
-docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysqldump -uroot --single-transaction --routines --events --triggers --databases osu osu_chat osu_mp osu_store osu_updates tomyum' \
+# Every database on the server (the website's, TomYum's, and any others such as a payments service's).
+databases=$(docker compose exec -T db sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" exec mysql -uroot -N -e "SHOW DATABASES"' \
+	| tr -d '\r' | grep -vxE 'information_schema|performance_schema|mysql|sys' | tr '\n' ' ')
+echo "Databases: $databases"
+docker compose exec -T db sh -c "MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" exec mysqldump -uroot --single-transaction --routines --events --triggers --databases $databases" \
 	| gzip > "$dir/databases.sql.gz"
 # A dump that stopped early has no closing line.
 gzip -dc "$dir/databases.sql.gz" | tail -n 1 | grep -q 'Dump completed' || { echo "The database dump is incomplete." >&2; exit 1; }
@@ -22,7 +28,12 @@ gzip -dc "$dir/databases.sql.gz" | tail -n 1 | grep -q 'Dump completed' || { ech
 for volume in server-data osu-web-uploads osu-web-storage redis-data; do
 	docker run --rm -v "tomyum_$volume:/v:ro" -v "$dir:/out" alpine tar czf "/out/$volume.tar.gz" -C /v .
 done
-tar czf "$dir/config.tar.gz" .env tomyum.env osu-web.env Caddyfile
+# The settings, plus this server's own files next to them when they exist (the compose override, other env files).
+config=(.env tomyum.env osu-web.env Caddyfile)
+for extra in docker-compose.override.yml *.env qat-config.json; do
+	[[ -f $extra && ! " ${config[*]} " =~ " $extra " ]] && config+=("$extra")
+done
+tar czf "$dir/config.tar.gz" "${config[@]}"
 
 du -sh "$dir"
 find "$dest" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +
