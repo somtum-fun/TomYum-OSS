@@ -198,6 +198,22 @@ public static class ScoreSubmissionEndpoint
             return Rejected();
         }
 
+        // Only a player in the game submits (as on bancho.py): a game session here, old builds' too (IRC isn't one).
+        if (registry.GetByUserId(user.Id) is not { IsIrc: false } online)
+        {
+            logger.LogWarning("Score submission rejected: '{Username}' isn't online in the game", usernameFromScore);
+            return Rejected();
+        }
+
+        // Old client or today's: the build the player logged in with decides, not the URL (which the client
+        // picks), and an old build's score must come to an old build's URL and the other way round.
+        if (!SessionMatchesPath(online.Build, legacy))
+        {
+            logger.LogWarning("Score submission rejected: '{Username}' logged in with {Version} but submitted to {Path}", usernameFromScore, online.Build.Version, context.Request.Path.Value);
+            return Rejected();
+        }
+        legacy = online.Build.IsLegacy;
+
         // Old builds must sign each score as this server's patched builds, with nothing found (Anticheat:OldClients).
         if (legacy && oldClientProof.Value is { IsEnabled: true } proofOptions)
         {
@@ -600,6 +616,15 @@ public static class ScoreSubmissionEndpoint
             $"chartId:overall|chartUrl:https://osu.ppy.sh/u/{user.Id}|chartName:Overall Ranking|rankBefore:{prevGlobalRank}|rankAfter:{globalRank}|accuracyBefore:{prevAccuracy * 100.0:F2}|accuracyAfter:{stats.Accuracy * 100.0:F2}|rankedScoreBefore:{prevRankedScore}|rankedScoreAfter:{stats.RankedScore}|totalScoreBefore:{prevTotalScore}|totalScoreAfter:{stats.TotalScore}|ppBefore:{prevPp:F0}|ppAfter:{stats.Pp:F0}|toNextRank:|toNextRankUser:|achievements-new:{achievementsNew}\n");
 
         return Results.Text(response, "text/plain");
+    }
+
+    /// <summary>Whether the build the player logged in with posts to the URL the score came to (an old build's or today's).</summary>
+    /// <param name="session">The session's build.</param>
+    /// <param name="legacyPath">Whether the score came to an old build's URL.</param>
+    internal static bool SessionMatchesPath(ClientBuild session, bool legacyPath)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        return session.IsLegacy == legacyPath;
     }
 
     /// <summary>Whether <paramref name="path"/> is where b337–b904 submit (and want the reply in lines).</summary>
