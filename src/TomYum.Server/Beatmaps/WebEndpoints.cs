@@ -430,9 +430,34 @@ public static class WebEndpoints
             ? userId
             : null;
 
-    private static IResult HandleGetReplayAsync(HttpContext context, IConfiguration configuration)
+    internal static async Task<IResult> HandleGetReplayAsync(
+        HttpContext context,
+        IConfiguration configuration,
+        IScoreRepository scores,
+        IUserRepository users,
+        IPasswordHasher passwords,
+        RestrictedUsers restricted,
+        CancellationToken cancellationToken)
     {
         if (!long.TryParse(context.Request.Query["c"].ToString(), out var scoreId))
+            return Results.NotFound();
+
+        // The asking player: from b639 on the client sends its name and password md5 (`u`, `h`), which
+        // must check out. b337–b595b send only the score id, so they get only replays that are public.
+        int? viewerId = null;
+        var name = context.Request.Query["u"].ToString();
+        var passwordMd5 = context.Request.Query["h"].ToString();
+        if (name.Length > 0 || passwordMd5.Length > 0)
+        {
+            var viewer = await users.GetBySafeNameAsync(User.MakeSafeName(name), cancellationToken).ConfigureAwait(false);
+            if (viewer is null || passwordMd5.Length == 0 || !passwords.Verify(passwordMd5, viewer.PasswordBcrypt))
+                return Results.Unauthorized();
+            viewerId = viewer.Id;
+        }
+
+        // A restricted player's replays are hidden like their scores, except from themselves.
+        var score = await scores.GetByIdAsync(scoreId, cancellationToken).ConfigureAwait(false);
+        if (score is null || (restricted.Contains(score.UserId) && score.UserId != viewerId))
             return Results.NotFound();
 
         var replayDir = configuration["Replays:Path"] ?? "data/replays";

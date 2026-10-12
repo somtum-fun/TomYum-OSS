@@ -26,6 +26,9 @@ public sealed class ScoreRepository : IScoreRepository
         return score;
     }
 
+    public Task<Score?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
+        _db.Scores.AsNoTracking().FirstOrDefaultAsync(s => s.Id == id, cancellationToken);
+
     public Task<Score?> GetPersonalBestAsync(int userId, string beatmapMd5, int mode, CancellationToken cancellationToken = default) =>
         _db.Scores.AsNoTracking()
             .Where(s => s.UserId == userId && s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Status == ScoreStatus.Best)

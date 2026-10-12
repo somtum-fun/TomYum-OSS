@@ -49,6 +49,9 @@ public sealed class InMemoryScoreRepository : IScoreRepository
         return Task.FromResult(stored);
     }
 
+    public Task<Score?> GetByIdAsync(long id, CancellationToken cancellationToken = default) =>
+        Task.FromResult(_scores.TryGetValue(id, out var score) ? score : null);
+
     public Task<Score?> GetPersonalBestAsync(int userId, string beatmapMd5, int mode, CancellationToken cancellationToken = default)
     {
         var best = _scores.Values

@@ -5,6 +5,9 @@ namespace TomYum.Domain.Repositories;
 public interface IScoreRepository
 {
     Task<Score> AddAsync(Score score, CancellationToken cancellationToken = default);
+
+    /// <summary>The score with <paramref name="id"/>, or null.</summary>
+    Task<Score?> GetByIdAsync(long id, CancellationToken cancellationToken = default);
     Task<Score?> GetPersonalBestAsync(int userId, string beatmapMd5, int mode, CancellationToken cancellationToken = default);
 
     /// <summary>A player's best stable play on a map (lazer plays left out), as stable's leaderboard ranks it.</summary>
