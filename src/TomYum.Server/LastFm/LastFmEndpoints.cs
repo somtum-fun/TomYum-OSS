@@ -127,7 +127,8 @@ public static class LastFmEndpoints
             return Results.Ok(new { username = link.Username });
         });
 
-        // What a connected player is listening to (Last.fm's "now playing"), for their profile; 204 when not connected.
+        // What a connected player is listening to (Last.fm's "now playing") and their Last.fm name, for their
+        // profile; 204 when not connected.
         admin.MapGet("/lastfm/{userId:int}/listening", async (int userId, IServiceProvider services, TomYumDbContext db, TimeProvider time,
             CancellationToken cancellationToken) =>
         {
@@ -157,7 +158,7 @@ public static class LastFmEndpoints
                 cached = (now, listening);
                 Listening[userId] = cached;
             }
-            return Results.Ok(new { listening = cached.Listening });
+            return Results.Ok(new { listening = cached.Listening, username });
         });
 
         admin.MapPost("/lastfm/{userId:int}/unlink", async (int userId, TomYumDbContext db, CancellationToken cancellationToken) =>
