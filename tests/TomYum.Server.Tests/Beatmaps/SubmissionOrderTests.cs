@@ -56,15 +56,18 @@ public sealed class SubmissionOrderTests : IDisposable
         var running = 0;
         var most = 0;
         using var release = new ManualResetEventSlim();
-        var work = Enumerable.Range(0, BeatmapSubmissions.MaxDecoding + 3).Select(_ => Task.Run(() => BeatmapSubmissions.DecodeAsync(() =>
+        // Their own threads: each blocks while it "unpacks".
+        var work = Enumerable.Range(0, BeatmapSubmissions.MaxDecoding + 3).Select(_ => Task.Factory.StartNew(() => BeatmapSubmissions.DecodeAsync(() =>
         {
             var now = Interlocked.Increment(ref running);
             InterlockedMax(ref most, now);
-            release.Wait(TimeSpan.FromSeconds(5));
+            release.Wait(TimeSpan.FromSeconds(10));
             Interlocked.Decrement(ref running);
             return now;
-        }))).ToList();
+        }), CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap()).ToList();
 
+        // Once the places are taken, the others wait however long it takes.
+        Assert.True(SpinWait.SpinUntil(() => Volatile.Read(ref running) == BeatmapSubmissions.MaxDecoding, TimeSpan.FromSeconds(10)));
         await Task.Delay(200);
         release.Set();
         await Task.WhenAll(work);
