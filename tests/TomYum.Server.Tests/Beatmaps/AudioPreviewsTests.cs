@@ -53,14 +53,48 @@ public sealed class AudioPreviewsTests : IDisposable
     }
 
     [Fact]
-    public async Task NowhereHasIt_NothingIsKept()
+    public async Task NowhereHasIt_NothingIsKept_AndTheMissIsRemembered()
     {
         var http = new FakeHttp(_ => new HttpResponseMessage(HttpStatusCode.NotFound));
         using var previews = Previews(http);
 
         Assert.Null(await previews.GetAsync(1));
         Assert.Null(await previews.GetAsync(1));
-        Assert.Equal(4, http.Asked.Count); // asked again: a miss isn't kept
+        Assert.Equal(2, http.Asked.Count); // the mirror and osu!, once
+        Assert.Empty(Directory.Exists(_root) ? Directory.GetFiles(_root, "*", SearchOption.AllDirectories) : []);
+    }
+
+    [Fact]
+    public async Task SetsThisServerDoesntHave_AreFetchedOnlyAFewAMinute()
+    {
+        var http = new FakeHttp(_ => Audio(Mp3));
+        using var previews = Previews(http, known: false);
+
+        for (var id = 1; id <= AudioPreviews.UnknownSetsPerMinute + 5; id++)
+            await previews.GetAsync(id);
+
+        // osu!'s own (the mirror goes by difficulties, which aren't known), for the first ones only.
+        Assert.Equal(AudioPreviews.UnknownSetsPerMinute, http.Asked.Count);
+        Assert.All(http.Asked, url => Assert.StartsWith("https://b.ppy.sh/preview/", url, StringComparison.Ordinal));
+        Assert.Null(await previews.GetAsync(-5));
+    }
+
+    [Fact]
+    public async Task OnlyTheNewestPreviews_AreKept()
+    {
+        var http = new FakeHttp(_ => Audio(Mp3));
+        using var previews = Previews(http, maxCached: 10);
+        for (var id = 1; id <= 12; id++)
+        {
+            var file = await previews.GetAsync(id);
+            File.SetLastWriteTimeUtc(file!.Value.Path, DateTime.UtcNow.AddMinutes(id - 100));
+        }
+
+        previews.Trim();
+
+        // Down to 90% of the limit, oldest first.
+        var kept = Directory.GetFiles(Path.GetDirectoryName((await previews.GetAsync(12))!.Value.Path)!).Select(Path.GetFileNameWithoutExtension).Order().ToList();
+        Assert.Equal(["10", "11", "12", "4", "5", "6", "7", "8", "9"], kept);
     }
 
     [Fact]
@@ -116,11 +150,15 @@ public sealed class AudioPreviewsTests : IDisposable
         Assert.Null(AudioPreviews.AudioType([.. "<html>"u8, .. new byte[2048]]));
     }
 
-    private AudioPreviews Previews(FakeHttp http) =>
-        new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Assets:CachePath"] = _root }).Build(),
+    private AudioPreviews Previews(FakeHttp http, bool known = true, int? maxCached = null) =>
+        new(new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Assets:CachePath"] = _root,
+                [AudioPreviews.MaxCachedKey] = maxCached?.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            }).Build(),
             http, new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(), NullLogger<AudioPreviews>.Instance)
         {
-            BeatmapIdFor = (_, _) => Task.FromResult<int?>(2388297),
+            BeatmapIdFor = (_, _) => Task.FromResult(known ? 2388297 : (int?)null),
         };
 
     private static HttpResponseMessage Audio(byte[] bytes) => new(HttpStatusCode.OK) { Content = new ByteArrayContent(bytes) };

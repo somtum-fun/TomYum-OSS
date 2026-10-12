@@ -11,7 +11,9 @@ namespace TomYum.Server.Beatmaps;
 /// osu!direct's), kept on disk: fetched once from the mirror (catboy.best, by one of the set's
 /// difficulties) or else from osu! (<c>b.ppy.sh</c>), then served from here. The mirror sends its audio
 /// without a length, so a browser playing it straight from there can't show how long it is; served
-/// from a file it has one, and can be skipped through.
+/// from a file it has one, and can be skipped through. Anyone can ask for any id, so sets this server
+/// doesn't have are fetched only a few a minute, misses are remembered for a while, and only the
+/// newest <see cref="MaxCachedKey"/> previews are kept.
 /// </summary>
 public sealed class AudioPreviews : IDisposable
 {
@@ -45,10 +47,37 @@ public sealed class AudioPreviews : IDisposable
     // to slow down (429), previews come from osu! until it resets.
     private DateTimeOffset _mirrorPausedUntil = DateTimeOffset.MinValue;
 
+    /// <summary>Configuration key: previews kept on disk at most (default <see cref="DefaultMaxCached"/>); the oldest go first.</summary>
+    public const string MaxCachedKey = "Previews:MaxCached";
+
+    public const int DefaultMaxCached = 20_000;
+
+    /// <summary>
+    /// Sets this server doesn't have fetched per minute at most: anyone can ask for any number, and
+    /// osu!direct's results (from the mirror) aren't all here, so they're allowed, but slowly.
+    /// </summary>
+    public const int UnknownSetsPerMinute = 30;
+
+    // Bigger than any preview (osu!'s are 10 seconds or so).
+    private const long MaxPreviewBytes = 5 * 1024 * 1024;
+
+    // Sets nowhere had a preview for, until when they aren't asked for again (a bounded list).
+    private const int MaxMisses = 10_000;
+    private static readonly TimeSpan MissRemembered = TimeSpan.FromMinutes(30);
+    private readonly ConcurrentDictionary<int, DateTimeOffset> _misses = new();
+
+    private readonly int _maxCached;
+    private int _savedSinceTrim;
+
+    private readonly Lock _unknownLock = new();
+    private DateTimeOffset _unknownWindow = DateTimeOffset.MinValue;
+    private int _unknownInWindow;
+
     public AudioPreviews(IConfiguration configuration, IHttpClientFactory http, IServiceScopeFactory scopes, ILogger<AudioPreviews> logger)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         _directory = AssetsEndpoints.CacheDirectory(configuration, "previews");
+        _maxCached = int.TryParse(configuration[MaxCachedKey], CultureInfo.InvariantCulture, out var max) && max > 0 ? max : DefaultMaxCached;
         _http = http;
         _scopes = scopes;
         _logger = logger;
@@ -60,8 +89,12 @@ public sealed class AudioPreviews : IDisposable
     /// <summary>The set's preview file and its type (osu!'s are sometimes Ogg); null when nowhere has it.</summary>
     public async Task<(string Path, string Type)?> GetAsync(int setId, CancellationToken cancellationToken = default)
     {
+        if (setId <= 0)
+            return null;
         if (Cached(setId) is { } cached)
             return cached;
+        if (_misses.TryGetValue(setId, out var missUntil) && missUntil > DateTimeOffset.UtcNow)
+            return null;
 
         var fetch = _fetching.GetOrAdd(setId, id => new Lazy<Task<(string, string)?>>(() => FetchAsync(id)));
         try
@@ -104,8 +137,11 @@ public sealed class AudioPreviews : IDisposable
         // Not the asker's token: others may be waiting for this download too.
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         var urls = new List<(string Url, bool Mirror)>();
-        if (DateTimeOffset.UtcNow >= _mirrorPausedUntil && await BeatmapIdFor(setId, timeout.Token).ConfigureAwait(false) is { } beatmapId)
-            urls.Add((MirrorUrl(beatmapId), true));
+        var beatmapId = await BeatmapIdFor(setId, timeout.Token).ConfigureAwait(false);
+        if (beatmapId is null && !TakeUnknownSet())
+            return null;
+        if (DateTimeOffset.UtcNow >= _mirrorPausedUntil && beatmapId is { } id)
+            urls.Add((MirrorUrl(id), true));
         urls.Add((OsuUrl(setId), false));
 
         try
@@ -119,11 +155,59 @@ public sealed class AudioPreviews : IDisposable
 
         try
         {
-            return await DownloadAsync(setId, urls, timeout.Token).ConfigureAwait(false);
+            var preview = await DownloadAsync(setId, urls, timeout.Token).ConfigureAwait(false);
+            if (preview is null)
+                RememberMiss(setId);
+            else if (Interlocked.Increment(ref _savedSinceTrim) % 100 == 0)
+                Trim();
+            return preview;
         }
         finally
         {
             _downloads.Release();
+        }
+    }
+
+    /// <summary>Whether a set this server doesn't have may be fetched now (<see cref="UnknownSetsPerMinute"/>).</summary>
+    private bool TakeUnknownSet()
+    {
+        lock (_unknownLock)
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (now - _unknownWindow >= TimeSpan.FromMinutes(1))
+            {
+                _unknownWindow = now;
+                _unknownInWindow = 0;
+            }
+            return ++_unknownInWindow <= UnknownSetsPerMinute;
+        }
+    }
+
+    private void RememberMiss(int setId)
+    {
+        // Bounded: a flood of made-up ids only starts the list over.
+        if (_misses.Count >= MaxMisses)
+            _misses.Clear();
+        _misses[setId] = DateTimeOffset.UtcNow + MissRemembered;
+    }
+
+    /// <summary>Deletes the oldest previews while there are more than <see cref="MaxCachedKey"/>.</summary>
+    internal void Trim()
+    {
+        try
+        {
+            var files = new DirectoryInfo(_directory).EnumerateFiles()
+                .Where(f => f.Extension is ".mp3" or ".ogg")
+                .ToList();
+            if (files.Count <= _maxCached)
+                return;
+            // Down to 90%, so this doesn't run again on the next few downloads.
+            foreach (var file in files.OrderBy(f => f.LastWriteTimeUtc).Take(files.Count - _maxCached * 9 / 10))
+                file.Delete();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogInformation(ex, "Audio previews: couldn't trim the cache.");
         }
     }
 
@@ -139,7 +223,7 @@ public sealed class AudioPreviews : IDisposable
                 using var response = await http.GetAsync(url, cancellationToken).ConfigureAwait(false);
                 if (mirror)
                     NoteMirrorLimit(response);
-                if (!response.IsSuccessStatusCode)
+                if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > MaxPreviewBytes)
                     continue;
                 var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken).ConfigureAwait(false);
                 if (AudioType(bytes) is not { } type)
