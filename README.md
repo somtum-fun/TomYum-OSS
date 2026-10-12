@@ -159,6 +159,9 @@ under `deploy/`.
 - Push **to the Branch** `git push origin feature/AmazingFeature`
 - Open a **Pull Request**
 
+Everyone taking part follows our [Code of Conduct](CODE_OF_CONDUCT.md) (the Contributor Covenant); report
+problems to [mind@somtum.fun](mailto:mind@somtum.fun).
+
 Our team believes in using AI as an assistant, always under human review. Low-effort AI-generated ("slop") pull requests or comments may be closed without notice.
 
 ## Security
