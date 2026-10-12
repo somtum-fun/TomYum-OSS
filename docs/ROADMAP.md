@@ -2,7 +2,7 @@
 
 _Last updated: 2026-10-12 (version 0.5.0)._ .NET 10; used in production for stable, lazer and the website.
 
-`0.5.0` is the first **production-ready** release. `0.6.0` to `1.0.0` are small fixes and growing up:
+`0.5.0` is the first **stable** release. `0.6.0` to `1.0.0` are small fixes and growing up:
 scaling, object storage, Kubernetes, and a core generic enough for anyone's server. How each feature
 works is in its own page under `docs/` and on [docs.somtum.fun](https://docs.somtum.fun); the history of
 how it was built is in git.
@@ -15,7 +15,7 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decisio
   staff panels, anti-cheat hooks, IRC, bot accounts, BN/NAT tools, maintenance mode, support tickets.
 - `0.3.0-dev` (2026-10-03): old clients, Relax/Autopilot with Akatsuki pp, pp reworks from the admin
   panel, monitoring, metrics as a plugin, tickets from any IMAP mailbox.
-- `0.5.0` (2026-10-12): production-ready. Old clients finished (every build from 2008 to 2015, with TCP
+- `0.5.0` (2026-10-12): the first stable release. Old clients finished (every build from 2008 to 2015, with TCP
   bancho for the oldest); stable sessions fixed (one client per account, no "already logged in", idle
   sessions ended); ranking rules (days in qualified, an inactivity rule); no server's names in core
   defaults; a security review of the whole server and its fixes (2026-10-11/12).
