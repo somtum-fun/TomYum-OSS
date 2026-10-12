@@ -246,8 +246,12 @@ public sealed class BanchoLoginHandler
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed), null);
         }
 
-        // The client sends the md5 hex of the plaintext; verify it against the stored bcrypt.
-        if (!_passwordHasher.Verify(request.PasswordMd5, user.PasswordBcrypt))
+        // The client sends the md5 hex of the plaintext; verify it against the stored bcrypt. Wrong
+        // guesses count against this address too (PasswordGuesses: the TCP port has no HTTP request).
+        bool passwordOk;
+        using (PasswordGuesses.From(clientAddress))
+            passwordOk = _passwordHasher.Verify(request.PasswordMd5, user.PasswordBcrypt);
+        if (!passwordOk)
         {
             _logger.LogInformation("Login failed: bad password for {Username}.", request.Username);
             await RecordLoginAsync(user.Id, "bad_password", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);

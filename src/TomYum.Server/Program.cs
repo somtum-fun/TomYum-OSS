@@ -75,7 +75,10 @@ RankingInactivity.Days = builder.Configuration.GetValue<int?>(RankingInactivity.
 BanchoBot.Configure(builder.Configuration.GetValue<int?>(BanchoBot.UserIdSetting) ?? BanchoBot.DefaultUserId);
 builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
-builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
+// Every password check goes through the wrong-guess limit (PasswordGuesses), whichever endpoint asks.
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton(sp => new PasswordGuesses(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>(), sp.GetService<ILogger<PasswordGuesses>>()));
+builder.Services.AddSingleton<IPasswordHasher>(sp => new GuardedPasswordHasher(new BcryptPasswordHasher(), sp.GetRequiredService<PasswordGuesses>(), sp.GetService<IHttpContextAccessor>()));
 builder.Services.TryAddSingleton(TimeProvider.System);
 // Restricted players (kept off leaderboards/ranks) and the in-game chat log for staff.
 builder.Services.AddSingleton<RestrictedUsers>();
