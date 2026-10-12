@@ -1,10 +1,14 @@
-# Old clients (2013–2015)
+# Old clients (2008–2015)
 
-osu!stable builds from late 2013 to 2015 can play on a TomYum server: log in, chat, osu!direct,
-leaderboards and scores, on the **same leaderboards** as today's stable. They have no `-devserver`
+osu!stable builds from 2008 to 2015 can play on a TomYum server: log in, chat, osu!direct, spectating,
+multiplayer, leaderboards and scores, on the **same leaderboards** as today's stable. They have no `-devserver`
 option, so players connect them with [Titanic! Hook](https://github.com/osuTitanic/hook), a loader
 from the osuTitanic project that redirects the game's `ppy.sh` addresses to your server in memory,
 without changing any game files.
+
+For today's beatmaps on old builds (newer `.osu` sections, osu!mania before 2012 and so on), players can
+use the [somtum-fun/hook](https://github.com/somtum-fun/hook) fork of Titanic! Hook instead: it rewrites
+only what that build can't read as each map loads, and adds Relax/Autopilot fixes. It's set up the same way.
 
 ## For players
 
@@ -44,7 +48,7 @@ Sign out of a real osu! account in that client first: its login is sent to this 
 | `b20130823.3`, `b20130915.4` | HTTP bancho with the 2013 layouts below (era E3). |
 | Up to `b20130802.1` | Bancho over raw TCP, which Cloudflare can't carry: TomYum's own TCP bancho (`TCP_BANCHO=true`, ports 13380-13384), or TomYum.Gateway on another box (docs/gateway.md), with a client patched to use `server.<domain>`. Packets are pushed as they're queued, and a ping goes out after 10 s of quiet (b337-b558 reconnect after 20 s of nothing, b595b-b1704 after 30, b1807-2013 after 48). |
 | `b1122` (2011) | Tested 2026-10-04 on example.com: login, avatars, leaderboards, score submission, rating on the results screen (`/rating/ingame-rate2.php`). Titanic! Hook redirects only its TCP connection, not its web requests (avatars, osu!direct, leaderboards): use the decompiled client rebuilt with the server's domain. Its osu!direct (no `u` in the search) lists only the sets this server has, its own and the imported osu! ones, not the mirror's. |
-| b337 – b20130802.1 (2008 – 2013) | Translated per era (below), from the decompiled clients; covered by tests (`OldBanchoTests`), not yet played build by build. Login, chat, PMs, channels, friends, statuses, the online list, spectating, multiplayer and song select's beatmap info. |
+| b337 – b20130802.1 (2008 – 2013) | Played on real builds, all working: login, chat, PMs, channels, friends, statuses, the online list, score submission, spectating, multiplayer and song select's beatmap info. Translated per era (below), from the decompiled clients, and covered by tests (`OldBanchoTests`). |
 
 The protocol eras (`ClientBuild.Has(BanchoFeature)` holds the first build of each change; `EarlyPackets`
 translates b337–b1704, `LegacyPackets` the rest):
