@@ -344,6 +344,21 @@ public static class ScoreSubmissionEndpoint
             logger.LogWarning(ex, "Importing beatmap set {SetId} failed; submission continues", beatmap.SetId);
         }
 
+        // The same score twice (a resend, or a replayed request) counts once. One that isn't stored after
+        // all (a fault here, or a plugin's no) can be sent again.
+        var guard = context.RequestServices.GetRequiredService<ScoreSubmissionGuard>();
+        var fingerprint = ScoreSubmissionGuard.Fingerprint(decrypted);
+        if (!await guard.TryClaimAsync(fingerprint).ConfigureAwait(false))
+        {
+            logger.LogWarning("Score submission rejected: '{Username}' sent the same score again (beatmap {BeatmapId})", usernameFromScore, beatmap.Id);
+            return Rejected();
+        }
+        var stored = false;
+        context.Response.OnCompleted(() => stored ? Task.CompletedTask : guard.ReleaseAsync(fingerprint));
+
+        // One play at a time per player, map and mode (until the reply), so two at once can't both become the best.
+        using var bestLock = await guard.LockAsync(ScoreSubmissionGuard.BestKey(user.Id, bmk, gameMode), cancellationToken).ConfigureAwait(false);
+
         // Fetch before insert so the Status==Best filter returns the genuine prior best, not this score
         var prevBest = await scores.GetPersonalBestAsync(user.Id, bmk, gameMode, cancellationToken).ConfigureAwait(false);
 
@@ -458,6 +473,7 @@ public static class ScoreSubmissionEndpoint
             SubmittedAt = DateTimeOffset.UtcNow,
             PpHeld = held,
         }, cancellationToken).ConfigureAwait(false);
+        stored = true;
 
         // Persist replay file: data/replays/{scoreId}.osr (configurable via Replays:Path).
         // Only for passed scores with a valid replay; silently skipped otherwise.

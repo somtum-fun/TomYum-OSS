@@ -413,6 +413,9 @@ if (lastFmOptions.IsConfigured && databaseOptions.UseOsuWebAccounts)
 // Where players log in to the game from (staff see it on Discord's /user).
 builder.Services.AddSingleton(sp => new LoginIps(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
 
+// Stable scores: the same one sent twice counts once, and a player's plays on a map are stored one at a time.
+builder.Services.AddSingleton(sp => new TomYum.Server.Beatmaps.ScoreSubmissionGuard(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
+
 // IRC (osu!-style, port 6667): chat and bots from IRC clients; passwords are the website's IRC keys
 // (account settings), or from BanchoBot's !irc without website accounts.
 builder.Services.AddSingleton(sp => new TomYum.Server.Irc.IrcTokens(sp.GetService<StackExchange.Redis.IConnectionMultiplexer>(),
