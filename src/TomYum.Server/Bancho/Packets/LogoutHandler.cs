@@ -28,10 +28,12 @@ public sealed class LogoutHandler : IClientPacketHandler
         if (!context.Player.EndedByServer && DateTimeOffset.UtcNow - context.Player.LoggedInUtc < IgnoreAfterLogin)
             return;
 
+        // Whatever match the session followed as a tournament window (every session, to be sure).
+        TournamentWatching.Stop(context.Player, context.Matches);
+
         // A tournament client window closing: only what it did itself (the player is still online).
         if (context.Player.IsTournamentClient)
         {
-            TournamentWatching.Stop(context.Player, context.Matches);
             SpectatorManager.TeardownForLeaver(context.Player, context.Registry);
             context.Registry.Remove(context.Player.Token);
             return;

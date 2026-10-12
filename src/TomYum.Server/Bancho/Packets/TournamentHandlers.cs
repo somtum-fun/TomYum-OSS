@@ -21,7 +21,8 @@ public sealed class TournamentMatchInfoHandler : IClientPacketHandler
 
 /// <summary>
 /// TOURNAMENT_JOIN_MATCH_CHANNEL (id 108): a tournament client follows a match: its chat, and its
-/// state from then on (payload: i32 match id).
+/// state from then on, password included (payload: i32 match id). Only tournament client windows may:
+/// from the game it would let anyone read any room's chat and password.
 /// </summary>
 public sealed class TournamentJoinMatchChannelHandler : IClientPacketHandler
 {
@@ -32,7 +33,7 @@ public sealed class TournamentJoinMatchChannelHandler : IClientPacketHandler
     public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        if (TournamentWatching.Find(context) is not { } match)
+        if (!context.Player.IsTournamentClient || TournamentWatching.Find(context) is not { } match)
             return Task.CompletedTask;
 
         TournamentWatching.Stop(context.Player, context.Matches);

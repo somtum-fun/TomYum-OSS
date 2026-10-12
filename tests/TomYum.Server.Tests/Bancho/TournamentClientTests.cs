@@ -117,6 +117,42 @@ public sealed class TournamentClientTests
     }
 
     [Fact]
+    public async Task OnlyTournamentWindows_FollowAMatch()
+    {
+        // From the game, following a match would show its chat and password to anyone.
+        var registry = new PlayerRegistry();
+        var matches = new MatchRegistry();
+        var stranger = registry.Add(new BanchoPresence { UserId = 3, Username = "Stranger" });
+        var match = matches.Create(2, "Private room", "secret", "map", 1, "md5", 0, default, default, false, 0, 0);
+        match.Slots[0].Join(2);
+
+        var join = new BanchoPacketWriter(64);
+        await new TournamentJoinMatchChannelHandler().HandleAsync(Context(stranger, registry, matches, match.Id, join));
+
+        Assert.Empty(join.ToArray());
+        Assert.Empty(match.TournamentWatchers);
+        Assert.Null(stranger.WatchingMatchId);
+        Assert.DoesNotContain(match.Channel.Members, m => m.UserId == 3);
+    }
+
+    [Fact]
+    public async Task ALoggedOutWindow_NoLongerFollowsTheMatch()
+    {
+        var registry = new PlayerRegistry();
+        var matches = new MatchRegistry();
+        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" });
+        var match = matches.Create(2, "OWC: A vs B", string.Empty, "map", 1, "md5", 0, default, default, false, 0, 0);
+        match.Slots[0].Join(2);
+        await new TournamentJoinMatchChannelHandler().HandleAsync(Context(window, registry, matches, match.Id, new BanchoPacketWriter(64)));
+
+        window.LoggedInUtc -= LogoutHandler.IgnoreAfterLogin; // a logout right after login is ignored
+        await new LogoutHandler().HandleAsync(Context(window, registry, matches, 0, new BanchoPacketWriter(16)));
+
+        Assert.Empty(match.TournamentWatchers);
+        Assert.Null(registry.GetByToken(window.Token));
+    }
+
+    [Fact]
     public async Task ReplayFrames_GoToTheWindowWatching_NotThePlayersGame()
     {
         var registry = new PlayerRegistry();
