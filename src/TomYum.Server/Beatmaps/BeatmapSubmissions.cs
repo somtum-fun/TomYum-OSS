@@ -157,12 +157,48 @@ public sealed class BeatmapSubmissions
         }
     }
 
-    /// <summary>Stores a full package for the owner's set.</summary>
-    public async Task<CustomUploadResult> UploadAsync(User user, int setId, byte[] osz, string client, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Packages being unpacked or put together at once (an <c>.osz2</c> decrypted, lazer's patch
+    /// applied): each holds up to 100 MB, several times over.
+    /// </summary>
+    public const int MaxDecoding = 2;
+
+    private static readonly SemaphoreSlim Decoding = new(MaxDecoding, MaxDecoding);
+
+    /// <summary>
+    /// Runs <paramref name="work"/> (turning an upload into a package) when one of the
+    /// <see cref="MaxDecoding"/> places is free.
+    /// </summary>
+    public static async Task<T> DecodeAsync<T>(Func<T> work, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(work);
+        await Decoding.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return work();
+        }
+        finally
+        {
+            Decoding.Release();
+        }
+    }
+
+    /// <summary>
+    /// Throws a <see cref="SubmissionException"/> unless <paramref name="user"/> may upload to set
+    /// <paramref name="setId"/> now (in good standing, their set, not ranked): checked before an
+    /// upload is unpacked, so nobody else's upload costs the server that work.
+    /// </summary>
+    public async Task CheckCanUploadAsync(User user, int setId, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(user);
         CheckStanding(user);
         await OwnedSetAsync(user, setId, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Stores a full package for the owner's set.</summary>
+    public async Task<CustomUploadResult> UploadAsync(User user, int setId, byte[] osz, string client, CancellationToken cancellationToken = default)
+    {
+        await CheckCanUploadAsync(user, setId, cancellationToken).ConfigureAwait(false);
         try
         {
             return await _importer.SubmitAsync(osz, setId, user.Id, client, cancellationToken).ConfigureAwait(false);
@@ -178,39 +214,40 @@ public sealed class BeatmapSubmissions
     {
         ArgumentNullException.ThrowIfNull(changed);
         ArgumentNullException.ThrowIfNull(deleted);
-        CheckStanding(user);
-        await OwnedSetAsync(user, setId, cancellationToken).ConfigureAwait(false);
+        await CheckCanUploadAsync(user, setId, cancellationToken).ConfigureAwait(false);
         if (!_store.HasSet(setId))
             throw new SubmissionException(404, "This beatmap set has no files to change yet.");
         if (!changed.Keys.Concat(deleted).All(PackageNames.IsSafe))
             throw new SubmissionException(422, "Invalid filename detected");
 
-        byte[] patched;
-        using (var source = ZipFile.OpenRead(_store.OszPath(setId)))
-        using (var output = new MemoryStream())
-        {
-            using (var target = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
-            {
-                foreach (var entry in source.Entries)
-                {
-                    if (changed.ContainsKey(entry.FullName) || deleted.Contains(entry.FullName))
-                        continue;
-                    var copy = target.CreateEntry(entry.FullName, CompressionLevel.Fastest);
-                    copy.LastWriteTime = entry.LastWriteTime;
-                    using var from = entry.Open();
-                    using var to = copy.Open();
-                    from.CopyTo(to);
-                }
-                foreach (var (name, bytes) in changed)
-                {
-                    using var to = target.CreateEntry(name, CompressionLevel.Fastest).Open();
-                    to.Write(bytes);
-                }
-            }
-            patched = output.ToArray();
-        }
-
+        var patched = await DecodeAsync(() => Patch(_store.OszPath(setId), changed, deleted), cancellationToken).ConfigureAwait(false);
         return await UploadAsync(user, setId, patched, "osu!(lazer)", cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>The package at <paramref name="oszPath"/> with <paramref name="changed"/> files put in and <paramref name="deleted"/> ones left out.</summary>
+    private static byte[] Patch(string oszPath, IReadOnlyDictionary<string, byte[]> changed, IReadOnlyCollection<string> deleted)
+    {
+        using var source = ZipFile.OpenRead(oszPath);
+        using var output = new MemoryStream();
+        using (var target = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var entry in source.Entries)
+            {
+                if (changed.ContainsKey(entry.FullName) || deleted.Contains(entry.FullName))
+                    continue;
+                var copy = target.CreateEntry(entry.FullName, CompressionLevel.Fastest);
+                copy.LastWriteTime = entry.LastWriteTime;
+                using var from = entry.Open();
+                using var to = copy.Open();
+                from.CopyTo(to);
+            }
+            foreach (var (name, bytes) in changed)
+            {
+                using var to = target.CreateEntry(name, CompressionLevel.Fastest).Open();
+                to.Write(bytes);
+            }
+        }
+        return output.ToArray();
     }
 
     /// <summary>The files of the set's current package with their SHA-256 (what lazer patches against); empty before the first upload.</summary>

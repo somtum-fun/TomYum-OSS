@@ -121,6 +121,15 @@ public static class SubmissionEndpoints
             return StableError(5, "Nothing was uploaded. Please try again!");
         if (file.Length > CustomBeatmapImporter.MaxOszBytes)
             return StableError(5, "Your beatmap is too big. Try to reduce its filesize and try again!");
+        try
+        {
+            // Before the package is unpacked: only the set's owner, in good standing, costs the server that work.
+            await submissions.CheckCanUploadAsync(user, setId, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SubmissionException ex)
+        {
+            return StableError(ex);
+        }
 
         var bytes = await ReadAllAsync(file, cancellationToken).ConfigureAwait(false);
         // The editor sends the package's MD5: a transfer that went wrong shows here.
@@ -131,7 +140,7 @@ public static class SubmissionEndpoints
         try
         {
             // Which set and ids its difficulties have is checked on their files, like any submission.
-            osz = Osz2Package.Read(bytes).ToOsz();
+            osz = await BeatmapSubmissions.DecodeAsync(() => Osz2Package.Read(bytes).ToOsz(), cancellationToken).ConfigureAwait(false);
         }
         catch (InvalidDataException ex)
         {
