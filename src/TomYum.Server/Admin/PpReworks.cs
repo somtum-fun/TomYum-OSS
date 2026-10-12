@@ -259,7 +259,7 @@ public sealed class PpReworks : BackgroundService
         // on vanilla ones. Held scores take part like any other.
         foreach (var mode in modes)
         {
-            var scores = await db.Scores.AsNoTracking().Where(s => s.Mode == mode && s.Passed)
+            var scores = await db.Scores.AsNoTracking().Where(s => s.Mode == mode && s.Passed && !s.OffBoard)
                 .Select(s => new { s.Id, s.UserId, s.BeatmapMd5, s.Pp, s.ScoreValue, s.Status })
                 .ToListAsync(cancellationToken).ConfigureAwait(false);
             var bests = scores.GroupBy(s => (s.UserId, s.BeatmapMd5))

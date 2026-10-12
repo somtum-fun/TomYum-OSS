@@ -42,6 +42,7 @@ public sealed class InMemoryScoreRepository : IScoreRepository
             FromLazer = score.FromLazer,
             OsuWebScoreId = score.OsuWebScoreId,
             PpHeld = score.PpHeld,
+            OffBoard = score.OffBoard,
             LargeTickHits = score.LargeTickHits,
             SliderEndHits = score.SliderEndHits,
         };
@@ -75,7 +76,7 @@ public sealed class InMemoryScoreRepository : IScoreRepository
         var filtered = _scores.Values
             .Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode)
             .Where(s => filter.StableOnly
-                ? s.Passed && !s.FromLazer && (s.Status == ScoreStatus.Best || s.Status == ScoreStatus.Submitted)
+                ? s.Passed && !s.FromLazer && !s.OffBoard && (s.Status == ScoreStatus.Best || s.Status == ScoreStatus.Submitted)
                 : s.Status == ScoreStatus.Best)
             .Where(s => filter.Mods is not { } mods || s.Mods == mods)
             .Where(s => filter.UserIds is not { } ids || ids.Contains(s.UserId))

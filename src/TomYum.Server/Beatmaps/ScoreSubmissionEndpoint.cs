@@ -473,6 +473,7 @@ public static class ScoreSubmissionEndpoint
             Status = scoreStatus,
             SubmittedAt = DateTimeOffset.UtcNow,
             PpHeld = held,
+            OffBoard = offBoard,
         }, cancellationToken).ConfigureAwait(false);
         stored = true;
 

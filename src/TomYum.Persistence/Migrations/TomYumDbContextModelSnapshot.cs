@@ -520,6 +520,11 @@ namespace TomYum.Persistence.Migrations
                     b.Property<int>("Mods")
                         .HasColumnType("int");
 
+                    b.Property<bool>("OffBoard")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("tinyint(1)")
+                        .HasDefaultValue(false);
+
                     b.Property<ulong?>("OsuWebScoreId")
                         .HasColumnType("bigint unsigned");
 

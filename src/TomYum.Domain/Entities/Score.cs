@@ -53,4 +53,10 @@ public sealed class Score
     /// totals) until the recalculation is done.
     /// </summary>
     public bool PpHeld { get; set; }
+
+    /// <summary>
+    /// Kept off the leaderboards for good: an old client's play whose judgements don't cover the map as
+    /// today's client converts it (docs/old-clients.md). Never a best, no pp, not on stable's own board.
+    /// </summary>
+    public bool OffBoard { get; init; }
 }

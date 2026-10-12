@@ -80,12 +80,12 @@ public sealed class ScoreRecalculation
 
             var before = scores.ToDictionary(s => s.Id, s => (s.Pp, s.Status));
             foreach (var score in scores)
-                score.Pp = beatmap.Status.AwardsRankedPp() ? await CalculateAsync(beatmap, score, cancellationToken).ConfigureAwait(false) : 0;
+                score.Pp = beatmap.Status.AwardsRankedPp() && !score.OffBoard ? await CalculateAsync(beatmap, score, cancellationToken).ConfigureAwait(false) : 0;
 
             // Each player's best on the map, as score submission picks it (GameMode.BeatsBest): the one worth
             // the most pp on Relax/Autopilot boards (score breaks ties, and decides alone on maps without pp),
-            // the highest score on vanilla ones.
-            foreach (var mine in scores.GroupBy(s => (s.UserId, s.Mode)))
+            // the highest score on vanilla ones. Plays kept off the board stay off it.
+            foreach (var mine in scores.Where(s => !s.OffBoard).GroupBy(s => (s.UserId, s.Mode)))
             {
                 var best = (GameMode.UsesPpLeaderboard(mine.Key.Mode)
                     ? mine.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue)

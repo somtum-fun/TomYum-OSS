@@ -44,8 +44,8 @@ public sealed class ScoreRepository : IScoreRepository
     private static async Task<IReadOnlyList<Score>> StableBestsAsync(IQueryable<Score> scores, string beatmapMd5, int mode, int count, CancellationToken cancellationToken)
     {
         // A player's stable best is their Best when that's a stable play, else their best earlier
-        // stable submission: a lazer play can be someone's Best overall.
-        var candidates = scores.Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Passed && !s.FromLazer
+        // stable submission: a lazer play can be someone's Best overall. Plays kept off the board aren't.
+        var candidates = scores.Where(s => s.BeatmapMd5 == beatmapMd5 && s.Mode == mode && s.Passed && !s.FromLazer && !s.OffBoard
                                            && (s.Status == ScoreStatus.Best || s.Status == ScoreStatus.Submitted));
         candidates = GameMode.UsesPpLeaderboard(mode)
             ? candidates.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue).ThenBy(s => s.Id)

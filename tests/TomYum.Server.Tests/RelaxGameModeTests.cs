@@ -103,9 +103,35 @@ public class RelaxGameModeTests
         Assert.Equal([1, 2, 3], (await repo.GetLeaderboardAsync(md5, 4, 50)).Select(s => s.UserId));
     }
 
-    private static Score Score(int userId, int mode, string md5, long scoreValue, double pp, bool fromLazer = false) => new()
+    [Fact]
+    public async Task StableBoard_leaves_plays_kept_off_the_board_out()
+    {
+        var repo = new InMemoryScoreRepository();
+        const string md5 = "abc";
+
+        // Player 1: an old client's play that didn't match the map (more score, kept off the board) and a
+        // real one. Player 2: only an off-board play. Player 3: a lazer best and an earlier stable play.
+        var offBoard = Score(userId: 1, mode: 1, md5: md5, scoreValue: 900, pp: 0, offBoard: true);
+        offBoard.Status = ScoreStatus.Submitted;
+        await repo.AddAsync(offBoard);
+        await repo.AddAsync(Score(userId: 1, mode: 1, md5: md5, scoreValue: 500, pp: 100));
+        var onlyOffBoard = Score(userId: 2, mode: 1, md5: md5, scoreValue: 800, pp: 0, offBoard: true);
+        onlyOffBoard.Status = ScoreStatus.Submitted;
+        await repo.AddAsync(onlyOffBoard);
+        var earlierStable = Score(userId: 3, mode: 1, md5: md5, scoreValue: 300, pp: 50);
+        earlierStable.Status = ScoreStatus.Submitted;
+        await repo.AddAsync(earlierStable);
+        await repo.AddAsync(Score(userId: 3, mode: 1, md5: md5, scoreValue: 700, pp: 120, fromLazer: true));
+
+        var board = await repo.GetLeaderboardAsync(md5, 1, 50, null, new TomYum.Domain.Repositories.LeaderboardFilter(StableOnly: true));
+        Assert.Equal([(1, 500L), (3, 300L)], board.Select(s => (s.UserId, s.ScoreValue)));
+        Assert.Null(await repo.GetStablePersonalBestAsync(2, md5, 1));
+    }
+
+    private static Score Score(int userId, int mode, string md5, long scoreValue, double pp, bool fromLazer = false, bool offBoard = false) => new()
     {
         FromLazer = fromLazer,
+        OffBoard = offBoard,
         UserId = userId,
         BeatmapId = 1,
         BeatmapMd5 = md5,

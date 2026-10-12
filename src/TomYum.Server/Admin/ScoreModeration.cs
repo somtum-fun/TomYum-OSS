@@ -137,7 +137,7 @@ public sealed class ScoreModeration
     /// <summary>Makes the best remaining passed score on the map the player's best (pp first on relax/autopilot boards, score otherwise).</summary>
     private async Task PromoteNextBestAsync(int userId, string md5, int mode, CancellationToken cancellationToken)
     {
-        var candidates = _db.Scores.Where(s => s.UserId == userId && s.BeatmapMd5 == md5 && s.Mode == mode && s.Status == ScoreStatus.Submitted && s.Passed);
+        var candidates = _db.Scores.Where(s => s.UserId == userId && s.BeatmapMd5 == md5 && s.Mode == mode && s.Status == ScoreStatus.Submitted && s.Passed && !s.OffBoard);
         var next = await (GameMode.UsesPpLeaderboard(mode)
                 ? candidates.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue)
                 : candidates.OrderByDescending(s => s.ScoreValue))
