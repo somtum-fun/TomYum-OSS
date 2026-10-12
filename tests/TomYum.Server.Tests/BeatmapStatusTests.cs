@@ -12,6 +12,28 @@ namespace TomYum.Server.Tests;
 /// </summary>
 public class BeatmapStatusTests
 {
+    private const string Abc = "abc00000000000000000000000000abc";
+    private const string Missing = "0000000000000000000000000000dead";
+    private const string Easy = "eeee0000000000000000000000000001";
+    private const string Hard = "dddd0000000000000000000000000002";
+
+    [Fact]
+    public async Task BeatmapService_OnlyAsksAboutAndKeepsRealChecksums()
+    {
+        var api = new CountingApiClient(new Beatmap { Md5 = Abc, Id = 42, Status = RankedStatus.Ranked });
+        using var service = new BeatmapService(api);
+
+        // What osu-getscores' c= can hold: anything.
+        foreach (var junk in new[] { "", "abc", new string('x', 32), Abc + "0", "../../etc/passwd", new string('a', 5000) })
+            Assert.Null(await service.GetByMd5Async(junk));
+        Assert.Equal(0, api.Calls);
+        Assert.Equal(0, service.CachedCount);
+
+        // Either case is the same checksum.
+        Assert.Equal(42, (await service.GetByMd5Async(Abc.ToUpperInvariant()))!.Id);
+        Assert.Equal(42, (await service.GetByMd5Async(Abc))!.Id);
+        Assert.Equal((1, 1), (api.Calls, service.CachedCount));
+    }
     [Theory]
     [InlineData(-2, RankedStatus.Pending)]   // graveyard
     [InlineData(-1, RankedStatus.Pending)]   // WIP
@@ -51,11 +73,11 @@ public class BeatmapStatusTests
     [Fact]
     public async Task BeatmapService_CachesResult_AndHitsApiOnce()
     {
-        var api = new CountingApiClient(new Beatmap { Md5 = "abc", Id = 42, Status = RankedStatus.Ranked });
+        var api = new CountingApiClient(new Beatmap { Md5 = Abc, Id = 42, Status = RankedStatus.Ranked });
         var service = new BeatmapService(api);
 
-        var first = await service.GetByMd5Async("abc");
-        var second = await service.GetByMd5Async("abc");
+        var first = await service.GetByMd5Async(Abc);
+        var second = await service.GetByMd5Async(Abc);
 
         Assert.NotNull(first);
         Assert.Same(first, second);
@@ -68,8 +90,8 @@ public class BeatmapStatusTests
         var api = new CountingApiClient(null);
         var service = new BeatmapService(api);
 
-        var first = await service.GetByMd5Async("missing");
-        var second = await service.GetByMd5Async("missing");
+        var first = await service.GetByMd5Async(Missing);
+        var second = await service.GetByMd5Async(Missing);
 
         Assert.Null(first);
         Assert.Null(second);
@@ -79,9 +101,9 @@ public class BeatmapStatusTests
     [Fact]
     public async Task StatusOverride_WinsOverTheApi_ForCachedAndNewLookups()
     {
-        var api = new CountingApiClient(new Beatmap { Md5 = "abc", Id = 42, Status = RankedStatus.Pending, OsuApiStatus = -2 });
+        var api = new CountingApiClient(new Beatmap { Md5 = Abc, Id = 42, Status = RankedStatus.Pending, OsuApiStatus = -2 });
         var service = new BeatmapService(api);
-        var cached = await service.GetByMd5Async("abc");
+        var cached = await service.GetByMd5Async(Abc);
 
         service.SetStatusOverride(42, RankedStatus.Loved);
 
@@ -90,7 +112,7 @@ public class BeatmapStatusTests
         Assert.Null(cached.OsuApiStatus);                                             // graveyard no longer applies
         var fresh = new BeatmapService(api);
         fresh.SetStatusOverride(42, RankedStatus.Ranked);
-        Assert.Equal(RankedStatus.Ranked, (await fresh.GetByMd5Async("abc"))!.Status); // looked up afterwards
+        Assert.Equal(RankedStatus.Ranked, (await fresh.GetByMd5Async(Abc))!.Status); // looked up afterwards
     }
 
     [Fact]
@@ -98,8 +120,8 @@ public class BeatmapStatusTests
     {
         var api = new CountingApiClient(null, set:
         [
-            new Beatmap { Md5 = "easy", Id = 1, SetId = 7 },
-            new Beatmap { Md5 = "hard", Id = 2, SetId = 7 },
+            new Beatmap { Md5 = Easy, Id = 1, SetId = 7 },
+            new Beatmap { Md5 = Hard, Id = 2, SetId = 7 },
         ]);
         var service = new BeatmapService(api);
 
@@ -108,7 +130,7 @@ public class BeatmapStatusTests
         Assert.Equal(1, api.SetCalls);
 
         // Its difficulties resolve without another API call.
-        Assert.Equal(2, (await service.GetByMd5Async("hard"))!.Id);
+        Assert.Equal(2, (await service.GetByMd5Async(Hard))!.Id);
         Assert.Equal(0, api.Calls);
     }
 

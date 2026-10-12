@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Caching.Memory;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
@@ -13,13 +14,21 @@ namespace TomYum.Server.Beatmaps;
 /// </summary>
 /// <remarks>
 /// A negative result (the API does not know the hash) is cached too — as a <c>null</c> sentinel —
-/// so an unsubmitted map polled repeatedly by the client does not hammer the API. The cache holds
-/// for the process lifetime for now; expiry/refresh is a later slice.
+/// so an unsubmitted map polled repeatedly by the client does not hammer the API. Clients send any
+/// string as a checksum, so only real ones (32 hex digits) are looked up at all, and the cache is
+/// bounded (<see cref="MaxCached"/> entries; maps kept a day after their last use, misses an hour).
 /// </remarks>
-public sealed class BeatmapService
+public sealed class BeatmapService : IDisposable
 {
+    /// <summary>Checksums cached at most.</summary>
+    public const int MaxCached = 200_000;
+
+    private static readonly TimeSpan FoundKept = TimeSpan.FromDays(1);
+    private static readonly TimeSpan MissKept = TimeSpan.FromHours(1);
+
     private readonly IOsuApiClient _api;
-    private readonly ConcurrentDictionary<string, Beatmap?> _byMd5 = new(StringComparer.OrdinalIgnoreCase);
+    // Keys are lowercase checksums; values wrap the map so a miss (null) can be cached too.
+    private readonly MemoryCache _byMd5 = new(new MemoryCacheOptions { SizeLimit = MaxCached });
     private readonly ConcurrentDictionary<int, byte> _fetchedSets = new();
     private readonly ConcurrentDictionary<int, RankedStatus> _statusOverrides = new();
 
@@ -35,8 +44,38 @@ public sealed class BeatmapService
         _scopes = scopes;
     }
 
+    public void Dispose() => _byMd5.Dispose();
+
     /// <summary>Number of MD5 hashes currently cached (including negative not-found entries).</summary>
     public int CachedCount => _byMd5.Count;
+
+    /// <summary>Whether <paramref name="md5"/> looks like a checksum (32 hex digits).</summary>
+    public static bool IsMd5(string? md5) => md5 is { Length: 32 } && md5.All(char.IsAsciiHexDigit);
+
+    private sealed record Cached(Beatmap? Beatmap);
+
+    private void Cache(string md5, Beatmap? beatmap)
+    {
+        if (!IsMd5(md5))
+            return;
+        using var entry = _byMd5.CreateEntry(md5.ToLowerInvariant());
+        entry.Value = new Cached(beatmap);
+        entry.Size = 1;
+        if (beatmap is null)
+            entry.AbsoluteExpirationRelativeToNow = MissKept;
+        else
+            entry.SlidingExpiration = FoundKept;
+    }
+
+    /// <summary>The cached checksums and their maps (misses have none).</summary>
+    private IEnumerable<(string Md5, Beatmap? Beatmap)> CachedEntries()
+    {
+        foreach (var key in _byMd5.Keys)
+        {
+            if (key is string md5 && _byMd5.TryGetValue(md5, out Cached? cached) && cached is not null)
+                yield return (md5, cached.Beatmap);
+        }
+    }
 
     /// <summary>
     /// Makes beatmap <paramref name="beatmapId"/> report <paramref name="status"/> (a staff override,
@@ -46,7 +85,7 @@ public sealed class BeatmapService
     public void SetStatusOverride(int beatmapId, RankedStatus status)
     {
         _statusOverrides[beatmapId] = status;
-        foreach (var beatmap in _byMd5.Values)
+        foreach (var (_, beatmap) in CachedEntries())
         {
             if (beatmap?.Id == beatmapId)
                 ApplyOverride(beatmap);
@@ -64,10 +103,10 @@ public sealed class BeatmapService
     public void ClearStatusOverride(int beatmapId)
     {
         _statusOverrides.TryRemove(beatmapId, out _);
-        foreach (var (md5, beatmap) in _byMd5)
+        foreach (var (md5, beatmap) in CachedEntries().ToList())
         {
             if (beatmap?.Id == beatmapId)
-                _byMd5.TryRemove(md5, out _);
+                _byMd5.Remove(md5);
         }
     }
 
@@ -86,23 +125,24 @@ public sealed class BeatmapService
     /// Resolves a beatmap by its <c>.osu</c> MD5 hash: the osu! API's map, or else a custom map of
     /// this server's. Returns <c>null</c> when neither knows it (treat as
     /// <see cref="Domain.Enums.RankedStatus.NotSubmitted"/>). Results — including the not-found
-    /// result — are cached.
+    /// result — are cached. Anything but a checksum (<see cref="IsMd5"/>) is no map, without asking.
     /// </summary>
     public async Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(md5))
+        if (!IsMd5(md5))
         {
             return null;
         }
 
-        if (_byMd5.TryGetValue(md5, out var cached))
+        md5 = md5.ToLowerInvariant();
+        if (_byMd5.TryGetValue(md5, out Cached? cached) && cached is not null)
         {
-            return cached;
+            return cached.Beatmap;
         }
 
         var resolved = ApplyOverride(await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false)
             ?? await GetCustomAsync(md5, cancellationToken).ConfigureAwait(false));
-        _byMd5[md5] = resolved;
+        Cache(md5, resolved);
         return resolved;
     }
 
@@ -115,12 +155,12 @@ public sealed class BeatmapService
         ArgumentNullException.ThrowIfNull(beatmaps);
         foreach (var beatmap in beatmaps)
         {
-            foreach (var (md5, cached) in _byMd5)
+            foreach (var (md5, cached) in CachedEntries().ToList())
             {
                 if (cached?.Id == beatmap.Id)
-                    _byMd5.TryRemove(md5, out _);
+                    _byMd5.Remove(md5);
             }
-            _byMd5[beatmap.Md5] = ApplyOverride(beatmap);
+            Cache(beatmap.Md5, ApplyOverride(beatmap));
         }
     }
 
@@ -184,7 +224,7 @@ public sealed class BeatmapService
         // The set's difficulties are now known: later lookups of them skip the API.
         foreach (var beatmap in set)
         {
-            _byMd5[beatmap.Md5] = ApplyOverride(beatmap);
+            Cache(beatmap.Md5, ApplyOverride(beatmap));
         }
         return set;
     }
