@@ -27,17 +27,28 @@ public sealed class PlayerRegistry
     /// <summary>A snapshot of every session, tournament client windows included.</summary>
     public IReadOnlyCollection<OnlinePlayer> AllSessions => _byToken.Values.ToArray();
 
+    /// <summary>The most tournament client windows one account has open at once (osu!'s client shows up to 16 players).</summary>
+    public const int MaxTournamentClients = 16;
+
+    private readonly Lock _tournamentGate = new();
+
     /// <summary>
     /// Adds a tournament client window for <paramref name="presence"/>'s account: its own token, next
-    /// to (not instead of) the player's own session, which stays the one found by user id.
+    /// to (not instead of) the player's own session, which stays the one found by user id. Null when
+    /// the account already has <see cref="MaxTournamentClients"/> windows open.
     /// </summary>
-    public OnlinePlayer AddTournamentClient(BanchoPresence presence)
+    public OnlinePlayer? AddTournamentClient(BanchoPresence presence)
     {
         ArgumentNullException.ThrowIfNull(presence);
-        var token = NewToken();
-        var player = new OnlinePlayer(token, presence) { IsTournamentClient = true };
-        _byToken[token] = player;
-        return player;
+        lock (_tournamentGate)
+        {
+            if (_byToken.Values.Count(p => p.IsTournamentClient && p.UserId == presence.UserId) >= MaxTournamentClients)
+                return null;
+            var token = NewToken();
+            var player = new OnlinePlayer(token, presence) { IsTournamentClient = true };
+            _byToken[token] = player;
+            return player;
+        }
     }
 
     /// <summary>The sessions of <paramref name="userId"/> (the game, tournament windows) spectating <paramref name="hostUserId"/>.</summary>

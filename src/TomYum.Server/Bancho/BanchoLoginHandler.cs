@@ -74,6 +74,9 @@ public sealed class BanchoLoginHandler
     /// <summary>Shown to a bot account trying the game: bots chat over IRC (port 6667) instead.</summary>
     public const string BotNotice = "Bot accounts can't log in to the game. Connect over IRC instead.";
 
+    /// <summary>Shown to a tournament client window past <see cref="PlayerRegistry.MaxTournamentClients"/> on one account.</summary>
+    public const string TournamentWindowsNotice = "This account has too many tournament client windows open. Close some and try again.";
+
     /// <summary>Shown to a second client logging in while the account's session is still active (bancho.py's wording).</summary>
     public const string AlreadyOnlineNotice = "User already logged in.";
 
@@ -393,10 +396,10 @@ public sealed class BanchoLoginHandler
         }
 
         // Plugin AC gate (osu!auth, build whitelist). Dev-mode skips the dispatch entirely so a
-        // broken AC plugin can't block logins; tournament sessions skip it too (BanchoBot-style
-        // extra windows, not a cheater surface). First veto wins — reason is shown to the player
+        // broken AC plugin can't block logins. Tournament windows go through it too: the "tourney"
+        // version is only the client's word. First veto wins — reason is shown to the player
         // as a bancho notification, so plugins should keep it generic.
-        if (_events is not null && !tournament && _challengeService?.DevMode != true)
+        if (_events is not null && _challengeService?.DevMode != true)
         {
             var attemptHashes = request.ClientHashes;
             var attempt = new TomYum.Plugins.Abstractions.ClientLoginAttemptedEvent(
@@ -433,6 +436,11 @@ public sealed class BanchoLoginHandler
         await (_presenceStats ?? new PresenceStats(_userStats)).FillAsync(presence, user.Id, presence.Mode, cancellationToken: cancellationToken).ConfigureAwait(false);
 
         var player = tournament ? _registry.AddTournamentClient(presence) : _registry.Add(presence);
+        if (player is null)
+        {
+            _logger.LogInformation("Login refused: {Username} (id {UserId}) has {Max} tournament windows open already.", user.Username, user.Id, PlayerRegistry.MaxTournamentClients);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, TournamentWindowsNotice), null);
+        }
         player.Build = build;
         player.Device = device;
         player.IsRestricted = user.IsRestricted;

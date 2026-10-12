@@ -18,7 +18,7 @@ public sealed class TournamentClientTests
     {
         var registry = new PlayerRegistry();
         var game = registry.Add(new BanchoPresence { UserId = 5, Username = "Ref" });
-        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" });
+        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" })!;
 
         Assert.Same(game, registry.GetByUserId(5));
         Assert.Same(window, registry.GetByToken(window.Token));
@@ -51,12 +51,47 @@ public sealed class TournamentClientTests
     }
 
     [Fact]
+    public void OneAccount_HasAtMost16Windows()
+    {
+        var registry = new PlayerRegistry();
+        for (var i = 0; i < PlayerRegistry.MaxTournamentClients; i++)
+            Assert.NotNull(registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" }));
+
+        Assert.Null(registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" }));
+        Assert.NotNull(registry.AddTournamentClient(new BanchoPresence { UserId = 6, Username = "Other" }));
+    }
+
+    [Fact]
+    public async Task ATournamentLogin_StillGoesThroughThePluginsLoginCheck()
+    {
+        var users = new InMemoryUserRepository();
+        var hasher = new BcryptPasswordHasher();
+        await users.AddAsync(new User { Username = "Ref", SafeName = "ref", Email = "r@x.dev", PasswordBcrypt = hasher.HashPassword(hasher.ComputeMd5Hex("password")) });
+        var events = new TomYum.Server.Plugins.EventBus(NullLogger<TomYum.Server.Plugins.EventBus>.Instance);
+        var asked = new List<string>();
+        events.Subscribe<TomYum.Plugins.Abstractions.ClientLoginAttemptedEvent>((e, _) =>
+        {
+            asked.Add(e.OsuVersion);
+            e.Veto("Please update your game client.");
+            return Task.CompletedTask;
+        });
+        var registry = new PlayerRegistry();
+        var login = new BanchoLoginHandler(users, hasher, new InMemoryUserStatsRepository(), registry, new ChannelRegistry(), NullLogger<BanchoLoginHandler>.Instance, events);
+
+        var outcome = await login.HandleAsync($"Ref\n{hasher.ComputeMd5Hex("password")}\nb20250101.1tourney|0|0|abc:runningunderwine:def:ghi:jkl:|0\n", "TH", CancellationToken.None);
+
+        Assert.Null(outcome.Token);
+        Assert.Equal(["b20250101.1tourney"], asked);
+        Assert.Empty(registry.AllSessions);
+    }
+
+    [Fact]
     public async Task AWindow_FollowsAMatch_ItsStateAndChat()
     {
         var registry = new PlayerRegistry();
         var matches = new MatchRegistry();
         var player = registry.Add(new BanchoPresence { UserId = 2, Username = "Player" });
-        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" });
+        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" })!;
         var match = matches.Create(2, "OWC: A vs B", string.Empty, "map", 1, "md5", 0, default, default, false, 0, 0);
         match.Slots[0].Join(2);
 
@@ -87,7 +122,7 @@ public sealed class TournamentClientTests
         var registry = new PlayerRegistry();
         var host = registry.Add(new BanchoPresence { UserId = 2, Username = "Player" });
         var game = registry.Add(new BanchoPresence { UserId = 5, Username = "Ref" });
-        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" });
+        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" })!;
         SpectatorManager.Attach(host, window, registry);
         game.DequeueAll();
         window.DequeueAll();
