@@ -1,3 +1,4 @@
+using TomYum.Persistence;
 using TomYum.Persistence.OsuWeb;
 
 namespace TomYum.Server.OsuWeb;
@@ -29,7 +30,17 @@ public sealed class OsuWebRankHistoryJob : BackgroundService
             try
             {
                 using var scope = _scopes.CreateScope();
-                if (await scope.ServiceProvider.GetRequiredService<OsuWebRankHistory>().RecordIfDueAsync(_time.GetUtcNow(), stoppingToken).ConfigureAwait(false))
+                var history = scope.ServiceProvider.GetRequiredService<OsuWebRankHistory>();
+                var now = _time.GetUtcNow();
+                if (RankingInactivity.Enabled && await history.IsDueAsync(now, stoppingToken).ConfigureAwait(false))
+                {
+                    // The inactivity rule: players who haven't played lose their rank once a day, before the
+                    // day's ranks are recorded (otherwise only a new score would recompute the ranks).
+                    var mirror = scope.ServiceProvider.GetRequiredService<OsuWebScoreMirror>();
+                    for (var mode = 0; mode < 4; mode++)
+                        await mirror.RecomputeGlobalRanksAsync(mode, stoppingToken).ConfigureAwait(false);
+                }
+                if (await history.RecordIfDueAsync(now, stoppingToken).ConfigureAwait(false))
                     _logger.LogInformation("Recorded today's ranks for the website's rank graphs.");
             }
             catch (Exception ex) when (ex is not OperationCanceledException)

@@ -29,14 +29,21 @@ public sealed class OsuWebRankHistory
     /// </summary>
     public async Task<bool> RecordIfDueAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
     {
-        var today = long.Parse(now.UtcDateTime.ToString("yyyyMMdd", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
-        if (await CountAsync(DoneName, cancellationToken).ConfigureAwait(false) >= today)
+        if (!await IsDueAsync(now, cancellationToken).ConfigureAwait(false))
             return false;
 
+        var today = long.Parse(now.UtcDateTime.ToString("yyyyMMdd", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
         for (var ruleset = 0; ruleset < Rulesets.Count; ruleset++)
             await RecordAsync(ruleset, cancellationToken).ConfigureAwait(false);
         await SetCountAsync(DoneName, today, cancellationToken).ConfigureAwait(false);
         return true;
+    }
+
+    /// <summary>Whether today's ranks (UTC) haven't been recorded yet.</summary>
+    public async Task<bool> IsDueAsync(DateTimeOffset now, CancellationToken cancellationToken = default)
+    {
+        var today = long.Parse(now.UtcDateTime.ToString("yyyyMMdd", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+        return await CountAsync(DoneName, cancellationToken).ConfigureAwait(false) < today;
     }
 
     /// <summary>Writes every player's current global rank into the next day's column for <paramref name="ruleset"/>.</summary>
@@ -50,10 +57,11 @@ public sealed class OsuWebRankHistory
         var mode = ruleset.ToString(CultureInfo.InvariantCulture);
 
         // Only fixed names (the column, the stats table, the ruleset number) are spliced in.
+        var active = RankingInactivity.SqlCondition("s.last_played", DateTimeOffset.UtcNow);
         var ranked = $"""
             SELECT s.user_id AS user_id, ROW_NUMBER() OVER (ORDER BY s.rank_score DESC, s.user_id) AS position
             FROM `{stats}` s JOIN phpbb_users u ON u.user_id = s.user_id
-            WHERE {Visible} AND s.rank_score > 0
+            WHERE {Visible} AND s.rank_score > 0{active}
             """;
         await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
 #pragma warning disable EF1002 // see above

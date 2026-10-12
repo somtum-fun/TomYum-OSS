@@ -710,13 +710,15 @@ public sealed class OsuWebScoreMirror
             return Task.CompletedTask;
 
         var table = OsuWebScores.StatsTable(mode);
+        // Inactive players (RankingInactivity) get rank 0 like restricted ones, until their next score.
+        var active = RankingInactivity.SqlCondition("st.last_played", DateTimeOffset.UtcNow);
         var sql = string.Create(CultureInfo.InvariantCulture, $"""
             UPDATE `{table}` s
             LEFT JOIN (
               SELECT st.user_id, RANK() OVER (ORDER BY st.rank_score DESC) AS position
               FROM `{table}` st
               JOIN phpbb_users u ON u.user_id = st.user_id
-              WHERE st.rank_score > 0 AND u.user_type <> 1 AND u.user_warnings = 0
+              WHERE st.rank_score > 0 AND u.user_type <> 1 AND u.user_warnings = 0{active}
             ) ranked ON ranked.user_id = s.user_id
             SET s.rank_score_index = COALESCE(ranked.position, 0)
             """);

@@ -35,6 +35,17 @@ public static class AdminModeRankingsEndpoints
             .Where(s => s.Mode == mode && (byScore ? s.RankedScore > 0 : s.Pp > 0))
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         var ranked = rows.Where(s => !hidden.Contains(s.UserId));
+        if (RankingInactivity.CutoffUtc(DateTimeOffset.UtcNow) is { } cutoff)
+        {
+            // Inactive players (no score in the mode since the cutoff) are off the ranking.
+            var cutoffAt = new DateTimeOffset(cutoff, TimeSpan.Zero);
+            var active = (await db.Scores.AsNoTracking()
+                    .Where(x => x.Mode == mode && x.SubmittedAt >= cutoffAt)
+                    .Select(x => x.UserId).Distinct()
+                    .ToListAsync(cancellationToken).ConfigureAwait(false))
+                .ToHashSet();
+            ranked = ranked.Where(s => active.Contains(s.UserId));
+        }
 
         if (friendsOf is { } viewer)
         {
