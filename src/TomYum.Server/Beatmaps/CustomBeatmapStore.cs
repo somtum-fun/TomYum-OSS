@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Globalization;
 using SkiaSharp;
 
@@ -26,7 +27,13 @@ public sealed class CustomBeatmapStore
 
     private static readonly string[] ImageExtensions = [".jpg", ".jpeg", ".png"];
 
+    // Covers being made at once (each decode of a background can take a few hundred MB).
+    private static readonly SemaphoreSlim CoverGate = new(2, 2);
+
     private readonly string _root;
+
+    // Sets whose background couldn't be made into covers, by that file's write time: not tried again until it changes.
+    private readonly ConcurrentDictionary<int, DateTime> _unreadable = new();
 
     /// <summary>The ffmpeg previews are made with.</summary>
     public string Ffmpeg { get; }
@@ -71,6 +78,7 @@ public sealed class CustomBeatmapStore
         var covers = Path.Combine(_root, "covers", Invariant(setId));
         if (Directory.Exists(covers))
             Directory.Delete(covers, recursive: true);
+        _unreadable.TryRemove(setId, out _);
     }
 
     /// <summary>
@@ -105,7 +113,9 @@ public sealed class CustomBeatmapStore
 
     /// <summary>
     /// A cover or thumbnail (<see cref="CoverSizes"/>) as a JPEG file, made from the background on
-    /// first use; null when the set has no (readable) background or the size is unknown.
+    /// first use; null when the set has no (readable) background or the size is unknown. A background
+    /// that can't be read, or is bigger than <see cref="ImageLimits.MaxSide"/> on a side, is never
+    /// decoded, and is remembered as such until the set's files change.
     /// </summary>
     public string? CoverPath(int setId, string size)
     {
@@ -118,16 +128,41 @@ public sealed class CustomBeatmapStore
         var background = BackgroundPath(setId);
         if (background is null)
             return null;
-        using var source = SKBitmap.Decode(background);
-        if (source is null)
+        var written = File.GetLastWriteTimeUtc(background);
+        if (_unreadable.TryGetValue(setId, out var failed) && failed == written)
             return null;
 
-        var jpeg = Crop(source, dimensions.Width, dimensions.Height);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        var temporary = path + ".tmp";
-        File.WriteAllBytes(temporary, jpeg);
-        File.Move(temporary, path, overwrite: true);
-        return path;
+        CoverGate.Wait();
+        try
+        {
+            if (File.Exists(path))
+                return path;
+
+            using var codec = SKCodec.Create(background);
+            if (ImageLimits.Size(codec) is not { } original)
+            {
+                _unreadable[setId] = written;
+                return null;
+            }
+            // Decoded only as big as the cover needs, where the format allows it.
+            using var source = ImageLimits.Decode(codec, Math.Max((double)dimensions.Width / original.Width, (double)dimensions.Height / original.Height));
+            if (source is null)
+            {
+                _unreadable[setId] = written;
+                return null;
+            }
+
+            var jpeg = Crop(source, dimensions.Width, dimensions.Height);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            File.WriteAllBytes(temporary, jpeg);
+            File.Move(temporary, path, overwrite: true);
+            return path;
+        }
+        finally
+        {
+            CoverGate.Release();
+        }
     }
 
     /// <summary>Whether the set has a background (so the website can show covers).</summary>

@@ -458,7 +458,14 @@ public sealed class CustomBeatmapImporter
                 var extension = Path.GetExtension(name).ToLowerInvariant();
                 if (extension is ".jpg" or ".jpeg" or ".png" && Find(archive, name) is { } image)
                 {
-                    background = (extension, ReadEntry(image));
+                    // Covers are made from it: a picture too big to decode safely is refused, one that
+                    // isn't a picture just gives the set no covers.
+                    var bytes = ReadEntry(image);
+                    if (ImageLimits.Size(bytes) is not { } size)
+                        continue;
+                    if (size.Width > ImageLimits.MaxSide || size.Height > ImageLimits.MaxSide)
+                        throw new CustomUploadException(Invariant($"The background \"{name}\" is {size.Width}×{size.Height} pixels; the most it can be is {ImageLimits.MaxSide}×{ImageLimits.MaxSide}. Make it smaller and try again."));
+                    background = (extension, bytes);
                     break;
                 }
             }

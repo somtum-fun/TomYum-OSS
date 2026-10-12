@@ -108,12 +108,12 @@ public static partial class AssetsEndpoints
     /// <summary>A medal icon fitted into the old images' size (centred, transparent around it); null if it isn't an image.</summary>
     internal static byte[]? LegacyMedal(byte[] png)
     {
-        // SKBitmap.Decode throws (rather than returning null) when nothing can read the data.
+        // Players' custom medals have icons too: only the header is read before deciding to decode.
         using var data = SKData.CreateCopy(png);
         using var codec = SKCodec.Create(data);
-        if (codec is null)
+        if (ImageLimits.Size(codec) is not { } size)
             return null;
-        using var icon = SKBitmap.Decode(codec);
+        using var icon = ImageLimits.Decode(codec, Math.Min((double)LegacyMedalWidth / size.Width, (double)LegacyMedalHeight / size.Height));
         if (icon is null)
             return null;
         var scale = Math.Min((float)LegacyMedalWidth / icon.Width, (float)LegacyMedalHeight / icon.Height);

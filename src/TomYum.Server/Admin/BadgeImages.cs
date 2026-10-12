@@ -86,9 +86,10 @@ public sealed class BadgeImages
     {
         ArgumentNullException.ThrowIfNull(source);
         using var codec = SKCodec.Create(new SKMemoryStream(source));
-        if (codec is null)
+        if (ImageLimits.Size(codec) is not { } size)
             return null;
-        using var original = SKBitmap.Decode(codec);
+        // Never bigger than ImageLimits allows; decoded only as big as needed where the format can.
+        using var original = ImageLimits.Decode(codec, Math.Min((double)width / size.Width, (double)height / size.Height));
         if (original is null || original.Width == 0 || original.Height == 0)
             return null;
 

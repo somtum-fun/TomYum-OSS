@@ -87,7 +87,7 @@ public sealed class PackageNamesTests : IDisposable
     private static byte[] Map() => Encoding.UTF8.GetBytes(
         "osu file format v14\n\n[General]\nAudioFilename: audio.mp3\nMode: 0\n\n[Metadata]\nTitle:Song\nArtist:Artist\nCreator:Mapper\nVersion:Hard\n\n[HitObjects]\n64,192,1000,1,0,0:0:0:0:\n");
 
-    private static byte[] Zip(params (string Name, byte[] Bytes)[] entries)
+    internal static byte[] Zip(params (string Name, byte[] Bytes)[] entries)
     {
         using var output = new MemoryStream();
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
@@ -102,7 +102,7 @@ public sealed class PackageNamesTests : IDisposable
     }
 
     // The package is refused before the importer looks anything up.
-    private static IBeatmapRepository NoBeatmaps() => DispatchProxy.Create<IBeatmapRepository, Unreachable>();
+    internal static IBeatmapRepository NoBeatmaps() => DispatchProxy.Create<IBeatmapRepository, Unreachable>();
 
     public class Unreachable : DispatchProxy
     {

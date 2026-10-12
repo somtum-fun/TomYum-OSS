@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using SkiaSharp;
 
@@ -137,6 +138,8 @@ public sealed partial class AssetStore
             return "That image is over 10 MB.";
         if ((normal is not null && !IsImage(normal)) || (retina is not null && !IsImage(retina)))
             return "That isn't an image (PNG, JPEG, GIF or WebP).";
+        if ((normal is not null && !ImageLimits.IsWithinLimit(normal)) || (retina is not null && !ImageLimits.IsWithinLimit(retina)))
+            return string.Create(CultureInfo.InvariantCulture, $"That image is too big (the most is {ImageLimits.MaxSide}×{ImageLimits.MaxSide} pixels).");
 
         if (normal is null && retina is not null)
         {
@@ -256,7 +259,7 @@ public sealed partial class AssetStore
         ArgumentNullException.ThrowIfNull(extension);
         if (extension.Equals(".gif", StringComparison.OrdinalIgnoreCase))
             return source;
-        using var original = SKBitmap.Decode(source);
+        using var original = ImageLimits.Decode(source);
         if (original is null || original.Width < 2 || original.Height < 2)
             return null;
 
