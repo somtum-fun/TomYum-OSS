@@ -23,6 +23,11 @@ RUN grep -q '            queue.Run(cancellationToken);' Commands/Queue/WatchQueu
 COPY TomYumRelaxWait.cs Helpers/TomYumRelaxWait.cs
 RUN grep -q '                    var score = item.Score;' ScoreStatisticsQueueProcessor.cs \
     && sed -i 's/^                    var score = item.Score;/                    var score = item.Score;\n                    global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumRelaxWait.WaitForTomYum(conn, score);/' ScoreStatisticsQueueProcessor.cs
+# Global ranks the way TomYum works them out: visible players only, and the rankings' inactivity rule
+# (TomYumRankIndex.cs, TOMYUM_RANKING_INACTIVE_DAYS).
+COPY TomYumRankIndex.cs Helpers/TomYumRankIndex.cs
+RUN grep -q 'userStats.rank_score_index = await getUserRankScoreIndex(userStats, connection, transaction, dbInfo);' Processors/UserTotalPerformanceProcessor.cs \
+    && sed -i 's/userStats.rank_score_index = await getUserRankScoreIndex(userStats, connection, transaction, dbInfo);/userStats.rank_score_index = await global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumRankIndex.GetAsync(userStats, dbInfo.UserStatsTable, connection, transaction);/' Processors/UserTotalPerformanceProcessor.cs
 RUN dotnet publish -c Release -o /out && rm -rf /out/runtimes /out/osu.Game.Resources.dll
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0

@@ -239,6 +239,9 @@ services:
       CLIENT_CHECK_VERSION: "0"
       # Custom (server-only) maps: TomYum serves every map's .osu file.
       BEATMAP_DOWNLOAD_PATH: http://server:8080/osu/{0}
+      # The rankings' inactivity rule for the ranks it writes (TomYumRankIndex.cs); 0 = off. Keep it equal
+      # to TomYum's Ranking:InactiveDays and the website's TOMYUM_RANKING_INACTIVE_DAYS.
+      TOMYUM_RANKING_INACTIVE_DAYS: ${RANKING_INACTIVE_DAYS:-0}
     depends_on:
       db:
         condition: service_healthy

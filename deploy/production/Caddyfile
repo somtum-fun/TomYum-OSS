@@ -190,12 +190,13 @@ http://osu.{$DOMAIN} {
 	handle @tomyum {
 		import tomyum
 	}
-	# lazer sends the same User-Agent, but asks for JSON: its sign-up is the website's.
+	# lazer sends the same User-Agent, and its sign-up is the website's. Newer stable builds ask for JSON
+	# too, so tell them apart by lazer's X-Api-Version header, which stable never sends.
 	@stable_register {
 		method POST
 		path /users
 		header User-Agent osu!
-		not header Accept application/json
+		not header X-Api-Version *
 	}
 	handle @stable_register {
 		import tomyum

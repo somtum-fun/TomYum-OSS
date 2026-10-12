@@ -89,7 +89,7 @@ public static class GatewayLink
             await using var stream = WebSocketStream.Create(socket, WebSocketMessageType.Binary, ownsWebSocket: false);
             using var session = new TomYum.Server.Bancho.TcpBanchoSession(stream, player, services, logger);
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, lifetime.ApplicationStopping);
-            await session.RunAsync(stopping.Token).ConfigureAwait(false);
+            await RunAsync(session.RunAsync, stopping.Token).ConfigureAwait(false);
             await CloseAsync(socket).ConfigureAwait(false);
             return Results.Empty;
         }).RequireHost(hosts);
@@ -110,10 +110,26 @@ public static class GatewayLink
             await using var stream = WebSocketStream.Create(socket, WebSocketMessageType.Binary, ownsWebSocket: false);
             using var session = ActivatorUtilities.CreateInstance<IrcSession>(services, (Stream)stream);
             using var stopping = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted, lifetime.ApplicationStopping);
-            await session.RunAsync(stopping.Token).ConfigureAwait(false);
+            await RunAsync(session.RunAsync, stopping.Token).ConfigureAwait(false);
             await CloseAsync(socket).ConfigureAwait(false);
             return Results.Empty;
         }).RequireHost(hosts);
+    }
+
+    /// <summary>
+    /// Runs a relayed connection. The gateway drops the WebSocket without a close handshake when its
+    /// client hangs up (a player closing the game, an uptime check that only connects): that's the
+    /// connection ending, not an error.
+    /// </summary>
+    private static async Task RunAsync(Func<CancellationToken, Task> run, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await run(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is WebSocketException or IOException or OperationCanceledException)
+        {
+        }
     }
 
     private static async Task CloseAsync(WebSocket socket)

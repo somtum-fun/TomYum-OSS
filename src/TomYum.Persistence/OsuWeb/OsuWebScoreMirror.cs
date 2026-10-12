@@ -244,12 +244,17 @@ public sealed class OsuWebScoreMirror
 
         int Grade(string grade) => grades.TryGetValue(grade, out var n) ? n : 0;
 
+        // "Last played" is the player's latest score in the mode, not the time of this write: imports and pp
+        // reworks rewrite every player's row, and the rankings' inactivity rule (RankingInactivity) reads it.
+        var lastPlayed = (await scores.MaxAsync(s => (DateTimeOffset?)s.SubmittedAt, cancellationToken).ConfigureAwait(false)
+            ?? DateTimeOffset.UtcNow).UtcDateTime;
+
         if (_options.ScoreProcessor)
         {
             var counters = new StableCounters(
                 totals?.Count300 ?? 0, totals?.Count100 ?? 0, totals?.Count50 ?? 0, totals?.CountMiss ?? 0,
                 stats.PlayCount, secondsPlayed, stats.RankedScore, stats.TotalScore);
-            await WriteStableCountersAsync(table, userId, mode, country, counters, Math.Clamp(totals?.MaxCombo ?? 0, 0, ushort.MaxValue), cancellationToken)
+            await WriteStableCountersAsync(table, userId, mode, country, counters, Math.Clamp(totals?.MaxCombo ?? 0, 0, ushort.MaxValue), lastPlayed, cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -261,7 +266,7 @@ public sealed class OsuWebScoreMirror
               x_rank_count, xh_rank_count, s_rank_count, sh_rank_count, a_rank_count, `rank`, level, max_combo,
               country_acronym, rank_score, rank_score_index, last_played)
             VALUES ({0}, {1}, {2}, {3}, {4}, 0, 0, {5}, {6}, {7}, {8}, {9}, {10},
-              {11}, {12}, {13}, {14}, {15}, 0, {16}, {17}, {18}, {19}, 0, UTC_TIMESTAMP())
+              {11}, {12}, {13}, {14}, {15}, 0, {16}, {17}, {18}, {19}, 0, {20})
             ON DUPLICATE KEY UPDATE
               count300 = VALUES(count300), count100 = VALUES(count100), count50 = VALUES(count50),
               countMiss = VALUES(countMiss), accuracy = VALUES(accuracy), accuracy_new = VALUES(accuracy_new),
@@ -287,6 +292,7 @@ public sealed class OsuWebScoreMirror
                 Math.Clamp(totals?.MaxCombo ?? 0, 0, ushort.MaxValue),
                 country,
                 Math.Max(0, stats.Pp),
+                lastPlayed,
             ],
             cancellationToken).ConfigureAwait(false);
     }
@@ -314,7 +320,7 @@ public sealed class OsuWebScoreMirror
     /// the processor, when the row held only stable data) sets the counters instead. pp, accuracy,
     /// ranks and grade counts are left to the processor and <see cref="RecomputeTotalPerformanceAsync"/>.
     /// </summary>
-    private async Task WriteStableCountersAsync(string table, int userId, int mode, string country, StableCounters now, int maxCombo, CancellationToken cancellationToken)
+    private async Task WriteStableCountersAsync(string table, int userId, int mode, string country, StableCounters now, int maxCombo, DateTime lastPlayed, CancellationToken cancellationToken)
     {
         var before = (await _tomyum.Database
                 .SqlQuery<WrittenCounters>($"""
@@ -347,12 +353,13 @@ public sealed class OsuWebScoreMirror
               country_acronym, rank_score, rank_score_index, last_played)
             VALUES ({{userId}}, {{now.Count300}}, {{now.Count100}}, {{now.Count50}}, {{now.CountMiss}}, 0, 0, 0, 0,
               {{now.PlayCount}}, {{now.SecondsPlayed}}, {{now.RankedScore}}, {{now.TotalScore}},
-              0, 0, 0, 0, 0, 0, {{OsuWebScores.Level(now.TotalScore)}}, {{maxCombo}}, {0}, 0, 0, UTC_TIMESTAMP())
+              0, 0, 0, 0, 0, 0, {{OsuWebScores.Level(now.TotalScore)}}, {{maxCombo}}, {0}, 0, 0, {1})
             ON DUPLICATE KEY UPDATE {{updates}}, max_combo = GREATEST(max_combo, {{maxCombo}}),
-              country_acronym = VALUES(country_acronym), last_played = UTC_TIMESTAMP()
+              country_acronym = VALUES(country_acronym),
+              last_played = GREATEST(COALESCE(last_played, VALUES(last_played)), VALUES(last_played))
             """);
 #pragma warning disable EF1002 // see above; the country goes in as a parameter
-        await _osuWeb.Database.ExecuteSqlRawAsync(sql, [country], cancellationToken).ConfigureAwait(false);
+        await _osuWeb.Database.ExecuteSqlRawAsync(sql, [country, lastPlayed], cancellationToken).ConfigureAwait(false);
 #pragma warning restore EF1002
 
         // The level follows the row's total score, which now includes lazer's.

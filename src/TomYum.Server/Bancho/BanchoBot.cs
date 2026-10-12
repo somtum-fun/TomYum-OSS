@@ -36,18 +36,28 @@ public sealed class BanchoBot
     public const string UserIdSetting = "Bancho:BotUserId";
 
     /// <summary>
-    /// Sets <see cref="UserId"/> for this process. Ids below 2 are refused: lazer treats ids up
+    /// Sets <see cref="UserId"/> (and <see cref="Name"/>) for this process. Ids below 2 are refused: lazer treats ids up
     /// to 1 as no user.
     /// </summary>
-    public static void Configure(int userId)
+    public static void Configure(int userId, string? name = null)
     {
         if (userId < 2)
             throw new ArgumentOutOfRangeException(nameof(userId), userId, $"{UserIdSetting} must be 2 or more.");
         UserId = userId;
+        Name = string.IsNullOrWhiteSpace(name) ? DefaultName : name.Trim();
     }
 
-    /// <summary>BanchoBot's display name.</summary>
-    public const string Name = "BanchoBot";
+    /// <summary>The default display name (osu!'s).</summary>
+    public const string DefaultName = "BanchoBot";
+
+    /// <summary>The setting that holds the bot's name.</summary>
+    public const string NameSetting = "Bancho:BotName";
+
+    /// <summary>
+    /// The bot's display name, <c>Bancho:BotName</c> (<c>TOMYUM_BANCHO__BOTNAME</c>), set once at startup
+    /// by <see cref="Configure(int, string?)"/>; a server moved from bancho.py can keep its bot's name.
+    /// </summary>
+    public static string Name { get; private set; } = DefaultName;
 
     private readonly BanchoBotCommands _commands;
 

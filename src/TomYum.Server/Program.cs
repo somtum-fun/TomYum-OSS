@@ -72,7 +72,8 @@ builder.Services.AddSingleton<TomYum.Server.OsuWeb.OnlinePlayers>();
 // The rankings' inactivity rule (Ranking:InactiveDays, default 0 = off; osu!somtum: 180).
 RankingInactivity.Days = builder.Configuration.GetValue<int?>(RankingInactivity.Key) ?? 0;
 // BanchoBot's user id (Bancho:BotUserId, default 3): read before anything else looks at it.
-BanchoBot.Configure(builder.Configuration.GetValue<int?>(BanchoBot.UserIdSetting) ?? BanchoBot.DefaultUserId);
+BanchoBot.Configure(builder.Configuration.GetValue<int?>(BanchoBot.UserIdSetting) ?? BanchoBot.DefaultUserId,
+    builder.Configuration[BanchoBot.NameSetting]);
 builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
 // Every password check goes through the wrong-guess limit (PasswordGuesses), whichever endpoint asks.

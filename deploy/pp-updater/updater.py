@@ -19,7 +19,7 @@ Redis (the stack's, through `docker compose exec redis redis-cli`):
 
 Settings (environment): TOMYUM_DIR (the TomYum checkout; default the one this script is in), COMPOSE_DIR
 (default TOMYUM_DIR/deploy/production), RUN_AS (default the user owning the checkout; builds and commits
-run as them), CHECK_HOURS (6).
+run as them), CHECK_HOURS (6), CONTAINER_CLI (docker; "podman" on a podman host).
 """
 
 from __future__ import annotations
@@ -40,6 +40,8 @@ TOMYUM_DIR = Path(os.environ.get("TOMYUM_DIR", str(Path(__file__).resolve().pare
 COMPOSE_DIR = Path(os.environ.get("COMPOSE_DIR", str(TOMYUM_DIR / "deploy" / "production")))
 RUN_AS = os.environ.get("RUN_AS") or __import__("pwd").getpwuid(TOMYUM_DIR.stat().st_uid).pw_name
 CHECK_HOURS = float(os.environ.get("CHECK_HOURS", "6"))
+# The container command: docker, or podman (which has `podman compose` and the same run options).
+CONTAINER_CLI = os.environ.get("CONTAINER_CLI", "docker").split()
 
 PERFORMANCE_CSPROJ = TOMYUM_DIR / "src" / "TomYum.Performance" / "TomYum.Performance.csproj"
 PROCESSOR_DOCKERFILE = TOMYUM_DIR / "deploy" / "score-processor" / "Dockerfile"
@@ -80,7 +82,7 @@ def run(args: list[str], cwd: Path | None = None, as_user: bool = False, timeout
 
 
 def compose(*args: str, timeout: int = 3600) -> str:
-    return run(["docker", "compose", *args], cwd=COMPOSE_DIR, timeout=timeout)
+    return run([*CONTAINER_CLI, "compose", *args], cwd=COMPOSE_DIR, timeout=timeout)
 
 
 def redis(*args: str) -> str:
@@ -209,7 +211,7 @@ def request_rework(library: str, modes: list[int], from_version: str, to_version
 
 
 def sidecar_version() -> dict:
-    output = run(["docker", "run", "--rm", "--network", "tomyum_default", "curlimages/curl", "-s", "http://pp-sidecar:9000/version"], timeout=120)
+    output = run([*CONTAINER_CLI, "run", "--rm", "--network", "tomyum_default", "curlimages/curl", "-s", "http://pp-sidecar:9000/version"], timeout=120)
     return json.loads(output)
 
 
@@ -225,7 +227,7 @@ def update_akatsuki(job: Job) -> None:
     uid = run(["id", "-u", RUN_AS]).strip()
     gid = run(["id", "-g", RUN_AS]).strip()
     try:
-        run(["docker", "run", "--rm", "-u", f"{uid}:{gid}", "-e", "CARGO_HOME=/tmp/cargo", "-v", f"{SIDECAR_DIR}:/app", "-w", "/app",
+        run([*CONTAINER_CLI, "run", "--rm", "-u", f"{uid}:{gid}", "-e", "CARGO_HOME=/tmp/cargo", "-v", f"{SIDECAR_DIR}:/app", "-w", "/app",
              "rust:1-slim-bookworm", "cargo", "update", "-p", "akatsuki-pp"], timeout=1800)
         new_version, new_commit = current_akatsuki()
         job.step("Building the pp-sidecar")

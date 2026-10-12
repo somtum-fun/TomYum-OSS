@@ -10,6 +10,7 @@ Wants=network-online.target
 
 [Service]
 Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+# On a podman host: Environment=CONTAINER_CLI=podman
 ExecStart=/usr/bin/python3 /home/YOUR_USER/TomYum/deploy/pp-updater/updater.py
 Restart=always
 RestartSec=30

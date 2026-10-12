@@ -171,13 +171,21 @@ public sealed partial class OsuWebCommunity
             return null;
 
         int? globalRank = null, countryRank = null;
-        if (row.Pp > 0 && !row.Restricted)
+        // The rankings' inactivity rule (RankingInactivity), as on the website: an inactive player has no
+        // rank, and only active players count above anyone.
+        var active = RankingInactivity.SqlCondition("s.last_played", DateTimeOffset.UtcNow);
+        // Table name from a fixed whitelist and the cutoff from RankingInactivity: nothing here is user text.
+        var ownActiveSql = "SELECT COUNT(*) AS Value FROM `" + table + "` s WHERE s.user_id = {0}" + active;
+        var ranked = row.Pp > 0 && !row.Restricted
+            && (active.Length == 0 || await _db.Database.SqlQueryRaw<long>(ownActiveSql, userId)
+                .SingleAsync(cancellationToken).ConfigureAwait(false) > 0);
+        if (ranked)
         {
             // Compared in SQL against the player's own row: the column is a float, and a rounded copy
             // passed back in could rank the player below themselves.
             var above = $$"""
                 SELECT COUNT(*) AS Value FROM `{{table}}` s JOIN phpbb_users u ON u.user_id = s.user_id
-                WHERE {{Visible}} AND s.user_id <> {0} AND s.rank_score > (SELECT own.rank_score FROM `{{table}}` own WHERE own.user_id = {0})
+                WHERE {{Visible}} AND s.user_id <> {0} AND s.rank_score > (SELECT own.rank_score FROM `{{table}}` own WHERE own.user_id = {0}){{active}}
                 """;
             globalRank = (int)(await _db.Database.SqlQueryRaw<long>(above, userId).SingleAsync(cancellationToken).ConfigureAwait(false)) + 1;
             countryRank = (int)(await _db.Database.SqlQueryRaw<long>(above + " AND u.country_acronym = {1}", userId, row.Country)
