@@ -7,7 +7,8 @@ namespace TomYum.Server.Admin;
 /// <summary>
 /// Lets an admin API request through only when it carries a fresh, valid
 /// <see cref="AdminSignature"/>. osu-web checks the staff member's permissions before signing;
-/// TomYum trusts any correctly signed request. Without a shared secret the API doesn't exist (404).
+/// TomYum trusts any correctly signed request, once: a request that changes something can't be sent
+/// again (<see cref="AdminReplays"/>). Without a shared secret the API doesn't exist (404).
 /// </summary>
 public sealed class AdminAuthFilter : IEndpointFilter
 {
@@ -17,12 +18,14 @@ public sealed class AdminAuthFilter : IEndpointFilter
     private readonly OsuWebInteropOptions _options;
     private readonly TimeProvider _time;
     private readonly ILogger<AdminAuthFilter> _logger;
+    private readonly AdminReplays _replays;
 
-    public AdminAuthFilter(OsuWebInteropOptions options, TimeProvider time, ILogger<AdminAuthFilter> logger)
+    public AdminAuthFilter(OsuWebInteropOptions options, TimeProvider time, ILogger<AdminAuthFilter> logger, AdminReplays? replays = null)
     {
         _options = options;
         _time = time;
         _logger = logger;
+        _replays = replays ?? new AdminReplays(time);
     }
 
     public async ValueTask<object?> InvokeAsync(EndpointFilterInvocationContext context, EndpointFilterDelegate next)
@@ -55,6 +58,13 @@ public sealed class AdminAuthFilter : IEndpointFilter
                 buffer.GetBuffer().AsSpan(0, (int)buffer.Length), request.Headers[AdminSignature.SignatureHeader]))
         {
             _logger.LogWarning("Rejected admin API request {Method} {Path}: bad signature.", request.Method, request.Path);
+            return Results.Unauthorized();
+        }
+
+        if (AdminReplays.IsSingleUse(request.Method, request.Query)
+            && !await _replays.TryUseAsync(request.Headers[AdminSignature.SignatureHeader].ToString()).ConfigureAwait(false))
+        {
+            _logger.LogWarning("Rejected admin API request {Method} {Path}: already used (a replay).", request.Method, request.Path);
             return Results.Unauthorized();
         }
 

@@ -179,6 +179,7 @@ if (databaseOptions.UseOsuWebAccounts)
 
     // Admin API for osu-web's staff panels (signed with the same shared secret as InterOp).
     builder.Services.TryAddSingleton(TimeProvider.System);
+    builder.Services.AddSingleton(sp => new AdminReplays(TimeProvider.System, sp.GetService<StackExchange.Redis.IConnectionMultiplexer>()));
     builder.Services.AddSingleton<AdminAuthFilter>();
     builder.Services.AddScoped<BeatmapSetImporter>();
     builder.Services.AddScoped<ScoreRecalculation>();
