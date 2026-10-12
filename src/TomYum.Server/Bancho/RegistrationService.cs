@@ -122,10 +122,11 @@ public sealed partial class RegistrationService
     }
 
     /// <summary>
-    /// The user id of the server owner: the first real registration. Ids up to 3 are reserved (2 for
-    /// the development seed user, 3 for BanchoBot), so the first player to register is id 4.
+    /// The user id of the server owner: the first real registration. Ids up to BanchoBot's are
+    /// reserved (by default 2 for the development seed user, 3 for BanchoBot), so the first player
+    /// to register is the id after BanchoBot's (4 by default).
     /// </summary>
-    public const int OwnerUserId = BanchoBot.UserId + 1;
+    public static int OwnerUserId => BanchoBot.UserId + 1;
 
     /// <summary>Returns a copy of <paramref name="user"/> with its <see cref="User.Privileges"/> replaced.</summary>
     private static User CloneWith(User user, UserPrivileges privileges) => new()

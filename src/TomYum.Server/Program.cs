@@ -69,6 +69,10 @@ builder.Services.AddSingleton<ModerationCommands>();
 builder.Services.AddSingleton<MapCommands>();
 builder.Services.AddSingleton<NowPlayingStore>();
 builder.Services.AddSingleton<TomYum.Server.OsuWeb.OnlinePlayers>();
+// The rankings' inactivity rule (Ranking:InactiveDays, default 0 = off; osu!somtum: 180).
+RankingInactivity.Days = builder.Configuration.GetValue<int?>(RankingInactivity.Key) ?? 0;
+// BanchoBot's user id (Bancho:BotUserId, default 3): read before anything else looks at it.
+BanchoBot.Configure(builder.Configuration.GetValue<int?>(BanchoBot.UserIdSetting) ?? BanchoBot.DefaultUserId);
 builder.Services.AddSingleton<BanchoBotCommands>();
 builder.Services.AddSingleton<BanchoBot>();
 builder.Services.AddSingleton<IPasswordHasher, BcryptPasswordHasher>();
@@ -462,7 +466,11 @@ if (databaseOptions.Enabled)
 
     // TomYum's own accounts: ids up to BanchoBot's are reserved, so sign-ups start after it.
     if (!databaseOptions.UseOsuWebAccounts)
-        await db.Database.ExecuteSqlRawAsync($"ALTER TABLE users AUTO_INCREMENT = {BanchoBot.UserId + 1}");
+    {
+#pragma warning disable EF1002 // a number formatted invariantly, not user text
+        await db.Database.ExecuteSqlRawAsync(string.Create(System.Globalization.CultureInfo.InvariantCulture, $"ALTER TABLE users AUTO_INCREMENT = {BanchoBot.UserId + 1}"));
+#pragma warning restore EF1002
+    }
 
     app.Logger.LogInformation("Database schema up to date ({Host}/{Name}); applied {Migrations}.",
         databaseOptions.Host, databaseOptions.Name, applied.Count == 0 ? "nothing" : string.Join(", ", applied));

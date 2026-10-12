@@ -46,7 +46,7 @@ Set these in osu-web's `.env` before first start:
 | Setting | Value | Why |
 |---|---|---|
 | `APP_URL` | `https://osu.<your domain>` | Links and redirects on the site. |
-| `BANCHO_BOT_USER_ID` | `3` | TomYum's BanchoBot (osu-web's default too, like official osu!). |
+| `BANCHO_BOT_USER_ID` | `3` | TomYum's BanchoBot (osu-web's default too, like official osu!). Must equal TomYum's `Bancho:BotUserId` (`TOMYUM_BANCHO__BOTUSERID`, default 3; an import from bancho.py may put the bot at 2, tools/ImportBanchoPy). |
 | `CLIENT_CHECK_VERSION` | `false` | Already the default; keeps stable-client checks off. |
 
 Then, **once**, create osu-web's user groups. Its migrations don't, and both osu-web's own sign-up

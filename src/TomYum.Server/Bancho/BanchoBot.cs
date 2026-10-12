@@ -17,10 +17,34 @@ namespace TomYum.Server.Bancho;
 public sealed class BanchoBot
 {
     /// <summary>
-    /// BanchoBot's reserved user id: 3, like the official server's (lazer shows no avatar for id 1,
-    /// its guest user).
+    /// BanchoBot's user id when nothing else is set: 3, like the official server's (lazer shows no
+    /// avatar for id 1, its guest user).
     /// </summary>
-    public const int UserId = 3;
+    public const int DefaultUserId = 3;
+
+    /// <summary>
+    /// BanchoBot's reserved user id. <see cref="DefaultUserId"/> unless the setting
+    /// <c>Bancho:BotUserId</c> (<c>TOMYUM_BANCHO__BOTUSERID</c>) says otherwise: a server whose
+    /// players were imported from another server with their ids (tools/ImportBanchoPy) may need
+    /// the bot elsewhere, say 2, when an old player already holds 3. Set once at startup
+    /// (<see cref="Configure"/>), before anything reads it; osu-web's <c>BANCHO_BOT_USER_ID</c>
+    /// must say the same.
+    /// </summary>
+    public static int UserId { get; private set; } = DefaultUserId;
+
+    /// <summary>The setting that holds the bot's id.</summary>
+    public const string UserIdSetting = "Bancho:BotUserId";
+
+    /// <summary>
+    /// Sets <see cref="UserId"/> for this process. Ids below 2 are refused: lazer treats ids up
+    /// to 1 as no user.
+    /// </summary>
+    public static void Configure(int userId)
+    {
+        if (userId < 2)
+            throw new ArgumentOutOfRangeException(nameof(userId), userId, $"{UserIdSetting} must be 2 or more.");
+        UserId = userId;
+    }
 
     /// <summary>BanchoBot's display name.</summary>
     public const string Name = "BanchoBot";

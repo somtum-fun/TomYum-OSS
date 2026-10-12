@@ -128,9 +128,10 @@ with Caddy and point the subdomain records at your host — see `deploy/caddy/Ca
 
 The website is [osu-web](https://github.com/ppy/osu-web), run alongside TomYum on the same MySQL and
 Redis, with Caddy splitting `osu.<domain>` between the two. See [docs/osu-web.md](docs/osu-web.md)
-for setup and the plan for sharing one database. Moving an existing server with players:
-[tools/MigrateToOsuWeb](tools/MigrateToOsuWeb/README.md). Running the whole stack on one machine to
-try it: [docs/local-testing.md](docs/local-testing.md).
+for setup and the plan for sharing one database. Moving an existing TomYum server with players onto
+the website: [tools/MigrateToOsuWeb](tools/MigrateToOsuWeb/README.md); moving a bancho.py server
+(bancho.py, bancho.py-ex, kawata.py) here: [tools/ImportBanchoPy](tools/ImportBanchoPy/README.md).
+Running the whole stack on one machine to try it: [docs/local-testing.md](docs/local-testing.md).
 
 ### Deployment
 
