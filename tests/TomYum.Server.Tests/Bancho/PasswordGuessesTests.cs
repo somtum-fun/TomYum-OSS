@@ -68,6 +68,49 @@ public sealed class PasswordGuessesTests
     }
 
     [Fact]
+    public void GuessesFromElsewhere_DontLockThePlayerOut()
+    {
+        // Guessing a player's password from another address (osu-rate.php?u=<name>&p=<anything>, ...)
+        // mustn't refuse their own logins or score submissions.
+        var (hasher, _) = Guarded(new ManualClock());
+        using (PasswordGuesses.From("198.51.100.7"))
+        {
+            for (var i = 0; i < PasswordGuesses.AccountLimit; i++)
+                Assert.False(hasher.Verify("guess" + i, "stored"));
+            Assert.False(hasher.Verify(Right, "stored"));   // the guesser's own address is refused
+        }
+
+        using (PasswordGuesses.From("203.0.113.20"))
+            Assert.True(hasher.Verify(Right, "stored"));
+    }
+
+    [Fact]
+    public void GuessesSpreadOverAddresses_CostAnAddressEveryFew_ButTyposDont()
+    {
+        var (hasher, _) = Guarded(new ManualClock());
+        var n = 0;
+        for (var address = 1; n < PasswordGuesses.AccountLimit; address++)
+        {
+            using (PasswordGuesses.From($"198.51.100.{address}"))
+            {
+                for (var i = 0; i < PasswordGuesses.SuspectGuesses && n < PasswordGuesses.AccountLimit; i++)
+                    Assert.False(hasher.Verify("guess" + n++, "stored"));
+            }
+        }
+
+        // The account is guarded now: an address that guessed SuspectGuesses times is refused even with
+        // the right password; one that mistyped once or twice still gets in.
+        using (PasswordGuesses.From("198.51.100.1"))
+            Assert.False(hasher.Verify(Right, "stored"));
+        using (PasswordGuesses.From("203.0.113.30"))
+        {
+            Assert.False(hasher.Verify("typo", "stored"));
+            Assert.False(hasher.Verify("typo2", "stored"));
+            Assert.True(hasher.Verify(Right, "stored"));
+        }
+    }
+
+    [Fact]
     public void IPv6_IsCountedByItsSlash64()
     {
         Assert.Equal(PasswordGuesses.AddressKey("2001:db8:1:2::1"), PasswordGuesses.AddressKey("2001:db8:1:2:ffff::9"));

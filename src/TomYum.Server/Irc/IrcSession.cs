@@ -170,7 +170,7 @@ public sealed class IrcSession : IDisposable
             return false;
         }
         if (guessAccount is not null)
-            guesses?.Succeeded(guessAccount);
+            guesses?.Succeeded(guessAccount, address);
         // Deleted or locked accounts can't sign in anywhere (AccountAccess); bot accounts belong on IRC.
         if (await AccountAccess.RefusalAsync(user, scope.ServiceProvider, allowBots: true, cancellationToken).ConfigureAwait(false) is { } refusal)
         {

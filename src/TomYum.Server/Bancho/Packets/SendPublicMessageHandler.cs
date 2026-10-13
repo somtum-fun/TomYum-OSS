@@ -95,6 +95,12 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             return;
         }
 
+        if (channel.StaffOnly && (context.Player.Presence.Privileges & (BanchoPrivileges.Moderator | BanchoPrivileges.Developer | BanchoPrivileges.Owner)) == 0)
+        {
+            ChatEncoder.WriteMessage(context.Response, new BanchoMessage(BanchoBot.Name, $"Only staff can post in {target}.", target, BanchoBot.UserId));
+            return;
+        }
+
         var sender = context.Player.Presence.Username;
         var message = new BanchoMessage(sender, text, target, context.Player.UserId);
         _chatLog?.Record(context.Player.UserId, sender, target, text);

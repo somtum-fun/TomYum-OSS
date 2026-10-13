@@ -138,6 +138,28 @@ public class ChatHandlerTests
     }
 
     [Fact]
+    public async Task Announce_IsStaffOnly()
+    {
+        var registry = new PlayerRegistry();
+        var channels = new ChannelRegistry();
+        var player = AddPlayer(registry, 2, "Player");
+        var staff = registry.Add(new BanchoPresence { UserId = 3, Username = "Staff", Privileges = BanchoPrivileges.Player | BanchoPrivileges.Moderator });
+        var listener = AddPlayer(registry, 4, "Listener");
+        var announce = channels.Get("#announce")!;
+        announce.Join(player);
+        announce.Join(staff);
+        announce.Join(listener);
+
+        await new SendPublicMessageHandler(NewBot()).HandleAsync(
+            Context(player, registry, channels, MessagePayload("free osu!supporter, click here", "#announce"), new BanchoPacketWriter(64)));
+        Assert.Empty(PacketIds(listener.DequeueAll()));
+
+        await new SendPublicMessageHandler(NewBot()).HandleAsync(
+            Context(staff, registry, channels, MessagePayload("Maintenance at 10:00", "#announce"), new BanchoPacketWriter(64)));
+        Assert.Contains((ushort)ServerPacketId.SendMessage, PacketIds(listener.DequeueAll()));
+    }
+
+    [Fact]
     public async Task PublicMessage_NonMember_IsDropped()
     {
         var registry = new PlayerRegistry();

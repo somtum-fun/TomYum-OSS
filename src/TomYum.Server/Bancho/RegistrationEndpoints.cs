@@ -51,7 +51,7 @@ public static class RegistrationEndpoints
         var create = int.TryParse(checkRaw, out var check) && check == 0;
 
         var ip = LoginIps.ClientAddress(context);
-        var header = context.Request.Headers["CF-IPCountry"].ToString();
+        var header = LoginIps.ProxyHeader(context, "CF-IPCountry");
         var countryIso = IpCountry.FromHeader(header)
                          ?? context.RequestServices.GetService<IpCountry>()?.Lookup(ip)
                          ?? "xx";

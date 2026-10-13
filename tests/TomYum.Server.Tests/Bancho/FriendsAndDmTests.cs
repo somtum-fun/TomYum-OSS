@@ -74,6 +74,34 @@ public sealed class FriendsAndDmTests
     }
 
     [Fact]
+    public async Task WebsiteBlocks_StopInGamePms_ButNotStaffs()
+    {
+        var (registry, sender, recipient) = Two();
+        var services = new ServiceCollection().AddSingleton<IFriendRepository>(new BlocksEveryone()).BuildServiceProvider();
+
+        var response = new BanchoPacketWriter(64);
+        await Pm().HandleAsync(Context(sender, registry, Message("hi", "Recipient"), services, response));
+        Assert.Empty(recipient.DequeueAll());
+        Assert.Equal([(ushort)ServerPacketId.UserDmBlocked], PacketIds(response.ToArray()));
+
+        var staff = registry.Add(new BanchoPresence { UserId = 4, Username = "Staff", Privileges = BanchoPrivileges.Player | BanchoPrivileges.Moderator });
+        await Pm().HandleAsync(Context(staff, registry, Message("hi", "Recipient"), services));
+        Assert.Equal([(ushort)ServerPacketId.SendMessage], PacketIds(recipient.DequeueAll()));
+    }
+
+    /// <summary>Friends where everyone has blocked everyone (the website's blocks, as TomYum reads them).</summary>
+    private sealed class BlocksEveryone : IFriendRepository
+    {
+        public Task<IReadOnlyList<int>> GetFriendIdsAsync(int userId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyList<int>>([]);
+
+        public Task AddAsync(int userId, int friendId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task RemoveAsync(int userId, int friendId, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<bool> MayMessageAsync(int senderId, int targetId, CancellationToken cancellationToken = default) => Task.FromResult(false);
+    }
+
+    [Fact]
     public async Task ASilencedRecipient_IsReportedToTheSender()
     {
         var (registry, sender, recipient) = Two();

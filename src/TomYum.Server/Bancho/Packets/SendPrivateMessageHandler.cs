@@ -100,6 +100,21 @@ public sealed class SendPrivateMessageHandler : IClientPacketHandler
             WriteRefusal(context.Response, ServerPacketId.UserDmBlocked, recipient.Presence.Username);
             return;
         }
+        // The website's blocks and "friends only" count in-game too, whether the recipient is online or
+        // will read it on the website (staff may always write, as there).
+        if ((context.Player.Presence.Privileges & (BanchoPrivileges.Moderator | BanchoPrivileges.Developer | BanchoPrivileges.Owner)) == 0
+            && context.Services.GetService<TomYum.Domain.Repositories.IFriendRepository>() is { } friends)
+        {
+            var targetId = recipient?.UserId;
+            if (targetId is null && context.Services.GetService<TomYum.Domain.Repositories.IUserRepository>() is { } users)
+                targetId = (await users.GetBySafeNameAsync(TomYum.Domain.Entities.User.MakeSafeName(target), cancellationToken).ConfigureAwait(false))?.Id;
+            if (targetId is { } id && id != context.Player.UserId
+                && !await friends.MayMessageAsync(context.Player.UserId, id, cancellationToken).ConfigureAwait(false))
+            {
+                WriteRefusal(context.Response, ServerPacketId.UserDmBlocked, recipient?.Presence.Username ?? target);
+                return;
+            }
+        }
 
         // Relay to a real online recipient, if present.
         // The website gets every PM too: the recipient may only be on the site (or read it there later).

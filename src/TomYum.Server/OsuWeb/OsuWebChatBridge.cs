@@ -291,9 +291,9 @@ public sealed class OsuWebChatBridge : BackgroundService
                 return true;
             }
 
-            // #announce is for staff on the website too (moderated: only privileged users can post).
+            // Staff-only channels (#announce) are moderated on the website too: only privileged users can post.
             await interop.EnsureChatChannelsAsync(
-                _channels.All.Select(c => (c.Name, c.Topic, c.Name == "#announce")), cancellationToken).ConfigureAwait(false);
+                _channels.All.Select(c => (c.Name, c.Topic, c.StaffOnly)), cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("Website chat linked: {Count} channel(s) available on the site.", _channels.All.Count);
             return true;
         }

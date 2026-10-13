@@ -29,6 +29,28 @@ public sealed class FriendsDatabaseTests : OsuWebDatabaseTest
     }
 
     [MySqlFact]
+    public async Task PrivateMessages_FollowTheWebsitesBlocks_AndFriendsOnly()
+    {
+        var users = new OsuWebUserRepository(NewOsuWebContext());
+        var a = (await users.AddAsync(new User { Username = "A", SafeName = "a", Email = "a@x.dev", PasswordBcrypt = "x", Country = "th" })).Id;
+        var b = (await users.AddAsync(new User { Username = "B", SafeName = "b", Email = "b@x.dev", PasswordBcrypt = "x", Country = "th" })).Id;
+        var c = (await users.AddAsync(new User { Username = "C", SafeName = "c", Email = "c@x.dev", PasswordBcrypt = "x", Country = "th" })).Id;
+        var friends = new OsuWebFriends(NewOsuWebContext());
+        Assert.True(await friends.MayMessageAsync(a, b));
+
+        // B blocked A on the website: neither way.
+        await ExecuteAsync($"INSERT INTO phpbb_zebra (user_id, zebra_id, friend, foe) VALUES ({b}, {a}, 0, 1)");
+        Assert.False(await friends.MayMessageAsync(a, b));
+        Assert.False(await friends.MayMessageAsync(b, a));
+
+        // C takes messages from friends only, and has added B.
+        await ExecuteAsync($"UPDATE phpbb_users SET user_allow_pm = 0 WHERE user_id = {c}");
+        await ExecuteAsync($"INSERT INTO phpbb_zebra (user_id, zebra_id, friend, foe) VALUES ({c}, {b}, 1, 0)");
+        Assert.False(await friends.MayMessageAsync(a, c));
+        Assert.True(await friends.MayMessageAsync(b, c));
+    }
+
+    [MySqlFact]
     public async Task Favourites_AreListedNewestFirst()
     {
         await ExecuteAsync("INSERT INTO osu_favouritemaps (user_id, beatmapset_id, dateadded) VALUES (5, 100, '2026-01-01'), (5, 200, '2026-02-01'), (6, 300, '2026-03-01')");

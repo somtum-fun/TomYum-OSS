@@ -6,15 +6,23 @@ namespace TomYum.Server.Bancho.Packets.Match;
 internal static class MatchBroadcast
 {
     /// <summary>Sends <paramref name="bytes"/> to every player currently in <paramref name="match"/>.</summary>
-    internal static void ToMatch(Bancho.Match match, PlayerRegistry registry, byte[] bytes)
+    /// <param name="match">The match.</param>
+    /// <param name="registry">The online players.</param>
+    /// <param name="bytes">What its players get.</param>
+    /// <param name="watcherBytes">What tournament client windows following it get instead, when
+    /// <paramref name="bytes"/> carries the room's password (they never get it); empty: nothing.</param>
+    internal static void ToMatch(Bancho.Match match, PlayerRegistry registry, byte[] bytes, byte[]? watcherBytes = null)
     {
         lock (match.SyncRoot)
         {
             foreach (var slot in match.Slots)
                 if (slot.HasPlayer)
                     registry.GetByUserId(slot.UserId)?.Enqueue(bytes);
-            foreach (var watcher in match.TournamentWatchers)
-                watcher.Enqueue(bytes);
+            if (watcherBytes is not { Length: 0 })
+            {
+                foreach (var watcher in match.TournamentWatchers)
+                    watcher.Enqueue(watcherBytes ?? bytes);
+            }
         }
     }
 
@@ -30,7 +38,7 @@ internal static class MatchBroadcast
     {
         var inMatch = EncodeMatch(ServerPacketId.UpdateMatch, match, sendPassword: true);
         var inLobby = EncodeMatch(ServerPacketId.UpdateMatch, match, sendPassword: false);
-        ToMatch(match, registry, inMatch);
+        ToMatch(match, registry, inMatch, inLobby);
         foreach (var p in registry.All)
             if (p.InLobby && !IsInMatch(p.UserId, match))
                 p.Enqueue(inLobby);

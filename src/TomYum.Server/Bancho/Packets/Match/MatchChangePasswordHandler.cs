@@ -24,7 +24,7 @@ public sealed class MatchChangePasswordHandler : IClientPacketHandler
         var bytes = new BanchoPacketWriter(64)
             .WriteStringPacket(ServerPacketId.MatchChangePassword, newPw)
             .ToArray();
-        MatchBroadcast.ToMatch(match, context.Registry, bytes);
+        MatchBroadcast.ToMatch(match, context.Registry, bytes, watcherBytes: []); // not to tournament watchers
 
         MatchBroadcast.UpdateMatch(match, context.Registry);
         return Task.CompletedTask;

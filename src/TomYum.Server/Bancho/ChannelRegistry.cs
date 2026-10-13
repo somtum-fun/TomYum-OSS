@@ -21,7 +21,7 @@ public sealed class ChannelRegistry
     public ChannelRegistry()
     {
         Add(new ChatChannel("#osu", "Main chat — welcome to TomYum!", autoJoin: true));
-        Add(new ChatChannel("#announce", "Server announcements and ranked plays.", autoJoin: true));
+        Add(new ChatChannel("#announce", "Server announcements and ranked plays.", autoJoin: true) { StaffOnly = true });
         Add(new ChatChannel("#lobby", "Find and create multiplayer matches.", autoJoin: false));
         Add(new ChatChannel("#english", "English-speaking chat.", autoJoin: false));
         Add(new ChatChannel("#help", "Ask for help — staff and players answer here.", autoJoin: false));

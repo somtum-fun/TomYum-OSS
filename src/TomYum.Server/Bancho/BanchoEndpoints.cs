@@ -95,7 +95,7 @@ public static class BanchoEndpoints
         var body = await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
 
         // Cloudflare's country, else the address's (GeoIP), else the account's own (the handler's fallback).
-        var header = context.Request.Headers["CF-IPCountry"].ToString();
+        var header = LoginIps.ProxyHeader(context, "CF-IPCountry");
         var countryIso = IpCountry.FromHeader(header)
                          ?? context.RequestServices.GetService<IpCountry>()?.Lookup(LoginIps.ClientAddress(context))
                          ?? string.Empty;

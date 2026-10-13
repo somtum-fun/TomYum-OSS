@@ -1,4 +1,6 @@
+using Microsoft.Extensions.DependencyInjection;
 using TomYum.Bancho;
+using TomYum.Persistence.OsuWeb;
 using TomYum.Server.Bancho.Packets.Match;
 
 namespace TomYum.Server.Bancho.Packets;
@@ -21,8 +23,9 @@ public sealed class TournamentMatchInfoHandler : IClientPacketHandler
 
 /// <summary>
 /// TOURNAMENT_JOIN_MATCH_CHANNEL (id 108): a tournament client follows a match: its chat, and its
-/// state from then on, password included (payload: i32 match id). Only tournament client windows may:
-/// from the game it would let anyone read any room's chat and password.
+/// state from then on (payload: i32 match id). Only tournament client windows may, and only for
+/// someone allowed to (<see cref="TournamentWatching.MayFollowAsync"/>): a tournament client is
+/// whatever says so in its version string, so this alone would let anyone read any room's chat.
 /// </summary>
 public sealed class TournamentJoinMatchChannelHandler : IClientPacketHandler
 {
@@ -30,11 +33,12 @@ public sealed class TournamentJoinMatchChannelHandler : IClientPacketHandler
     public ClientPacketId PacketId => ClientPacketId.TournamentJoinMatchChannel;
 
     /// <inheritdoc />
-    public Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
+    public async Task HandleAsync(ClientPacketContext context, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(context);
-        if (!context.Player.IsTournamentClient || TournamentWatching.Find(context) is not { } match)
-            return Task.CompletedTask;
+        if (!context.Player.IsTournamentClient || TournamentWatching.Find(context) is not { } match
+            || !await TournamentWatching.MayFollowAsync(context, match, cancellationToken).ConfigureAwait(false))
+            return;
 
         TournamentWatching.Stop(context.Player, context.Matches);
         lock (match.SyncRoot)
@@ -43,7 +47,6 @@ public sealed class TournamentJoinMatchChannelHandler : IClientPacketHandler
         match.Channel.Join(context.Player);
         context.Player.JoinChannel("#multiplayer");
         ChatEncoder.WriteChannelJoinSuccess(context.Response, "#multiplayer");
-        return Task.CompletedTask;
     }
 }
 
@@ -66,6 +69,33 @@ public sealed class TournamentLeaveMatchChannelHandler : IClientPacketHandler
 /// <summary>Following a match from a tournament client.</summary>
 internal static class TournamentWatching
 {
+    /// <summary>The website group that runs tournaments (Tournament Committee): may follow any match.</summary>
+    public const string TournamentGroup = "tc";
+
+    /// <summary>
+    /// Whether the player may follow <paramref name="match"/> from a tournament client: staff, the
+    /// Tournament Committee, or someone in the room (its host or a player). Never a restricted account.
+    /// </summary>
+    /// <param name="context">The packet's context (the player, and the services to look up their groups).</param>
+    /// <param name="match">The match to follow.</param>
+    /// <param name="cancellationToken">Cancels the group lookup.</param>
+    public static async Task<bool> MayFollowAsync(ClientPacketContext context, Bancho.Match match, CancellationToken cancellationToken = default)
+    {
+        var player = context.Player;
+        if (player.IsRestricted)
+            return false;
+        if ((player.Presence.Privileges & (BanchoPrivileges.Moderator | BanchoPrivileges.Developer | BanchoPrivileges.Owner)) != 0)
+            return true;
+        lock (match.SyncRoot)
+        {
+            if (match.HostUserId == player.UserId || MatchBroadcast.IsInMatch(player.UserId, match))
+                return true;
+        }
+        await using var scope = context.Services.CreateAsyncScope();
+        return scope.ServiceProvider.GetService<OsuWebCommunity>() is { } community
+            && (await community.GetGroupsAsync(player.UserId, cancellationToken).ConfigureAwait(false)).Contains(TournamentGroup);
+    }
+
     /// <summary>The match in the packet (i32 id), or null.</summary>
     public static Bancho.Match? Find(ClientPacketContext context)
     {

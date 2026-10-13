@@ -45,12 +45,59 @@ public sealed class LoginIps
         return entries.Select(e => (e.Element.ToString(), DateTimeOffset.FromUnixTimeSeconds((long)e.Score))).ToList();
     }
 
-    /// <summary>The client's address as Caddy passes it on (Cloudflare's view of the client), else the connection's.</summary>
+    /// <summary>Set on a request the gateway vouched for (<c>UseGatewayLink</c>): the player's address.</summary>
+    public const string GatewayClientItem = "tomyum:gateway-client";
+
+    /// <summary>
+    /// The client's address: the one the verified gateway gave, else as our own reverse proxy passes it
+    /// on (<c>X-Real-IP</c>: Cloudflare's view of the client), else the connection's. The header is only
+    /// believed from <see cref="FromProxy"/>: from anywhere else a client could name any address.
+    /// </summary>
+    /// <param name="context">The request.</param>
     public static string? ClientAddress(HttpContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
-        var forwarded = context.Request.Headers["X-Real-IP"].ToString();
+        if (context.Items.TryGetValue(GatewayClientItem, out var gateway) && gateway is string vouched)
+            return vouched;
+        var forwarded = ProxyHeader(context, "X-Real-IP");
         return forwarded.Length > 0 ? forwarded : context.Connection.RemoteIpAddress?.ToString();
+    }
+
+    /// <summary>
+    /// A header only our reverse proxy sets (<c>X-Real-IP</c>, Cloudflare's <c>CF-IPCountry</c>), or empty
+    /// when the request didn't come through it.
+    /// </summary>
+    /// <param name="context">The request.</param>
+    /// <param name="name">The header.</param>
+    public static string ProxyHeader(HttpContext context, string name)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return FromProxy(context) ? context.Request.Headers[name].ToString() : string.Empty;
+    }
+
+    /// <summary>
+    /// Whether the request reached us from our own reverse proxy: a loopback or private-network peer
+    /// (the stack's Caddy, on the compose network), whose forwarding headers are its own.
+    /// </summary>
+    /// <param name="context">The request.</param>
+    public static bool FromProxy(HttpContext context)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        return context.Connection.RemoteIpAddress is { } peer && IsPrivate(peer);
+    }
+
+    /// <summary>Loopback, RFC 1918 / shared (100.64/10) IPv4, or unique-local / link-local IPv6.</summary>
+    internal static bool IsPrivate(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (address.IsIPv4MappedToIPv6)
+            address = address.MapToIPv4();
+        if (IPAddress.IsLoopback(address))
+            return true;
+        var b = address.GetAddressBytes();
+        if (address.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+            return b[0] == 10 || (b[0] == 172 && (b[1] & 0xF0) == 16) || (b[0] == 192 && b[1] == 168) || (b[0] == 100 && (b[1] & 0xC0) == 64);
+        return (b[0] & 0xFE) == 0xFC || (b[0] == 0xFE && (b[1] & 0xC0) == 0x80);
     }
 
     private static RedisKey Key(int userId) => "tomyum:login-ips:" + userId.ToString(CultureInfo.InvariantCulture);

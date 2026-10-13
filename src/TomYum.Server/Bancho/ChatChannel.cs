@@ -11,7 +11,7 @@ namespace TomYum.Server.Bancho;
 /// In-memory single-node state, mirroring <see cref="PlayerRegistry"/>. Cross-node channel
 /// fan-out over Redis pub/sub is a later slice (ADR-0003). Read/write privilege gating and
 /// the special per-instance <c>#spectator</c>/<c>#multiplayer</c> channels are also later;
-/// for now every channel is world-readable and world-writable.
+/// every channel is world-readable, and world-writable unless <see cref="StaffOnly"/>.
 /// </remarks>
 public sealed class ChatChannel
 {
@@ -33,6 +33,9 @@ public sealed class ChatChannel
 
     /// <summary>Whether the client should auto-open this channel on login (e.g. <c>#osu</c>).</summary>
     public bool AutoJoin { get; }
+
+    /// <summary>Only staff (and the server itself) may post in it, from the game or IRC (e.g. <c>#announce</c>).</summary>
+    public bool StaffOnly { get; init; }
 
     /// <summary>Current member count.</summary>
     public int MemberCount => _members.Count;

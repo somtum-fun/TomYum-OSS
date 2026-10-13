@@ -450,7 +450,7 @@ public sealed class BanchoBotCommands
         match.History?.GameStarted(match);
 
         var startBytes = MatchBroadcast.EncodeMatch(ServerPacketId.MatchStart, match, sendPassword: true);
-        MatchBroadcast.ToMatch(match, _players, startBytes);
+        MatchBroadcast.ToMatch(match, _players, startBytes, MatchBroadcast.EncodeMatch(ServerPacketId.MatchStart, match, sendPassword: false));
 
         var lobbyUpdate = MatchBroadcast.EncodeMatch(ServerPacketId.UpdateMatch, match, sendPassword: false);
         MatchBroadcast.ToLobby(_players, lobbyUpdate);

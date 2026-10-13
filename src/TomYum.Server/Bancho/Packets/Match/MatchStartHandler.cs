@@ -31,7 +31,7 @@ public sealed class MatchStartHandler : IClientPacketHandler
         match.History?.GameStarted(match);
 
         var startBytes = MatchBroadcast.EncodeMatch(ServerPacketId.MatchStart, match, sendPassword: true);
-        MatchBroadcast.ToMatch(match, context.Registry, startBytes);
+        MatchBroadcast.ToMatch(match, context.Registry, startBytes, MatchBroadcast.EncodeMatch(ServerPacketId.MatchStart, match, sendPassword: false));
 
         // Lobby sees the match as in-progress.
         var lobbyUpdate = MatchBroadcast.EncodeMatch(ServerPacketId.UpdateMatch, match, sendPassword: false);

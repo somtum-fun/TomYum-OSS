@@ -91,7 +91,7 @@ public sealed class TournamentClientTests
         var registry = new PlayerRegistry();
         var matches = new MatchRegistry();
         var player = registry.Add(new BanchoPresence { UserId = 2, Username = "Player" });
-        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" })!;
+        var window = registry.AddTournamentClient(Staff(5, "Ref"))!;
         var match = matches.Create(2, "OWC: A vs B", string.Empty, "map", 1, "md5", 0, default, default, false, 0, 0);
         match.Slots[0].Join(2);
 
@@ -136,11 +136,72 @@ public sealed class TournamentClientTests
     }
 
     [Fact]
+    public async Task AnyonesTournamentWindow_CantFollowSomeoneElsesMatch()
+    {
+        // The version string that makes a tournament client is the client's own say: on its own it
+        // would let any player read any room's chat.
+        var registry = new PlayerRegistry();
+        var matches = new MatchRegistry();
+        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 3, Username = "Stranger" })!;
+        var match = matches.Create(2, "Private room", "secret", "map", 1, "md5", 0, default, default, false, 0, 0);
+        match.Slots[0].Join(2);
+
+        var join = new BanchoPacketWriter(64);
+        await new TournamentJoinMatchChannelHandler().HandleAsync(Context(window, registry, matches, match.Id, join));
+
+        Assert.Empty(join.ToArray());
+        Assert.Empty(match.TournamentWatchers);
+        Assert.DoesNotContain(match.Channel.Members, m => m.UserId == 3);
+    }
+
+    [Fact]
+    public async Task APlayersOwnWindow_FollowsTheirMatch_ButNotWhenRestricted()
+    {
+        var registry = new PlayerRegistry();
+        var matches = new MatchRegistry();
+        var match = matches.Create(2, "OWC: A vs B", string.Empty, "map", 1, "md5", 0, default, default, false, 0, 0);
+        match.Slots[0].Join(4);
+        var own = registry.AddTournamentClient(new BanchoPresence { UserId = 4, Username = "Player" })!;
+        var restricted = registry.AddTournamentClient(Staff(6, "Restricted"))!;
+        restricted.IsRestricted = true;
+
+        await new TournamentJoinMatchChannelHandler().HandleAsync(Context(own, registry, matches, match.Id, new BanchoPacketWriter(64)));
+        await new TournamentJoinMatchChannelHandler().HandleAsync(Context(restricted, registry, matches, match.Id, new BanchoPacketWriter(64)));
+
+        Assert.Equal([own], match.TournamentWatchers);
+    }
+
+    [Fact]
+    public async Task Watchers_NeverGetTheRoomsPassword()
+    {
+        var registry = new PlayerRegistry();
+        var matches = new MatchRegistry();
+        var player = registry.Add(new BanchoPresence { UserId = 2, Username = "Player" });
+        var window = registry.AddTournamentClient(Staff(5, "Ref"))!;
+        var match = matches.Create(2, "Private room", "hunter2", "map", 1, "md5", 0, default, default, false, 0, 0);
+        match.Slots[0].Join(2);
+        await new TournamentJoinMatchChannelHandler().HandleAsync(Context(window, registry, matches, match.Id, new BanchoPacketWriter(64)));
+        window.DequeueAll();
+        player.DequeueAll();
+
+        TomYum.Server.Bancho.Packets.Match.MatchBroadcast.UpdateMatch(match, registry);
+        var toWindow = window.DequeueAll();
+        Assert.Contains((ushort)ServerPacketId.UpdateMatch, PacketIds(toWindow));
+        Assert.False(Contains(toWindow, "hunter2"));
+        Assert.True(Contains(player.DequeueAll(), "hunter2")); // the room's own players still get it
+
+        var change = new BanchoPacketWriter(4).WriteString("swordfish").ToArray();
+        await new TomYum.Server.Bancho.Packets.Match.MatchChangePasswordHandler().HandleAsync(new ClientPacketContext(player, registry, new ChannelRegistry(), matches,
+            new ServiceCollection().BuildServiceProvider(), change, new BanchoPacketWriter(16)));
+        Assert.False(Contains(window.DequeueAll(), "swordfish"));
+    }
+
+    [Fact]
     public async Task ALoggedOutWindow_NoLongerFollowsTheMatch()
     {
         var registry = new PlayerRegistry();
         var matches = new MatchRegistry();
-        var window = registry.AddTournamentClient(new BanchoPresence { UserId = 5, Username = "Ref" })!;
+        var window = registry.AddTournamentClient(Staff(5, "Ref"))!;
         var match = matches.Create(2, "OWC: A vs B", string.Empty, "map", 1, "md5", 0, default, default, false, 0, 0);
         match.Slots[0].Join(2);
         await new TournamentJoinMatchChannelHandler().HandleAsync(Context(window, registry, matches, match.Id, new BanchoPacketWriter(64)));
@@ -169,6 +230,12 @@ public sealed class TournamentClientTests
         Assert.Contains((ushort)ServerPacketId.SpectateFrames, PacketIds(window.DequeueAll()));
         Assert.Empty(game.DequeueAll());
     }
+
+    private static BanchoPresence Staff(int userId, string username) =>
+        new() { UserId = userId, Username = username, Privileges = BanchoPrivileges.Player | BanchoPrivileges.Moderator };
+
+    private static bool Contains(byte[] bytes, string text) =>
+        bytes.AsSpan().IndexOf(System.Text.Encoding.UTF8.GetBytes(text)) >= 0;
 
     private static ClientPacketContext Context(OnlinePlayer player, PlayerRegistry registry, MatchRegistry matches, int matchId, BanchoPacketWriter response) =>
         new(player, registry, new ChannelRegistry(), matches, new ServiceCollection().BuildServiceProvider(),

@@ -8,18 +8,28 @@ namespace TomYum.Server.Bancho;
 
 /// <summary>
 /// Slows password guessing on every credential path (the game's login, the stable <c>/web</c>
-/// endpoints, IRC): wrong guesses are counted per account and per client address over
-/// <see cref="Window"/>, and once an account has <see cref="AccountLimit"/> different wrong guesses (or
-/// an address <see cref="AddressLimit"/>) its checks are refused, as a wrong password, until the window
-/// runs out. Only <em>different</em> wrong guesses count, so a client still sending an old password
-/// over and over can't lock anyone out; a guess already known to be wrong is answered without bcrypt.
-/// A right password clears the account's count (never the address's). In Redis
-/// (<c>tomyum:pw-guesses:*</c>) when there is one, else in memory.
+/// endpoints, IRC): wrong guesses are counted per account, per account and address, and per address
+/// over <see cref="Window"/>. Checks are refused, as a wrong password, until the window runs out for an
+/// address that made <see cref="AccountLimit"/> different wrong guesses for the account; once the account
+/// has <see cref="AccountLimit"/> from anywhere, also for an address that made <see cref="SuspectGuesses"/>;
+/// and for an address that made <see cref="AddressLimit"/> across accounts. An address that hasn't been
+/// guessing (the player's own game, a session submitting scores) is never refused, so nobody can lock a
+/// player out by guessing their name from elsewhere, and spreading guesses over addresses costs one
+/// address for every few. Only <em>different</em> wrong guesses count, so a client still sending an old
+/// password over and over can't lock anyone out; a guess already known to be wrong is answered without
+/// bcrypt. A right password clears the account's count and that address's (never the address's own).
+/// In Redis (<c>tomyum:pw-guesses:*</c>) when there is one, else in memory.
 /// </summary>
 public sealed class PasswordGuesses
 {
-    /// <summary>Different wrong guesses an account takes in <see cref="Window"/> before its checks are refused.</summary>
+    /// <summary>
+    /// Different wrong guesses for an account from one address in <see cref="Window"/> before that
+    /// address's checks of it are refused; also how many from anywhere make the account guarded.
+    /// </summary>
     public const int AccountLimit = 10;
+
+    /// <summary>Wrong guesses after which an address is refused for an account that's guarded (see <see cref="AccountLimit"/>).</summary>
+    public const int SuspectGuesses = 3;
 
     /// <summary>Different wrong guesses one address makes in <see cref="Window"/> before its checks are refused.</summary>
     public const int AddressLimit = 30;
@@ -29,10 +39,13 @@ public sealed class PasswordGuesses
 
     private static readonly AsyncLocal<string?> Ambient = new();
 
-    // KEYS[1] the account's guesses, KEYS[2] the address's count; ARGV[1] the guess, ARGV[2] the window in seconds.
+    // KEYS[1] the account's guesses, KEYS[2] the address's count, KEYS[3] the account's guesses from the
+    // address; ARGV[1] the guess, ARGV[2] the window in seconds.
     private const string FailScript = """
         local added = redis.call('SADD', KEYS[1], ARGV[1])
         if redis.call('TTL', KEYS[1]) < 0 then redis.call('EXPIRE', KEYS[1], ARGV[2]) end
+        redis.call('SADD', KEYS[3], ARGV[1])
+        if redis.call('TTL', KEYS[3]) < 0 then redis.call('EXPIRE', KEYS[3], ARGV[2]) end
         if added == 1 and KEYS[2] ~= KEYS[1] then
           redis.call('INCR', KEYS[2])
           if redis.call('TTL', KEYS[2]) < 0 then redis.call('EXPIRE', KEYS[2], ARGV[2]) end
@@ -46,6 +59,7 @@ public sealed class PasswordGuesses
     private readonly Lock _gate = new();
     private readonly Dictionary<string, (HashSet<string> Guesses, DateTimeOffset Until)> _accounts = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (int Count, DateTimeOffset Until)> _addresses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (HashSet<string> Guesses, DateTimeOffset Until)> _pairs = new(StringComparer.Ordinal);
 
     /// <summary>Creates the limiter.</summary>
     /// <param name="time">The clock (windows).</param>
@@ -85,12 +99,14 @@ public sealed class PasswordGuesses
     public bool IsRefused(string account, string? address)
     {
         var from = AddressKey(address);
+        var pair = PairKey(account, from);
         if (_redis is not null)
         {
             try
             {
                 var database = _redis.GetDatabase();
-                if (database.SetLength(RedisAccount(account)) >= AccountLimit)
+                var fromHere = database.SetLength(RedisPair(pair));
+                if (fromHere >= AccountLimit || (fromHere >= SuspectGuesses && database.SetLength(RedisAccount(account)) >= AccountLimit))
                     return true;
                 return from is not null && (long?)database.StringGet(RedisAddress(from)) >= AddressLimit;
             }
@@ -104,7 +120,9 @@ public sealed class PasswordGuesses
         var now = _time.GetUtcNow();
         lock (_gate)
         {
-            if (_accounts.TryGetValue(account, out var guesses) && guesses.Until > now && guesses.Guesses.Count >= AccountLimit)
+            var fromHere = _pairs.TryGetValue(pair, out var mine) && mine.Until > now ? mine.Guesses.Count : 0;
+            var total = _accounts.TryGetValue(account, out var guesses) && guesses.Until > now ? guesses.Guesses.Count : 0;
+            if (fromHere >= AccountLimit || (fromHere >= SuspectGuesses && total >= AccountLimit))
                 return true;
             return from is not null && _addresses.TryGetValue(from, out var count) && count.Until > now && count.Count >= AddressLimit;
         }
@@ -147,7 +165,7 @@ public sealed class PasswordGuesses
             try
             {
                 var accountKey = RedisAccount(account);
-                RedisKey[] keys = [accountKey, from is null ? accountKey : RedisAddress(from)];
+                RedisKey[] keys = [accountKey, from is null ? accountKey : RedisAddress(from), RedisPair(PairKey(account, from))];
                 _redis.GetDatabase().ScriptEvaluate(FailScript, keys, [member, (long)Window.TotalSeconds]);
             }
             catch (RedisException ex)
@@ -160,10 +178,14 @@ public sealed class PasswordGuesses
         var now = _time.GetUtcNow();
         lock (_gate)
         {
-            if (_accounts.Count + _addresses.Count > 10_000)
+            if (_accounts.Count + _addresses.Count + _pairs.Count > 10_000)
                 Prune(now);
             if (!_accounts.TryGetValue(account, out var guesses) || guesses.Until <= now)
                 _accounts[account] = guesses = ([], now + Window);
+            var pair = PairKey(account, from);
+            if (!_pairs.TryGetValue(pair, out var mine) || mine.Until <= now)
+                _pairs[pair] = mine = ([], now + Window);
+            mine.Guesses.Add(member);
             if (!guesses.Guesses.Add(member) || from is null)
                 return;
             _addresses[from] = _addresses.TryGetValue(from, out var count) && count.Until > now
@@ -172,15 +194,17 @@ public sealed class PasswordGuesses
         }
     }
 
-    /// <summary>Clears <paramref name="account"/>'s wrong guesses (the right password was given).</summary>
+    /// <summary>Clears <paramref name="account"/>'s wrong guesses, and those from <paramref name="address"/> (the right password was given there).</summary>
     /// <param name="account">The account key.</param>
-    public void Succeeded(string account)
+    /// <param name="address">The client's IP address, or null when unknown.</param>
+    public void Succeeded(string account, string? address = null)
     {
+        var pair = PairKey(account, AddressKey(address));
         if (_redis is not null)
         {
             try
             {
-                _redis.GetDatabase().KeyDelete(RedisAccount(account), CommandFlags.FireAndForget);
+                _redis.GetDatabase().KeyDelete([RedisAccount(account), RedisPair(pair)], CommandFlags.FireAndForget);
             }
             catch (RedisException ex)
             {
@@ -190,7 +214,10 @@ public sealed class PasswordGuesses
         }
 
         lock (_gate)
+        {
             _accounts.Remove(account);
+            _pairs.Remove(pair);
+        }
     }
 
     private void Prune(DateTimeOffset now)
@@ -204,6 +231,11 @@ public sealed class PasswordGuesses
         {
             if (value.Until <= now)
                 _addresses.Remove(key);
+        }
+        foreach (var (key, value) in _pairs.ToList())
+        {
+            if (value.Until <= now)
+                _pairs.Remove(key);
         }
     }
 
@@ -223,11 +255,16 @@ public sealed class PasswordGuesses
 
     private static string GuessKey(string account, string guess) => Digest(account + "\n" + guess);
 
+    /// <summary>An account's guesses from one address (an unknown address counts as one).</summary>
+    private static string PairKey(string account, string? from) => Digest(account + "\n@" + (from ?? "unknown"));
+
     private static string Digest(string text) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32];
 
     private static RedisKey RedisAccount(string account) => "tomyum:pw-guesses:account:" + account;
 
     private static RedisKey RedisAddress(string address) => "tomyum:pw-guesses:ip:" + address;
+
+    private static RedisKey RedisPair(string pair) => "tomyum:pw-guesses:pair:" + pair;
 
     private sealed class Restore(string? previous) : IDisposable
     {
@@ -277,7 +314,7 @@ public sealed class GuardedPasswordHasher : TomYum.Domain.Services.IPasswordHash
 
         if (_inner.Verify(passwordMd5Hex, storedBcrypt))
         {
-            _guesses.Succeeded(account);
+            _guesses.Succeeded(account, address);
             return true;
         }
         _guesses.Failed(account, address, passwordMd5Hex);

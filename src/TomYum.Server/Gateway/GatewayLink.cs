@@ -51,6 +51,7 @@ public static class GatewayLink
                 if (IsGateway(context, options) && IPAddress.TryParse(headers[ClientIpHeader].ToString().Trim(), out var player))
                 {
                     headers["X-Real-IP"] = player.ToString();
+                    context.Items[TomYum.Server.Bancho.LoginIps.GatewayClientItem] = player.ToString();
                     headers.Remove("CF-IPCountry");
                 }
                 headers.Remove(ClientIpHeader);

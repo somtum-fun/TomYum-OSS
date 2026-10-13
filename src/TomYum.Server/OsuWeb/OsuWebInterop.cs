@@ -152,7 +152,7 @@ public sealed class OsuWebInterop
     /// <summary>
     /// Posts an in-game message to website chat (the fork's <c>/_lio/tomyum/chat-message</c>): to the
     /// public channel <paramref name="channel"/>, or as a PM to <paramref name="targetId"/>. False when
-    /// the channel doesn't exist on the website.
+    /// the channel doesn't exist on the website, or the PM isn't allowed there (a block, friends only).
     /// </summary>
     public async Task<bool> SendChatMessageAsync(int senderId, string? channel, int? targetId, string message, bool isAction, CancellationToken cancellationToken = default)
     {
@@ -164,7 +164,7 @@ public sealed class OsuWebInterop
             message,
             is_action = isAction,
         }, cancellationToken).ConfigureAwait(false);
-        if (response.StatusCode == HttpStatusCode.NotFound)
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden)
             return false;
         response.EnsureSuccessStatusCode();
         return true;

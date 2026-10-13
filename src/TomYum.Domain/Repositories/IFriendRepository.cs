@@ -11,4 +11,11 @@ public interface IFriendRepository
 
     /// <summary>Removes <paramref name="friendId"/> from <paramref name="userId"/>'s friends.</summary>
     Task RemoveAsync(int userId, int friendId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Whether <paramref name="senderId"/> may send <paramref name="targetId"/> a private message: neither
+    /// has blocked the other, and a target who takes messages from friends only has added the sender.
+    /// Without blocks to know of, yes.
+    /// </summary>
+    Task<bool> MayMessageAsync(int senderId, int targetId, CancellationToken cancellationToken = default) => Task.FromResult(true);
 }
