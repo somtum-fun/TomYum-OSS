@@ -428,6 +428,68 @@ public sealed partial class OsuWebCommunity
         await _db.Database.SqlQuery<long>($"SELECT COUNT(*) AS Value FROM score_process_history WHERE score_id = {scoreId}")
             .SingleAsync(cancellationToken).ConfigureAwait(false) > 0;
 
+    /// <summary>
+    /// Fills in the player and the map of a score the website doesn't have (stable Relax and Autopilot
+    /// stay in TomYum's own tables: <see cref="OsuWebScores.IsMirrored"/>), so it can be shown like the
+    /// rest: the name and map fields come from the website, the star rating is worked out with the
+    /// card's mods. Null when the player isn't visible (restricted, or a bot).
+    /// </summary>
+    /// <param name="card">The score, with its play filled in.</param>
+    /// <param name="cancellationToken">Cancels the queries.</param>
+    public async Task<ScoreCard?> CompleteCardAsync(ScoreCard card, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(card);
+        var rows = await _db.Database.SqlQueryRaw<CardContextRow>(
+            $$"""
+            SELECT u.username AS Username, COALESCE(b.beatmapset_id, 0) AS BeatmapsetId,
+              COALESCE(bs.artist, '') AS Artist, COALESCE(bs.title, '') AS Title, COALESCE(b.version, '') AS Version,
+              COALESCE(bs.creator, '') AS Creator, COALESCE(b.difficultyrating, 0) AS StarRating,
+              CAST(COALESCE(b.playmode, 0) AS SIGNED) AS MapRuleset,
+              COALESCE(b.approved, 0) AS BeatmapStatus, CAST(COALESCE(b.max_combo, 0) AS SIGNED) AS BeatmapMaxCombo
+            FROM phpbb_users u
+            LEFT JOIN osu_beatmaps b ON b.beatmap_id = {1}
+            LEFT JOIN osu_beatmapsets bs ON bs.beatmapset_id = b.beatmapset_id
+            WHERE u.user_id = {0} AND {{Visible}}
+            """, card.UserId, card.BeatmapId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (rows is not [var row, ..])
+            return null;
+
+        var completed = card with
+        {
+            Username = row.Username,
+            BeatmapsetId = (int)row.BeatmapsetId,
+            Artist = row.Artist,
+            Title = row.Title,
+            Version = row.Version,
+            Creator = row.Creator,
+            StarRating = row.StarRating,
+            BeatmapStatus = row.BeatmapStatus,
+            BeatmapMaxCombo = (int)row.BeatmapMaxCombo,
+        };
+        if (_stars is not null && completed.BeatmapId > 0 && (completed.Ruleset != row.MapRuleset || completed.Mods.Any(StarRatingMods.Contains))
+            && await _stars.GetAsync(completed.BeatmapId, completed.Ruleset, completed.Mods, cancellationToken).ConfigureAwait(false) is { } stars)
+        {
+            completed = completed with { StarRating = stars };
+        }
+        return completed;
+    }
+
+    /// <summary>Which of <paramref name="userIds"/> are visible players (not restricted, not bots).</summary>
+    /// <param name="userIds">The players to check.</param>
+    /// <param name="cancellationToken">Cancels the query.</param>
+    public async Task<IReadOnlySet<int>> VisibleUsersAsync(IReadOnlyCollection<int> userIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(userIds);
+        if (userIds.Count == 0)
+            return new HashSet<int>();
+        var ids = userIds.Select(id => (uint)id).ToList();
+        var visible = await _db.Users.AsNoTracking()
+            .Where(u => ids.Contains(u.UserId) && u.UserType != 1 && !u.UserWarnings)
+            .Select(u => u.UserId)
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        return visible.Select(id => (int)id).ToHashSet();
+    }
+
     /// <summary>Whether <paramref name="score"/> is the player's best pp on its map so far.</summary>
     public async Task<bool> IsPersonalBestPpAsync(ScoreCard score, CancellationToken cancellationToken = default)
     {
@@ -728,6 +790,20 @@ public sealed partial class OsuWebCommunity
         public string Name { get; set; } = string.Empty;
         public string Description { get; set; } = string.Empty;
         public DateTime UnlockedAt { get; set; }
+    }
+
+    private sealed class CardContextRow
+    {
+        public string Username { get; set; } = string.Empty;
+        public uint BeatmapsetId { get; set; }
+        public string Artist { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Version { get; set; } = string.Empty;
+        public string Creator { get; set; } = string.Empty;
+        public double StarRating { get; set; }
+        public long MapRuleset { get; set; }
+        public int BeatmapStatus { get; set; }
+        public long BeatmapMaxCombo { get; set; }
     }
 
     private sealed class ScoreRow

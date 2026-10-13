@@ -96,7 +96,7 @@ public sealed class OsuApiClient : IOsuApiClient
 
             return match is null ? null : Map(match);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException && !cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "osu! API lookup failed for md5 {Md5}; treating as unsubmitted.", md5);
             return null;
@@ -121,7 +121,7 @@ public sealed class OsuApiClient : IOsuApiClient
                 .Where(b => b.SetId == setId && b.Id > 0 && !string.IsNullOrEmpty(b.Md5))
                 .ToList() ?? [];
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException && !cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "osu! API lookup failed for beatmap set {SetId}.", setId);
             return [];
@@ -143,7 +143,7 @@ public sealed class OsuApiClient : IOsuApiClient
             // Like h=, a mirror may answer with the whole set: pick the asked-for difficulty.
             return beatmaps?.Select(Map).FirstOrDefault(b => b.Id == beatmapId && b.SetId > 0);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException && !cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "osu! API lookup failed for beatmap {BeatmapId}.", beatmapId);
             return null;
@@ -168,7 +168,7 @@ public sealed class OsuApiClient : IOsuApiClient
             var beatmaps = await _http.GetFromJsonAsync<List<OsuApiBeatmap>>(Query(filter), JsonOptions, cancellationToken).ConfigureAwait(false);
             return beatmaps?.Select(Map).Where(b => b.Id > 0 && b.SetId > 0).ToList() ?? [];
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or NotSupportedException or System.Text.Json.JsonException && !cancellationToken.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "osu! API lookup failed for maps ranked since {Since}.", since);
             return [];
