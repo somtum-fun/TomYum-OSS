@@ -281,13 +281,13 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
         Assert.Contains("⭐] Hard {cs: 4 / od: 8 / ar: 9 / hp: 5}@0", line, StringComparison.Ordinal);
 
         var info = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
-            Context(Invariant($"b={set.Difficulties[1].BeatmapId}")), new NoHttp(), options, catalog, new PlayerRegistry(), CancellationToken.None));
+            Context(Invariant($"b={set.Difficulties[1].BeatmapId}")), new NoHttp(), options, catalog, new PlayerRegistry(), NoServices, CancellationToken.None));
         Assert.StartsWith(Invariant($"{set.SetId}.osz|Artist|Song|Mapper|0|"), info.ResponseContent, StringComparison.Ordinal);
         var byChecksum = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
-            Context("c=" + set.Difficulties[0].Md5), new NoHttp(), options, catalog, new PlayerRegistry(), CancellationToken.None));
+            Context("c=" + set.Difficulties[0].Md5), new NoHttp(), options, catalog, new PlayerRegistry(), NoServices, CancellationToken.None));
         Assert.Equal(info.ResponseContent, byChecksum.ResponseContent);
         var missing = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
-            Context(Invariant($"s={set.SetId + 5}")), new NoHttp(), options, catalog, new PlayerRegistry(), CancellationToken.None));
+            Context(Invariant($"s={set.SetId + 5}")), new NoHttp(), options, catalog, new PlayerRegistry(), NoServices, CancellationToken.None));
         Assert.Equal(string.Empty, missing.ResponseContent);
 
         // Listed first even when the mirror is down.
@@ -329,7 +329,7 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
 
         // Set info.
         var info = Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
-            Context("s=971400"), mirror, options, catalog, new PlayerRegistry(), CancellationToken.None));
+            Context("s=971400"), mirror, options, catalog, new PlayerRegistry(), NoServices, CancellationToken.None));
         Assert.StartsWith("971400.osz|Some Artist|MariannE|Mapper|1|", info.ResponseContent, StringComparison.Ordinal);
     }
 
@@ -454,6 +454,45 @@ public sealed class CustomBeatmapTests : OsuWebDatabaseTest, IDisposable
     };
 
     private static string Invariant(FormattableString value) => value.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>A handler's services when none are registered (no database).</summary>
+    private static readonly IServiceProvider NoServices = new ServiceCollection().BuildServiceProvider();
+
+    [MySqlFact]
+    public async Task OsuDirectLinksToADifficulty_FindItsSetOnTheMirror()
+    {
+        // osu.direct today: a difficulty (/api/b/) and a checksum (/api/md5/) give their set's id; the set
+        // lookup (/api/s/) only takes a set id.
+        await using var tomyum = await NewTomYumContextAsync();
+        var scopes = new ServiceCollection().AddScoped(_ => NewTomYumContext()).BuildServiceProvider().GetRequiredService<IServiceScopeFactory>();
+        var catalog = new CustomBeatmapCatalog(scopes);
+        var options = Options.Create(new DirectOptions());
+        var mirror = new RoutedMirror(new Dictionary<string, string>
+        {
+            ["/api/b/22538"] = """{"ParentSetID":3756,"BeatmapID":22538}""",
+            ["/api/md5/3c8b50ebd781978beb39160c6aaf148c"] = """{"ParentSetID":3756,"BeatmapID":22538}""",
+            ["/api/s/3756"] = """{"SetID":3756,"Artist":"Peter Lambert","Title":"osu! tutorial","Creator":"peppy","RankedStatus":-2,"LastUpdate":"2008-11-06"}""",
+        });
+
+        async Task<string> Lookup(string query) => Assert.IsType<ContentHttpResult>(await DirectEndpoints.HandleSearchSetAsync(
+            Context("u=player&" + query), mirror, options, catalog, new PlayerRegistry(), NoServices, CancellationToken.None)).ResponseContent!;
+
+        Assert.StartsWith("3756.osz|Peter Lambert|osu! tutorial|peppy|", await Lookup("b=22538"), StringComparison.Ordinal);
+        Assert.StartsWith("3756.osz|Peter Lambert|osu! tutorial|peppy|", await Lookup("c=3c8b50ebd781978beb39160c6aaf148c"), StringComparison.Ordinal);
+        Assert.StartsWith("3756.osz|", await Lookup("s=3756"), StringComparison.Ordinal);
+        Assert.Equal(string.Empty, await Lookup("b=1"));
+    }
+
+    /// <summary>A mirror that answers its known paths and 404s everything else.</summary>
+    private sealed class RoutedMirror(IReadOnlyDictionary<string, string> answers) : HttpMessageHandler, IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(this);
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(answers.TryGetValue(request.RequestUri!.AbsolutePath, out var body)
+                ? new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) }
+                : new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+    }
 
     /// <summary>No network: the mirror (and osu.ppy.sh) are down.</summary>
     private sealed class NoHttp : HttpMessageHandler, IHttpClientFactory

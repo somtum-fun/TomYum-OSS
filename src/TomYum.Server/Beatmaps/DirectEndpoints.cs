@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.Extensions.Options;
 using TomYum.Bancho;
 using TomYum.Domain.Entities;
+using TomYum.Domain.Repositories;
 using TomYum.Server.Bancho;
 
 namespace TomYum.Server.Beatmaps;
@@ -208,6 +209,7 @@ public static partial class DirectEndpoints
         IOptions<DirectOptions> opts,
         CustomBeatmapCatalog custom,
         PlayerRegistry players,
+        IServiceProvider services,
         CancellationToken cancellationToken)
     {
         var cfg = opts.Value;
@@ -235,15 +237,28 @@ public static partial class DirectEndpoints
                 return Results.Text(string.Empty, "text/plain");
         }
 
-        string mirrorUrl;
-        if (!string.IsNullOrEmpty(setIdStr) && int.TryParse(setIdStr, out var setId))
-            mirrorUrl = cfg.MirrorBaseUrl + string.Format(CultureInfo.InvariantCulture, cfg.SetPath, setId);
-        else if (!string.IsNullOrEmpty(mapIdStr) && int.TryParse(mapIdStr, out var mapId))
-            mirrorUrl = cfg.MirrorBaseUrl + string.Format(CultureInfo.InvariantCulture, cfg.SetPath, mapId) + "?type=b";
-        else if (!string.IsNullOrEmpty(checksum))
-            mirrorUrl = cfg.MirrorBaseUrl + string.Format(CultureInfo.InvariantCulture, cfg.SetPath, checksum) + "?type=c";
-        else
+        // The set's id: given, or found from the difficulty (an osu!direct link to one, osu://b/...) or its
+        // checksum, in this server's maps first, then on the mirror. (The mirror's old "?type=b" and
+        // "?type=c" on its set lookup are gone: it answers 404 for a difficulty id, and for a checksum
+        // some other set.)
+        int? setId = int.TryParse(setIdStr, CultureInfo.InvariantCulture, out var givenSet) ? givenSet : null;
+        if (setId is null)
+        {
+            var repository = services.GetService<IBeatmapRepository>();
+            if (int.TryParse(mapIdStr, CultureInfo.InvariantCulture, out var mapId))
+            {
+                setId = (repository is null ? null : await repository.GetByIdAsync(mapId, cancellationToken).ConfigureAwait(false))?.SetId
+                    ?? await MirrorParentSetAsync(factory, cfg.MirrorBaseUrl + string.Format(CultureInfo.InvariantCulture, cfg.BeatmapPath, mapId), cancellationToken).ConfigureAwait(false);
+            }
+            else if (BeatmapService.IsMd5(checksum))
+            {
+                setId = (repository is null ? null : await repository.GetByMd5Async(checksum, cancellationToken).ConfigureAwait(false))?.SetId
+                    ?? await MirrorParentSetAsync(factory, cfg.MirrorBaseUrl + string.Format(CultureInfo.InvariantCulture, cfg.ChecksumPath, checksum.ToLowerInvariant()), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        if (setId is not { } foundSet || foundSet <= 0)
             return Results.Text(string.Empty, "text/plain");
+        var mirrorUrl = cfg.MirrorBaseUrl + string.Format(CultureInfo.InvariantCulture, cfg.SetPath, foundSet);
 
         JsonElement set;
         try
@@ -283,6 +298,26 @@ public static partial class DirectEndpoints
             string.Create(CultureInfo.InvariantCulture,
                 $"{sid}.osz|{artist}|{title}|{creator}|{status}|10.0|{updated}|{sid}|0|0|0|0|0"),
             "text/plain");
+    }
+
+    /// <summary>A difficulty's set on the mirror (its <c>ParentSetID</c>), or null when it doesn't know it.</summary>
+    private static async Task<int?> MirrorParentSetAsync(IHttpClientFactory factory, string url, CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var http = factory.CreateClient(HttpClientName);
+            using var response = await http.GetAsync(url, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode)
+                return null;
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false));
+            return doc.RootElement.TryGetProperty("ParentSetID", out var parent) && parent.TryGetInt32(out var set) && set > 0 ? set : null;
+        }
+#pragma warning disable CA1031 // the mirror being down or answering oddly is "not found", as for the set lookup
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+            return null;
+        }
     }
 
     // ── /d/{setId} ────────────────────────────────────────────────────────────────────────

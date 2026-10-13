@@ -29,6 +29,18 @@ public sealed class DirectOptions
     public string SetPath { get; set; } = "/api/s/{0}";
 
     /// <summary>
+    /// Path template for one difficulty by its id (its <c>ParentSetID</c> gives the set).
+    /// Default: <c>/api/b/{0}</c>.
+    /// </summary>
+    public string BeatmapPath { get; set; } = "/api/b/{0}";
+
+    /// <summary>
+    /// Path template for one difficulty by its checksum (its <c>ParentSetID</c> gives the set).
+    /// Default: <c>/api/md5/{0}</c>.
+    /// </summary>
+    public string ChecksumPath { get; set; } = "/api/md5/{0}";
+
+    /// <summary>
     /// Path template for .osz downloads redirected to the mirror.
     /// <c>{0}</c> is replaced with the set id.
     /// Default: <c>/api/d/{0}</c>.
