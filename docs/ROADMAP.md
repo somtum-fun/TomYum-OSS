@@ -1,6 +1,6 @@
 # TomYum Roadmap
 
-_Last updated: 2026-10-12 (version 0.5.0)._ .NET 10; used in production for stable, lazer and the website.
+_Last updated: 2026-10-14 (version 0.5.5)._ .NET 10; used in production for stable, lazer and the website.
 
 `0.5.0` is the first **stable** release. `0.6.0` to `1.0.0` are small fixes and growing up:
 scaling, object storage, Kubernetes, and a core generic enough for anyone's server. How each feature
@@ -19,6 +19,12 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decisio
   bancho for the oldest); stable sessions fixed (one client per account, no "already logged in", idle
   sessions ended); ranking rules (days in qualified, an inactivity rule); no server's names in core
   defaults; a security review of the whole server and its fixes (2026-10-11/12).
+- `0.5.5` (2026-10-14): security fixes. Following a match from the tournament client is for staff, the
+  Tournament Committee (the website's `tc` group) and the room's own players, and its watchers never get the
+  room's password; wrong passwords count per account and address, so nobody can lock a player out by
+  guessing their name; `#announce` is staff-only; `X-Real-IP`/`CF-IPCountry` are only believed from your
+  own proxy (a loopback or private-network address); the website's blocks and "friends only" apply to
+  in-game private messages.
 
 ## 0.6.0 – 1.0.0: small fixes, scaling, a generic core
 - [ ] Small fixes from production.
