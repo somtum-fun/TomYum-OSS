@@ -250,11 +250,14 @@ public sealed partial class OsuWebCommunity
         return rows.Select((r, i) => new RankingEntry(i + 1, (int)r.UserId, r.Username, r.Country, r.Pp, r.Accuracy, r.PlayCount)).ToList();
     }
 
-    /// <summary>A map's leaderboard: each player's best score by total score, as on the website.</summary>
+    /// <summary>
+    /// A map's leaderboard: each player's best score by total score, as on the website (lazer's Relax and
+    /// Autopilot plays are on their own boards, not this one).
+    /// </summary>
     public async Task<IReadOnlyList<ScoreCard>> GetBeatmapLeaderboardAsync(int beatmapId, int ruleset, int count, CancellationToken cancellationToken = default)
     {
         var scores = await QueryScoresAsync(
-            $"s.beatmap_id = {{0}} AND s.ruleset_id = {{1}} AND s.passed = 1 AND s.preserve = 1 AND {Visible}",
+            $"s.beatmap_id = {{0}} AND s.ruleset_id = {{1}} AND s.passed = 1 AND s.preserve = 1 AND {Visible} AND {NotRelaxOrAutopilot}",
             "s.total_score DESC, s.id",
             [beatmapId, ruleset],
             500,
@@ -578,7 +581,7 @@ public sealed partial class OsuWebCommunity
 
     private static ScoreCard ToCard(ScoreRow row)
     {
-        var (mods, great, ok, meh, miss) = ReadData(row.Data);
+        var (mods, great, ok, meh, miss) = ReadData(row.Data, row.IsStable, row.Ruleset);
         return new ScoreCard(
             row.ScoreId, (int)row.UserId, row.Username, row.Ruleset, (int)row.BeatmapId, (int)row.BeatmapsetId,
             row.Artist, row.Title, row.Version, row.Creator, row.StarRating, row.BeatmapStatus, mods,
@@ -633,8 +636,15 @@ public sealed partial class OsuWebCommunity
         }
     }
 
-    /// <summary>The mods (without Classic, which marks every stable score) and hit counts from a score's data.</summary>
-    public static (IReadOnlyList<string> Mods, int Great, int Ok, int Meh, int Miss) ReadData(string? json)
+    /// <summary>
+    /// The mods and hit counts from a score's data. Classic is left out of a stable score's mods (it marks
+    /// every one); a lazer play keeps it, as the player picked it. Slider ticks and ends only count as hits
+    /// (and missed ticks as misses) in osu!catch, where they're droplets: elsewhere they aren't 100s or 50s.
+    /// </summary>
+    /// <param name="json">The score's data.</param>
+    /// <param name="stable">Whether it's a stable score (null: unknown, as stable).</param>
+    /// <param name="ruleset">The score's ruleset (null: unknown, ticks counted).</param>
+    public static (IReadOnlyList<string> Mods, int Great, int Ok, int Meh, int Miss) ReadData(string? json, bool? stable = null, int? ruleset = null)
     {
         var mods = new List<string>();
         int great = 0, ok = 0, meh = 0, miss = 0;
@@ -650,17 +660,18 @@ public sealed partial class OsuWebCommunity
                 {
                     var acronym = mod.ValueKind == JsonValueKind.Object && mod.TryGetProperty("acronym", out var a) ? a.GetString()
                         : mod.ValueKind == JsonValueKind.String ? mod.GetString() : null;
-                    if (!string.IsNullOrEmpty(acronym) && acronym != "CL")
+                    if (!string.IsNullOrEmpty(acronym) && (acronym != "CL" || stable == false))
                         mods.Add(acronym);
                 }
             }
             if (root.TryGetProperty("statistics", out var statistics) && statistics.ValueKind == JsonValueKind.Object)
             {
                 int Count(string name) => statistics.TryGetProperty(name, out var value) && value.TryGetInt32(out var n) ? n : 0;
+                bool ticksAreHits = ruleset is null or 2;
                 great = Count("great") + Count("perfect");
-                ok = Count("ok") + Count("good") + Count("large_tick_hit");
-                meh = Count("meh") + Count("small_tick_hit");
-                miss = Count("miss") + Count("large_tick_miss");
+                ok = Count("ok") + Count("good") + (ticksAreHits ? Count("large_tick_hit") : 0);
+                meh = Count("meh") + (ticksAreHits ? Count("small_tick_hit") : 0);
+                miss = Count("miss") + (ticksAreHits ? Count("large_tick_miss") : 0);
             }
         }
         catch (JsonException)
