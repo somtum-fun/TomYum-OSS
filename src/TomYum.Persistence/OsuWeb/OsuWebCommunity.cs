@@ -100,6 +100,20 @@ public sealed partial class OsuWebCommunity
 
     private const string Visible = "u.user_type <> 1 AND u.user_warnings = 0";
 
+    /// <summary>
+    /// Not a lazer Relax/Autopilot play: those are on their own (pp) boards, not the map's leaderboard, so
+    /// they neither place there nor count against the plays that do.
+    /// </summary>
+    private const string NotRelaxOrAutopilot =
+        "JSON_SEARCH(s.data, 'one', 'RX', NULL, '$.mods[*].acronym') IS NULL AND JSON_SEARCH(s.data, 'one', 'AP', NULL, '$.mods[*].acronym') IS NULL";
+
+    /// <summary>Whether the play has Relax or Autopilot (see <see cref="NotRelaxOrAutopilot"/>).</summary>
+    public static bool IsRelaxOrAutopilot(ScoreCard score)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        return score.Mods.Contains("RX") || score.Mods.Contains("AP");
+    }
+
     private readonly OsuWebDbContext _db;
 
     private readonly IStarRatings? _stars;
@@ -349,13 +363,13 @@ public sealed partial class OsuWebCommunity
     public async Task<bool> TookFirstPlaceAsync(ScoreCard score, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(score);
-        if (!score.Passed || !LeaderboardStatuses.Contains(score.BeatmapStatus))
+        if (!score.Passed || !LeaderboardStatuses.Contains(score.BeatmapStatus) || IsRelaxOrAutopilot(score))
             return false;
 
         var sql = $$"""
             SELECT s.user_id AS UserId, CAST(s.total_score AS SIGNED) AS TotalScore, s.id AS Id
             FROM scores s JOIN phpbb_users u ON u.user_id = s.user_id
-            WHERE s.beatmap_id = {0} AND s.ruleset_id = {1} AND s.passed = 1 AND s.preserve = 1 AND {{Visible}} AND s.id < {2}
+            WHERE s.beatmap_id = {0} AND s.ruleset_id = {1} AND s.passed = 1 AND s.preserve = 1 AND {{Visible}} AND s.id < {2} AND {{NotRelaxOrAutopilot}}
             ORDER BY s.total_score DESC, s.id
             """;
         var others = await _db.Database.SqlQueryRaw<LeaderRow>(sql, score.BeatmapId, score.Ruleset, score.ScoreId)
@@ -374,13 +388,13 @@ public sealed partial class OsuWebCommunity
     public async Task<ScorePlacement?> GetPlacementAsync(ScoreCard score, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(score);
-        if (!score.Passed || !LeaderboardStatuses.Contains(score.BeatmapStatus))
+        if (!score.Passed || !LeaderboardStatuses.Contains(score.BeatmapStatus) || IsRelaxOrAutopilot(score))
             return null;
 
         var sql = $$"""
             SELECT s.user_id AS UserId, CAST(MAX(s.total_score) AS SIGNED) AS TotalScore, MIN(s.id) AS Id
             FROM scores s JOIN phpbb_users u ON u.user_id = s.user_id
-            WHERE s.beatmap_id = {0} AND s.ruleset_id = {1} AND s.passed = 1 AND s.preserve = 1 AND {{Visible}} AND s.id < {2}
+            WHERE s.beatmap_id = {0} AND s.ruleset_id = {1} AND s.passed = 1 AND s.preserve = 1 AND {{Visible}} AND s.id < {2} AND {{NotRelaxOrAutopilot}}
             GROUP BY s.user_id
             """;
         var bests = await _db.Database.SqlQueryRaw<LeaderRow>(sql, score.BeatmapId, score.Ruleset, score.ScoreId)
