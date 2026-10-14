@@ -71,8 +71,11 @@
   <ItemGroup>
     <PackageReference Include="AutoMapper" Version="16.1.1" />
     <PackageReference Include="MessagePack" Version="3.1.7" />
-    <!-- Microsoft.AspNetCore.SignalR.Protocols.MessagePack: GHSA-f8h2-vmm9-qhj6 — safe at 10.0.9+. -->
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.9" />
+    <!-- Microsoft.AspNetCore.SignalR.Protocols.MessagePack and .Common: GHSA-f8h2-vmm9-qhj6, GHSA-334f-vvp4-7g6p
+         (CVE-2026-70159) and GHSA-86xp-94pg-8r6r (CVE-2026-92707), denial of service — safe at 10.0.13+. -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.13" />
+    <!-- (web projects get .Common from the ASP.NET Core runtime, which must be 10.0.13+ too: the Docker images' aspnet:10.0) -->
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.13" Condition="'$(UsingMicrosoftNETSdkWeb)' != 'true'" />
   </ItemGroup>
 
   <!--

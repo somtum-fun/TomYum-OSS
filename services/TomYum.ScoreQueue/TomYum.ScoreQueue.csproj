@@ -3,6 +3,8 @@
   <!-- Async score-statistics processor. Consumes the Redis score queue; never blocks submission. -->
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <!-- SignalR.Common comes with the ASP.NET Core runtime here (Directory.Build.props pins it for the rest). -->
+    <PackageReference Remove="Microsoft.AspNetCore.SignalR.Common" />
   </ItemGroup>
 
   <ItemGroup>
