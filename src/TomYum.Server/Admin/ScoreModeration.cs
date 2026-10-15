@@ -19,6 +19,22 @@ public sealed record ModeratedScore(
 public sealed record ScoreRemovalResult(int Removed, IReadOnlyList<int> AffectedModes);
 
 /// <summary>
+/// Everything needed to recreate a <see cref="TomYum.Domain.Entities.Score"/> row from a backup, so
+/// <see cref="ScoreModeration.RestoreAsync"/> can bring back a score that was removed by mistake.
+/// Fields mirror the Score entity 1:1; the caller fills them from a backup SQL dump.
+/// </summary>
+public sealed record ScoreRestorePayload(
+    long Id, int UserId, int BeatmapId, string BeatmapMd5, int Mode,
+    long ScoreValue, int MaxCombo,
+    int Count300, int Count100, int Count50, int CountMiss, int CountGeki, int CountKatu,
+    string Grade, int Mods, bool Perfect, double Pp, bool Passed,
+    DateTimeOffset SubmittedAt, bool FromLazer,
+    int? LargeTickHits, int? SliderEndHits, bool OffBoard);
+
+/// <summary>What a restore did.</summary>
+public sealed record ScoreRestoreResult(long Id, int UserId, int Mode, ulong? OsuWebScoreId);
+
+/// <summary>
 /// Staff score removal (GMT panel): delete single scores or wipe a player's scores. Afterwards the
 /// next-best score on each affected map becomes the best, the player's stats are recomputed the way
 /// score submission computes them, the website copies are deleted (and dropped from its search),
@@ -84,6 +100,133 @@ public sealed class ScoreModeration
         await LogAsync(actorId, "score.remove", score.UserId, Invariant(
             $"Removed score #{score.Id}: {described.Beatmap} ({GameMode.ToShortName(score.Mode)}, {score.ScoreValue:N0} score, {score.Pp:0}pp)"), reason, cancellationToken).ConfigureAwait(false);
         return result;
+    }
+
+    /// <summary>
+    /// Restores a removed score (and optionally its replay) from a payload the caller got out of a
+    /// backup. The score goes back as <see cref="ScoreStatus.Submitted"/> and
+    /// <see cref="PromoteNextBestAsync"/> decides whether it beats the player's current best on the
+    /// map (score submission uses the same comparison). Stats are rebuilt from the player's bests;
+    /// the website copy is written and global ranks for the mode are recomputed.
+    ///
+    /// Returns null when a score with the same <paramref name="payload"/>.<c>Id</c> already exists —
+    /// restoration doesn't overwrite. The replay (if provided) is written at the usual path; the
+    /// server picks it up on next read without a reload.
+    /// </summary>
+    public async Task<ScoreRestoreResult?> RestoreAsync(ScoreRestorePayload payload, byte[]? replay, int actorId, string? reason, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        if (payload.Id <= 0 || payload.UserId <= 0 || payload.BeatmapId <= 0 || string.IsNullOrEmpty(payload.BeatmapMd5))
+            return null;
+
+        if (await _db.Scores.AsNoTracking().AnyAsync(s => s.Id == payload.Id, cancellationToken).ConfigureAwait(false))
+            return null;
+
+        var restored = new Score
+        {
+            Id = payload.Id,
+            UserId = payload.UserId,
+            BeatmapId = payload.BeatmapId,
+            BeatmapMd5 = payload.BeatmapMd5,
+            Mode = payload.Mode,
+            ScoreValue = payload.ScoreValue,
+            MaxCombo = payload.MaxCombo,
+            Count300 = payload.Count300,
+            Count100 = payload.Count100,
+            Count50 = payload.Count50,
+            CountMiss = payload.CountMiss,
+            CountGeki = payload.CountGeki,
+            CountKatu = payload.CountKatu,
+            Grade = payload.Grade,
+            Mods = payload.Mods,
+            Perfect = payload.Perfect,
+            Pp = payload.Pp,
+            Passed = payload.Passed,
+            // PromoteNextBestAsync below picks the right score as Best; a restored row goes in as
+            // Submitted so the comparison with the existing current best is clean (not two Bests).
+            Status = ScoreStatus.Submitted,
+            SubmittedAt = payload.SubmittedAt,
+            FromLazer = payload.FromLazer,
+            OsuWebScoreId = null,
+            PpHeld = false,
+            LargeTickHits = payload.LargeTickHits,
+            SliderEndHits = payload.SliderEndHits,
+            OffBoard = payload.OffBoard,
+        };
+
+        _db.Scores.Add(restored);
+        await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        _db.Entry(restored).State = EntityState.Detached;
+
+        if (replay is { Length: > 0 } && !restored.FromLazer)
+        {
+            try
+            {
+                var directory = _configuration["Replays:Path"] ?? "data/replays";
+                Directory.CreateDirectory(directory);
+                await File.WriteAllBytesAsync(Path.Combine(directory, $"{restored.Id}.osr"), replay, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogWarning(ex, "Restored score {ScoreId} but couldn't write its replay.", restored.Id);
+            }
+        }
+
+        // Make the right score the current best on the map (restored vs. whatever was promoted after
+        // the removal). PromoteNextBestAsync picks by pp on Relax/Autopilot boards, score otherwise.
+        if (restored.Passed && !restored.OffBoard)
+        {
+            // Demote any current Best for this user/map/mode so the next-best picker can choose anew.
+            var currentBest = await _db.Scores.FirstOrDefaultAsync(
+                s => s.UserId == restored.UserId && s.BeatmapMd5 == restored.BeatmapMd5 && s.Mode == restored.Mode && s.Status == ScoreStatus.Best,
+                cancellationToken).ConfigureAwait(false);
+            if (currentBest is not null)
+            {
+                currentBest.Status = ScoreStatus.Submitted;
+                await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+                _db.Entry(currentBest).State = EntityState.Detached;
+            }
+            await PromoteNextBestAsync(restored.UserId, restored.BeatmapMd5, restored.Mode, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Stats: rebuild pp/accuracy/ranked score from the player's bests, then add this restored
+        // play's totals (RecomputeStatsAsync does the subtraction half for RemoveAsync; this is the
+        // mirror operation for restore).
+        var stats = await _db.UserStats.FirstOrDefaultAsync(s => s.UserId == restored.UserId && s.Mode == restored.Mode, cancellationToken).ConfigureAwait(false);
+        if (stats is not null)
+        {
+            await BestScoreStats.ApplyAsync(_db, stats, cancellationToken).ConfigureAwait(false);
+            stats.TotalScore += restored.ScoreValue;
+            stats.PlayCount += 1;
+            await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+            _db.Entry(stats).State = EntityState.Detached;
+        }
+
+        // Mirror the score + the player's stats to osu-web and recompute global ranks.
+        ulong? mirroredId = null;
+        if (_mirror is not null && OsuWebScores.IsMirrored(restored.Mode))
+        {
+            try
+            {
+                mirroredId = await _mirror.WriteScoreAsync(restored, hasReplay: replay is { Length: > 0 } && !restored.FromLazer, cancellationToken).ConfigureAwait(false);
+                await _mirror.WriteStatsAsync(restored.UserId, restored.Mode, cancellationToken).ConfigureAwait(false);
+                if (_performance is { Enabled: true })
+                    await _performance.ApplyAsync(restored.UserId, restored.Mode, recompute: true, cancellationToken).ConfigureAwait(false);
+                await _mirror.RecomputeGlobalRanksAsync(restored.Mode, cancellationToken).ConfigureAwait(false);
+                if (_performance is { Enabled: true })
+                    await _performance.RefreshPresenceAsync(restored.UserId, restored.Mode, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Restored score {ScoreId} of user {UserId} but updating osu-web failed.", restored.Id, restored.UserId);
+            }
+        }
+
+        var described = (await DescribeAsync([restored], cancellationToken).ConfigureAwait(false))[0];
+        await LogAsync(actorId, "score.restore", restored.UserId, Invariant(
+            $"Restored score #{restored.Id}: {described.Beatmap} ({GameMode.ToShortName(restored.Mode)}, {restored.ScoreValue:N0} score, {restored.Pp:0}pp){(replay is { Length: > 0 } ? $" with replay ({replay.Length:N0} B)" : " (no replay)")}"),
+            reason, cancellationToken).ConfigureAwait(false);
+        return new ScoreRestoreResult(restored.Id, restored.UserId, restored.Mode, mirroredId);
     }
 
     /// <summary>

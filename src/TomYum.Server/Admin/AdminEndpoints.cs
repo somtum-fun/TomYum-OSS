@@ -105,6 +105,7 @@ public static class AdminEndpoints
         admin.MapPost("/scores/recalculate", RecalculateAllScoresAsync);
         admin.MapDelete("/scores/{scoreId:long}", async (long scoreId, string? reason, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken) =>
             await scores.RemoveAsync(scoreId, ActorId(context), reason, cancellationToken).ConfigureAwait(false) is { } result ? Results.Ok(result) : Results.NotFound());
+        admin.MapPost("/scores/restore", RestoreScoreAsync);
         // Replay of a website score (osu-web's replay download fetches it from here).
         admin.MapGet("/replays/website-score/{osuWebScoreId:long}", async (long osuWebScoreId, OsuWebScoreMirror mirror, IConfiguration configuration, CancellationToken cancellationToken) =>
             await mirror.GetTomYumScoreIdAsync((ulong)osuWebScoreId, cancellationToken).ConfigureAwait(false) is { } scoreId
@@ -321,6 +322,38 @@ public static class AdminEndpoints
                 $"Recalculated pp on {beatmaps.Count} map(s): {total.Changed} of {total.Scores} score(s) changed"),
         }, cancellationToken).ConfigureAwait(false);
         return Results.Ok(new { Maps = beatmaps.Count, total.Scores, total.Changed });
+    }
+
+    /// <summary>Body of <c>POST /_admin/scores/restore</c>: the removed score's fields (from a backup) plus
+    /// an optional base64-encoded <c>.osr</c> replay. The staff member who hits the panel's restore
+    /// button pastes the row's values; the website turns them into this.</summary>
+    public sealed record RestoreScoreRequest(ScoreRestorePayload Payload, string? ReplayBase64, string? Reason);
+
+    /// <summary>
+    /// Restores a removed score from a backup payload. Idempotent at the score-id level: if a row with
+    /// the same id already exists, returns 409 Conflict and doesn't touch it. The replay is restored
+    /// if provided; stats and ranks are recomputed; the website copy is written. Logged as
+    /// <c>score.restore</c>.
+    /// </summary>
+    private static async Task<IResult> RestoreScoreAsync(RestoreScoreRequest request, ScoreModeration scores, HttpContext context, CancellationToken cancellationToken)
+    {
+        if (request?.Payload is null)
+            return Results.BadRequest("A score payload is required.");
+        byte[]? replay = null;
+        if (!string.IsNullOrEmpty(request.ReplayBase64))
+        {
+            try
+            {
+                replay = Convert.FromBase64String(request.ReplayBase64);
+            }
+            catch (FormatException)
+            {
+                return Results.BadRequest("replayBase64 isn't valid base64.");
+            }
+        }
+        return await scores.RestoreAsync(request.Payload, replay, ActorId(context), request.Reason, cancellationToken).ConfigureAwait(false) is { } result
+            ? Results.Ok(result)
+            : Results.Conflict(new { message = "That score id already exists (restores don't overwrite)." });
     }
 
     private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, HttpContext context, CancellationToken cancellationToken)
