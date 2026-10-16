@@ -48,7 +48,7 @@ so the plugin can be cleanly unloaded.
 | `Commands` | `Register(name, description, handler)` — adds a `!`command. Returns an `IDisposable`; dispose it on shutdown. |
 | `Events` | `Subscribe<TEvent>(handler)` — react to server events. Some are **vetoable** (you can reject the operation). |
 | `Http` | `Map(method, pattern, handler, requireAuth, subdomain)` — serve HTTP, optionally on your own subdomain. |
-| `GetHostService<T>()` | Inspect live state and reach players. Today: `IHostPlayerView` (who's online, action, map, mods), `IHostOnlineCounts` (players online by client: stable, IRC, lazer; open multiplayer rooms) and `IHostMessenger` (a BanchoBot message or a notification to an online osu!(stable) player) and `IHostSpectating` (BanchoBot spectates an osu!stable player, so their client streams frames and `SpectateFrameEvent` fires without a human spectator; nothing is queued for the bot, and it can watch many players at once). |
+| `GetHostService<T>()` | Inspect live state and reach players. Today: `IHostPlayerView` (who's online, action, map, mods), `IHostOnlineCounts` (players online by client: stable, IRC, lazer; open multiplayer rooms) and `IHostMessenger` (a BanchoBot message or a notification to an online osu!(stable) player) and `IHostSpectating` (BanchoBot spectates an osu!stable player, so their client streams frames and `SpectateFrameEvent` fires without a human spectator; nothing is queued for the bot, and it can watch many players at once; `BotName` is the bot's name from `Bancho:BotName`, for messages that mention it). |
 | `Data` | Raw ADO.NET `DbConnection` — **only** if the operator lists your id under `Plugins:Trusted`. Otherwise `null`. |
 
 ### Events you can subscribe to
