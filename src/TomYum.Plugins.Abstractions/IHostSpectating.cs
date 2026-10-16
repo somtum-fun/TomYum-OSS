@@ -23,4 +23,10 @@ public interface IHostSpectating
     /// <param name="hostUserId">The player.</param>
     /// <returns>True when it is (false when they're offline).</returns>
     bool IsBotWatching(long hostUserId);
+
+    /// <summary>
+    /// The bot's display name (<c>Bancho:BotName</c>), for messages that mention it: a server moved from
+    /// bancho.py may keep its old bot's name. Hosts that don't say get osu!'s, BanchoBot.
+    /// </summary>
+    string BotName => "BanchoBot";
 }

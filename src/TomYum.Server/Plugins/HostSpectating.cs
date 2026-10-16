@@ -25,6 +25,8 @@ internal sealed class HostSpectating : IHostSpectating
     public bool IsBotWatching(long hostUserId) =>
         Find(hostUserId) is { } host && host.Spectators.Contains(BanchoBot.UserId);
 
+    public string BotName => BanchoBot.Name;
+
     // osu!stable sessions only: IRC clients send no frames.
     private OnlinePlayer? Find(long userId) =>
         userId is > 0 and <= int.MaxValue && userId != BanchoBot.UserId && _players.GetByUserId((int)userId) is { IsIrc: false } player
