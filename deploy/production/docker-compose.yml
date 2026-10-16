@@ -160,6 +160,7 @@ services:
       - mkdir -p /app/public/uploads/avatar /app/public/uploads/replay /app/storage/logs
         /app/storage/framework/cache /app/storage/framework/views /app/storage/framework/sessions
         && chown -R osuweb /app/public/uploads /app/storage
+        && { [ ! -f /app/storage/oauth-public.key ] || chmod 644 /app/storage/oauth-public.key; }
     volumes:
       - osu-web-uploads:/app/public/uploads
       - osu-web-storage:/app/storage
