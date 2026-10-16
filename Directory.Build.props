@@ -66,11 +66,12 @@
     Solution-wide vulnerability overrides. These force-pin transitive packages that have known
     CVEs to safe versions. Placed here so every project inherits the fix without repetition.
     AutoMapper: GHSA-rvv3-g6hj-g44x — safe at 16.1.1+.
-    MessagePack: GHSA-382j-8mxh-c7x2 et al — safe at 3.1.7+.
+    MessagePack: GHSA-382j-8mxh-c7x2 et al — safe at 3.1.7+; GHSA-qhrr-8q5h-9q3h (CVE-2026-92707, nested
+    arrays allocated before the depth check) — safe at 3.1.9+.
   -->
   <ItemGroup>
     <PackageReference Include="AutoMapper" Version="16.1.1" />
-    <PackageReference Include="MessagePack" Version="3.1.7" />
+    <PackageReference Include="MessagePack" Version="3.1.12" />
     <!-- Microsoft.AspNetCore.SignalR.Protocols.MessagePack and .Common: GHSA-f8h2-vmm9-qhj6, GHSA-334f-vvp4-7g6p
          (CVE-2026-70159) and GHSA-86xp-94pg-8r6r (CVE-2026-92707), denial of service — safe at 10.0.13+. -->
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.13" />
