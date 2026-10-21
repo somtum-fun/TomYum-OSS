@@ -28,9 +28,14 @@ RUN grep -q '                    var score = item.Score;' ScoreStatisticsQueuePr
 COPY TomYumRankIndex.cs Helpers/TomYumRankIndex.cs
 RUN grep -q 'userStats.rank_score_index = await getUserRankScoreIndex(userStats, connection, transaction, dbInfo);' Processors/UserTotalPerformanceProcessor.cs \
     && sed -i 's/userStats.rank_score_index = await getUserRankScoreIndex(userStats, connection, transaction, dbInfo);/userStats.rank_score_index = await global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumRankIndex.GetAsync(userStats, dbInfo.UserStatsTable, connection, transaction);/' Processors/UserTotalPerformanceProcessor.cs
+# ppy.osu.Game brings MessagePack 3.1.7: 3.1.9 fixes a denial of service (CVE-2026-92707), 3.1.10 a ReDoS.
+RUN dotnet add package MessagePack --version 3.1.12
 RUN dotnet publish -c Release -o /out && rm -rf /out/runtimes /out/osu.Game.Resources.dll
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0
+# ca-certificates: the base image's are older than Ubuntu's fix for the eMudhra CA key compromise
+# (CVE-2026-111943, 20260816ubuntu0.24.04.1): upgrade them until Microsoft's image has it.
+RUN apt-get update && apt-get install -y --only-upgrade ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=build-env /out .
 ENTRYPOINT ["dotnet", "osu.Server.Queues.ScoreStatisticsProcessor.dll"]
