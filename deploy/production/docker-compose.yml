@@ -40,6 +40,8 @@ x-osu-web: &osu-web
   volumes:
     - osu-web-uploads:/app/public/uploads
     - osu-web-storage:/app/storage
+    # php2shell stopgap (CVE-2026-109618/109619): disable session.upload_progress until PHP >= 8.5.12.
+    - ./php2shell-stopgap.ini:/etc/php-zts/conf.d/zz-php2shell-stopgap.ini:ro
   depends_on: &osu-web-deps
     volumes-init:
       condition: service_completed_successfully
