@@ -283,6 +283,11 @@ public static class ScoreSubmissionEndpoint
             logger.LogWarning("Score submission rejected: Co-op from an old client ({Build})", LegacyScoreRules.Describe(build));
             return Rejected();
         }
+        if (mode == 0 && (mods & (int)(Mods.TouchDevice | Mods.Autopilot)) == 0 && LegacyScoreRules.IsTouchDevice(replayBytes))
+        {
+            mods |= (int)Mods.TouchDevice;
+            logger.LogInformation("Score submission: TouchDevice detected in '{Username}''s replay ({Build})", usernameFromScore, LegacyScoreRules.Describe(build));
+        }
 
         // Fold Relax/Autopilot into the combined gamemode used for stats + leaderboards so those
         // scores stay off the vanilla boards. The vanilla ruleset (`mode`) still drives pp and

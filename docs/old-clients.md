@@ -133,10 +133,11 @@ devices unconfirmed, so there's nothing gained for them.
   to 17 fields (no mode before b497: osu!), and get `rank\ntoNextRank\nmedals` back (the map rank
   when the play is the player's new best, else 0; a rejection is `0\n0`, which they don't retry).
 - **Fair shared leaderboards.** Score v1 and the mod multipliers haven't changed since 2013 in any
-  mode, so old clients' scores count as they are (osuTitanic does the same), with three exceptions
+  mode, so old clients' scores count as they are (osuTitanic does the same), with these exceptions
   (`LegacyScoreRules`, by the build in the score's version field; a score with no version, or a
   numbered one like `1553`, is from a build before 2012): mod bit 4 was NoVideo before
-  2014 and isn't taken as TouchDevice (which lowers pp); Co-op is refused (unranked since April
+  2014 and isn't taken as TouchDevice, while a real touchscreen play in osu! gets TouchDevice
+  added from its replay frames (so it gets touchscreen pp like today's client); Co-op is refused (unranked since April
   2015); and a passed taiko or catch play whose 300s, 100s and misses don't add up to the map's max
   combo in that mode (the old client converted it differently) is kept but off the leaderboard, with
   no pp. Not checked: osu!mania long notes before b20150727 were judged a little harsher (only
