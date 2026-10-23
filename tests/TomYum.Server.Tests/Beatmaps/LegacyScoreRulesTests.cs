@@ -186,4 +186,28 @@ public class LegacyScoreRulesTests
         Assert.False(LegacyScoreRules.IsTouchDevice(null));
         Assert.False(LegacyScoreRules.IsTouchDevice([1, 2, 3]));
     }
+
+    [Fact]
+    public void Pre2013LowRateMouseFramesAndOffPlayfieldMoves_AreNotFlaggedAsTouchDevice()
+    {
+        // Pre-b20130626 clients record button-up cursor movement at 6 Hz (~167 ms deltas) and 60 Hz while a key is held.
+        var pre2013 = new StringBuilder("0|256|-500|0,100|100|100|0,");
+        (int X, int Y)[] targets =
+        [
+            (100, 100), (260, 180), (410, 140), (220, 290), (380, 240), (140, 200),
+            (310, 110), (440, 260), (180, 310), (350, 170), (120, 150), (390, 280),
+        ];
+        foreach (var (tx, ty) in targets)
+        {
+            // 165 ms unpressed travel frame arriving at circle, then key press 60 ms later.
+            pre2013.Append(CultureInfo.InvariantCulture, $"165|{tx}|{ty}|0,60|{tx}|{ty}|5,16|{tx + 1}|{ty}|5,16|{tx + 8}|{ty + 4}|0,");
+        }
+        Assert.False(LegacyScoreRules.IsTouchDeviceFrames(pre2013.ToString()));
+
+        // Off-playfield window-edge movement (x = -170, y = -56 on 16:9) during breaks.
+        var offField = new StringBuilder("0|256|-500|0,100|256|192|0,");
+        for (var i = 0; i < 15; i++)
+            offField.Append("16|-170.7|-56|1,16|-170.7|-56|1,16|-170.7|300|0,");
+        Assert.False(LegacyScoreRules.IsTouchDeviceFrames(offField.ToString()));
+    }
 }

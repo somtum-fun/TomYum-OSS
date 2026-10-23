@@ -124,6 +124,7 @@ public static class LegacyScoreRules
 
         var jumpCount = 0;
         var jumpFrame = false;
+        var jumpTime = 0;
         var prevDist = 0.0;
         var lastPressTime = -1_000_000;
         var prevClick = frames[0].Keys & ClickKeys;
@@ -133,7 +134,8 @@ public static class LegacyScoreRules
             var curr = frames[i];
             var prev = frames[i - 1];
             var click = curr.Keys & ClickKeys;
-            if ((click & ~prevClick) != 0)
+            var pressedNow = (click & ~prevClick) != 0;
+            if (pressedNow)
                 lastPressTime = curr.Time;
             prevClick = click;
 
@@ -141,20 +143,26 @@ public static class LegacyScoreRules
             if (jumpFrame)
             {
                 var recentPress = hasClicks
-                    ? curr.Time - lastPressTime is >= 0 and < MaxPressDelayMs
+                    ? lastPressTime >= jumpTime && curr.Time - lastPressTime is >= 0 and < MaxPressDelayMs
                     : curr.TimeDelta is > 0 and < MaxPressDelayMs;
-                if (dist < MaxSettleDistance && recentPress)
+                if (dist < MaxSettleDistance && (curr.TimeDelta >= 8 || dist < 1.5) && recentPress)
                 {
                     jumpCount++;
                     if (jumpCount >= MinTouchJumps)
                         return true;
+                    jumpFrame = false;
                 }
-
-                jumpFrame = false;
+                else if (dist > 0)
+                {
+                    jumpFrame = false;
+                }
             }
 
-            if (dist > MinJumpDistance && prevDist < MaxSettleDistance && (hasClicks || curr.TimeDelta is > 0 and <= 35))
+            if (dist > MinJumpDistance && prevDist < MaxSettleDistance && (curr.TimeDelta is > 0 and <= 35 || pressedNow))
+            {
                 jumpFrame = true;
+                jumpTime = curr.Time;
+            }
 
             prevDist = dist;
         }
@@ -184,8 +192,8 @@ public static class LegacyScoreRules
                 continue;
 
             time += delta;
-            // Skip lead-in frames and osu!'s initial (256, -500) off-screen cursor seed.
-            if (time < 0 || y < -100)
+            // Skip lead-in frames and cursor positions outside the 512x384 playfield (+ circle radius).
+            if (time < 0 || x is < -32f or > 544f || y is < -32f or > 416f)
                 continue;
 
             if (points.Count > 0 && points[^1].Time == time && (points[^1].Keys & ClickKeys) == (keys & ClickKeys))
