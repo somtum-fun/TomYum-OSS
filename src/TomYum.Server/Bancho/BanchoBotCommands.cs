@@ -77,7 +77,7 @@ public sealed class BanchoBotCommands
         if (Table.All.FirstOrDefault(c => c.Name == command) is { Access: CommandAccess.Staff } && !IsStaff(privileges))
             return StaffOnly;
         var (found, reply) = await Table.RunAsync(this, context).ConfigureAwait(false);
-        return found ? reply : await FallbackToPluginAsync(caller, command, parts, message, cancellationToken).ConfigureAwait(false);
+        return found ? reply : await FallbackToPluginAsync(caller, command, parts, message, privileges, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>The built-in commands' names (plugins can't take these).</summary>
@@ -87,8 +87,8 @@ public sealed class BanchoBotCommands
 
     [ChatCommand("help")]
     private string HelpCommand(ChatCommandContext context) =>
-        Table.Help(IsStaff(context.Privileges), _pluginCommands.Commands.OrderBy(c => c.Name, StringComparer.Ordinal)
-            .Select(c => "!" + c.Name + (c.Description.Length > 0 ? $" ({c.Description})" : string.Empty)));
+        Table.Help(IsStaff(context.Privileges), _pluginCommands.Commands.Where(c => !c.Options.Hidden).OrderBy(c => c.Name, StringComparer.Ordinal)
+            .Select(c => "!" + c.Name + (c.Options.Usage.Length > 0 ? " " + c.Options.Usage : string.Empty) + (c.Description.Length > 0 ? $" ({c.Description})" : string.Empty)));
 
     [ChatCommand("ping", Hidden = true)]
     private static string Ping(ChatCommandContext context) => "pong!";
@@ -223,16 +223,42 @@ public sealed class BanchoBotCommands
         string command,
         string[] parts,
         string rawText,
+        BanchoPrivileges privileges,
         CancellationToken cancellationToken)
     {
         if (_pluginCommands.TryGet(command, out var pluginCommand) && pluginCommand is not null)
         {
+            // The caller's website groups: the command's RequiredGroups are checked here, and the handler gets them.
+            var groups = await GroupsOfAsync(caller.UserId, cancellationToken).ConfigureAwait(false);
+            if (pluginCommand.Options.RequiredGroups.Count > 0 && !IsStaff(privileges)
+                && !pluginCommand.Options.RequiredGroups.Any(groups.Contains))
+            {
+                return "You can't use that command.";
+            }
+
             var arguments = parts.Length > 1 ? parts[1..] : [];
-            var invocation = new CommandInvocation(command, arguments, rawText, caller.UserId, Channel: null);
+            var invocation = new CommandInvocation(command, arguments, rawText, caller.UserId, Channel: null)
+            {
+                InvokerUsername = caller.Presence.Username,
+                InvokerGroups = groups,
+            };
             return await pluginCommand.Handler(invocation, cancellationToken).ConfigureAwait(false);
         }
 
         return string.Create(CultureInfo.InvariantCulture, $"Unknown command \"{command}\". Try !help.");
+    }
+
+    private static readonly IReadOnlySet<string> NoGroups = new HashSet<string>(StringComparer.Ordinal);
+
+    // The website's group identifiers of a user (none without the website, or for BanchoBot itself).
+    private async Task<IReadOnlySet<string>> GroupsOfAsync(int userId, CancellationToken cancellationToken)
+    {
+        if (userId == BanchoBot.UserId)
+            return NoGroups;
+        using var scope = _scopeFactory.CreateScope();
+        return scope.ServiceProvider.GetService<TomYum.Persistence.OsuWeb.OsuWebCommunity>() is { } community
+            ? await community.GetGroupsAsync(userId, cancellationToken).ConfigureAwait(false)
+            : NoGroups;
     }
 
     private const string StaffOnly = "That command is staff-only.";

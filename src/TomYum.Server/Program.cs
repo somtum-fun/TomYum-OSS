@@ -444,7 +444,11 @@ var gatewayOptions = new TomYum.Server.Gateway.GatewayOptions();
 builder.Configuration.GetSection(TomYum.Server.Gateway.GatewayOptions.SectionName).Bind(gatewayOptions);
 builder.Services.AddSingleton(gatewayOptions);
 
+// Errors the server logs, for plugins (ServerErrorEvent): attached to the event bus once it exists.
+var pluginErrors = new TomYum.Server.Plugins.PluginErrorLoggerProvider();
+builder.Logging.AddProvider(pluginErrors);
 var app = builder.Build();
+pluginErrors.Attach(app.Services.GetRequiredService<TomYum.Server.Plugins.EventBus>());
 
 // The gateway's player address, before anything reads X-Real-IP; WebSockets for its IRC relay.
 app.UseGatewayLink(gatewayOptions);

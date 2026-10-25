@@ -450,6 +450,9 @@ public static class ScoreSubmissionEndpoint
         if (submitting.IsVetoed)
         {
             logger.LogInformation("A plugin rejected {User}'s score on {Beatmap}.", user.Username, beatmap.Id);
+            // The plugin's reason for the player (e.g. osu!dan's broken rule), as an in-game notification.
+            if (submitting.PlayerMessage is { } playerMessage)
+                context.RequestServices.GetService<TomYum.Plugins.Abstractions.IHostMessenger>()?.SendNotification(user.Id, playerMessage);
             return Rejected();
         }
 

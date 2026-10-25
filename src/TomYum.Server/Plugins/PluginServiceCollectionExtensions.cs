@@ -43,6 +43,10 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<IChallengeService>(sp => sp.GetRequiredService<ChallengeService>());
 
         services.AddHostedService<PluginHostService>();
+        // The plugin API's feed events (docs/plugins.md): the website's tables, and chat.
+        services.AddHostedService<WebsiteFeed>();
+        services.AddHostedService(sp => new PluginChatFeed(
+            sp.GetRequiredService<EventBus>(), sp.GetService<Bancho.ChatLog>()));
 
         return services;
     }

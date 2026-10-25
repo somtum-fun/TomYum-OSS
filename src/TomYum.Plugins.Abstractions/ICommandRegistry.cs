@@ -17,6 +17,37 @@ public interface ICommandRegistry
         string name,
         string description,
         Func<CommandInvocation, CancellationToken, Task<string?>> handler);
+
+    /// <summary>
+    /// Registers a command with <paramref name="options"/>: who may run it (the host refuses the others before the
+    /// handler runs), its usage line for <c>!help</c>, and whether <c>!help</c> lists it.
+    /// </summary>
+    /// <param name="name">Command name without prefix.</param>
+    /// <param name="description">Help text shown to users.</param>
+    /// <param name="handler">Invoked with the parsed command invocation; returns the reply text.</param>
+    /// <param name="options">Who may run it and how it shows in <c>!help</c>.</param>
+    /// <returns>A disposable that unregisters the command when disposed.</returns>
+    IDisposable Register(
+        string name,
+        string description,
+        Func<CommandInvocation, CancellationToken, Task<string?>> handler,
+        CommandOptions options) => Register(name, description, handler);
+}
+
+/// <summary>How a plugin command is offered (<see cref="ICommandRegistry.Register(string, string, Func{CommandInvocation, CancellationToken, Task{string}}, CommandOptions)"/>).</summary>
+public sealed record CommandOptions
+{
+    /// <summary>
+    /// The website groups allowed to run it (<c>admin</c>, <c>gmt</c>, <c>nat</c>, <c>bng</c>, ...); empty: everyone.
+    /// Staff with owner or developer rights may always run it.
+    /// </summary>
+    public IReadOnlyList<string> RequiredGroups { get; init; } = [];
+
+    /// <summary>The arguments as <c>!help</c> shows them, e.g. <c>&lt;player&gt; [reason]</c>; empty: none shown.</summary>
+    public string Usage { get; init; } = string.Empty;
+
+    /// <summary>Left out of <c>!help</c>.</summary>
+    public bool Hidden { get; init; }
 }
 
 /// <summary>A single parsed command invocation handed to a command handler.</summary>
@@ -30,4 +61,11 @@ public sealed record CommandInvocation(
     IReadOnlyList<string> Arguments,
     string RawText,
     long? InvokerUserId,
-    string? Channel);
+    string? Channel)
+{
+    /// <summary>The caller's name, when known.</summary>
+    public string? InvokerUsername { get; init; }
+
+    /// <summary>The caller's website group identifiers (empty when unknown or none).</summary>
+    public IReadOnlySet<string> InvokerGroups { get; init; } = new HashSet<string>(StringComparer.Ordinal);
+}

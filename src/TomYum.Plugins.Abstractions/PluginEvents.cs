@@ -1,7 +1,7 @@
 namespace TomYum.Plugins.Abstractions;
 
 /// <summary>
-/// Base class for <see cref="IVetoableEvent"/> implementations. A handler calls <see cref="Veto"/>
+/// Base class for <see cref="IVetoableEvent"/> implementations. A handler calls <see cref="Veto(string)"/>
 /// to reject the in-flight operation; the host inspects <see cref="IsVetoed"/> after dispatch and
 /// aborts when set. The first veto wins — its reason is kept and later vetoes are ignored.
 /// </summary>
@@ -13,6 +13,12 @@ public abstract class VetoableEvent : IVetoableEvent
     /// <inheritdoc/>
     public string? VetoReason { get; private set; }
 
+    /// <summary>
+    /// What the player is told when the veto refuses something of theirs (an in-game notification, where the host
+    /// can send one), or null to tell them nothing. Set with <see cref="Veto(string, string)"/>.
+    /// </summary>
+    public string? PlayerMessage { get; private set; }
+
     /// <inheritdoc/>
     public void Veto(string reason)
     {
@@ -22,6 +28,19 @@ public abstract class VetoableEvent : IVetoableEvent
 
         IsVetoed = true;
         VetoReason = reason;
+    }
+
+    /// <summary>Vetoes, telling the player <paramref name="playerMessage"/> (the first veto's message wins).</summary>
+    /// <param name="reason">Why, for logs.</param>
+    /// <param name="playerMessage">What the player is told.</param>
+    public void Veto(string reason, string playerMessage)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(playerMessage);
+        if (IsVetoed)
+            return;
+
+        Veto(reason);
+        PlayerMessage = playerMessage;
     }
 }
 
@@ -258,7 +277,7 @@ public static class ReplayActions
 
 /// <summary>
 /// Vetoable: raised just before a submitted score is persisted. A handler may
-/// <see cref="VetoableEvent.Veto"/> it (DAN Mode rejecting a score that broke dan rules); the host
+/// <see cref="VetoableEvent.Veto(string)"/> it (DAN Mode rejecting a score that broke dan rules); the host
 /// then rejects the submission. Runs on the score hot path — keep handlers cheap.
 /// </summary>
 public sealed class ScoreSubmittingEvent : VetoableEvent

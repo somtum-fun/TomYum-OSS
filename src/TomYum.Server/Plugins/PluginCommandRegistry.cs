@@ -23,7 +23,8 @@ public sealed class PluginCommandRegistry
         string pluginId,
         string name,
         string description,
-        Func<CommandInvocation, CancellationToken, Task<string?>> handler)
+        Func<CommandInvocation, CancellationToken, Task<string?>> handler,
+        CommandOptions? options = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
         ArgumentNullException.ThrowIfNull(handler);
@@ -32,7 +33,7 @@ public sealed class PluginCommandRegistry
         if (Bancho.BanchoBotCommands.BuiltIn.Contains(normalized))
             throw new InvalidOperationException(
                 $"plugin '{pluginId}' cannot register command '!{normalized}': it is a built-in command.");
-        var command = new PluginCommand(pluginId, normalized, description ?? string.Empty, handler);
+        var command = new PluginCommand(pluginId, normalized, description ?? string.Empty, handler) { Options = options ?? new CommandOptions() };
         if (!_commands.TryAdd(normalized, command))
             throw new InvalidOperationException(
                 $"plugin '{pluginId}' cannot register command '!{normalized}': it is already registered.");
@@ -77,7 +78,11 @@ public sealed record PluginCommand(
     string PluginId,
     string Name,
     string Description,
-    Func<CommandInvocation, CancellationToken, Task<string?>> Handler);
+    Func<CommandInvocation, CancellationToken, Task<string?>> Handler)
+{
+    /// <summary>Who may run it and how it shows in <c>!help</c>.</summary>
+    public CommandOptions Options { get; init; } = new();
+}
 
 /// <summary>
 /// Per-plugin facade over <see cref="PluginCommandRegistry"/> that tags every registration with the
@@ -99,4 +104,11 @@ internal sealed class ScopedCommandRegistry : ICommandRegistry
         string description,
         Func<CommandInvocation, CancellationToken, Task<string?>> handler)
         => _shared.Register(_pluginId, name, description, handler);
+
+    public IDisposable Register(
+        string name,
+        string description,
+        Func<CommandInvocation, CancellationToken, Task<string?>> handler,
+        CommandOptions options)
+        => _shared.Register(_pluginId, name, description, handler, options);
 }

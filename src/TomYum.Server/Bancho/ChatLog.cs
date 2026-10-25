@@ -14,7 +14,7 @@ public enum ChatOrigin
 }
 
 /// <summary>
-/// Records in-game chat for staff (GMT panel). Chat handlers call <see cref="Record"/>, which only
+/// Records in-game chat for staff (GMT panel). Chat handlers call <see cref="Record(int, string, string, string, int?, ChatOrigin)"/>, which only
 /// queues the message; the background writer saves them in batches, so chat never waits on the
 /// database. Messages older than <see cref="Retention"/> are deleted daily. Without a database
 /// (no <see cref="IChatLogRepository"/>) nothing is kept.
@@ -42,8 +42,18 @@ public sealed class ChatLog : BackgroundService
     /// <summary>Raised for every recorded message (chat relays listen); handlers must be quick.</summary>
     public event Action<ChatLogEntry, ChatOrigin>? Recorded;
 
+    /// <summary>
+    /// Raised with <see cref="Recorded"/>, with where the message came from as text: <c>game</c>, <c>website</c>, or an
+    /// external relay's own tag (plugins' <c>ChatRecordedEvent</c>).
+    /// </summary>
+    public event Action<ChatLogEntry, string>? RecordedFrom;
+
     /// <summary>Queues a delivered message. <paramref name="recipientId"/> is set for private messages.</summary>
-    public void Record(int senderId, string senderName, string target, string text, int? recipientId = null, ChatOrigin origin = ChatOrigin.Game)
+    public void Record(int senderId, string senderName, string target, string text, int? recipientId = null, ChatOrigin origin = ChatOrigin.Game) =>
+        Record(senderId, senderName, target, text, recipientId, origin, originTag: null);
+
+    /// <summary>Queues a delivered message from an external relay, tagged <paramref name="originTag"/>.</summary>
+    public void Record(int senderId, string senderName, string target, string text, int? recipientId, ChatOrigin origin, string? originTag)
     {
         var entry = new ChatLogEntry
         {
@@ -59,6 +69,7 @@ public sealed class ChatLog : BackgroundService
         try
         {
             Recorded?.Invoke(entry, origin);
+            RecordedFrom?.Invoke(entry, originTag ?? origin.ToString().ToLowerInvariant());
         }
 #pragma warning disable CA1031 // a listener's fault must never break chat
         catch (Exception ex)

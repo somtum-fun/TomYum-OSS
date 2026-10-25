@@ -50,6 +50,12 @@ public interface IPluginContext
     /// <param name="service">The instance.</param>
     void PublishHostService<TService>(TService service) where TService : class =>
         throw new NotSupportedException("This host doesn't let plugins publish services.");
+
+    /// <summary>This plugin's own key/value store with expiry (<see cref="IPluginStateStore"/>).</summary>
+    IPluginStateStore State => throw new NotSupportedException("This host has no plugin state store.");
+
+    /// <summary>Recurring work, stopped when the plugin unloads (<see cref="IPluginScheduler"/>).</summary>
+    IPluginScheduler Scheduler => throw new NotSupportedException("This host has no plugin scheduler.");
 }
 
 /// <summary>

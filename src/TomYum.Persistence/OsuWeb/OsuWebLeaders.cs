@@ -22,7 +22,7 @@ public sealed class OsuWebLeaders
 
     // (A play without mods has no acronyms to extract: NULL, so it falls back to an empty list.)
     private const string Eligible = """
-        s.passed = 1 AND s.preserve = 1 AND u.user_type <> 1 AND u.user_warnings = 0
+        s.passed = 1 AND s.preserve = 1 AND u.user_type <> 1 AND u.user_warnings = 0 AND s.ruleset_id <= 3
           AND b.approved IN (1, 2, 3, 4) AND b.deleted_at IS NULL
           AND NOT JSON_OVERLAPS(COALESCE(JSON_EXTRACT(s.data, '$.mods[*].acronym'), JSON_ARRAY()), JSON_ARRAY('RX', 'AP'))
         """;

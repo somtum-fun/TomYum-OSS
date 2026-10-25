@@ -35,6 +35,7 @@ internal sealed class PluginHostService : IHostedService
     private readonly IChallengeService _challengeService;
 
     private readonly List<IPlugin> _plugins = [];
+    private readonly Dictionary<string, PluginScheduler> _schedulers = new(StringComparer.OrdinalIgnoreCase);
     private PluginLoader? _loader;
 
     public PluginHostService(
@@ -84,6 +85,7 @@ internal sealed class PluginHostService : IHostedService
         // Everything else, for trusted plugins only (PluginContext hands it out only with Data).
         _hostServices.Register(_services);
         _hostServices.Register(_challengeService);
+        PublishHostServices();
 
         var directory = ResolvePluginsDirectory(_options.Directory);
         _loader = new PluginLoader(
@@ -117,6 +119,7 @@ internal sealed class PluginHostService : IHostedService
 #pragma warning restore CA1031
             {
                 _log.LogError(ex, "plugin {Id} failed to initialize; skipping", plugin.Manifest.Id);
+                StopScheduler(plugin.Manifest.Id);
                 await _loader.UnloadAsync(plugin, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -147,6 +150,7 @@ internal sealed class PluginHostService : IHostedService
                 _log.LogWarning(ex, "plugin {Id} shutdown threw", plugin.Manifest.Id);
             }
 
+            StopScheduler(plugin.Manifest.Id);
             if (_loader is not null)
                 await _loader.UnloadAsync(plugin, cancellationToken).ConfigureAwait(false);
         }
@@ -167,7 +171,41 @@ internal sealed class PluginHostService : IHostedService
         if (_database.Enabled && _options.Trusted.Contains(manifest.Id, StringComparer.OrdinalIgnoreCase))
             data = new PluginDataAccess(_database.BuildConnectionString());
 
-        return new PluginContext(config, logger, _events, commands, http, data, _hostServices);
+        var scheduler = new PluginScheduler(manifest.Id, _loggerFactory.CreateLogger($"plugin:{manifest.Id}"));
+        StopScheduler(manifest.Id);
+        _schedulers[manifest.Id] = scheduler;
+        var state = new PluginStateStore(manifest.Id, _services.GetService(typeof(StackExchange.Redis.IConnectionMultiplexer)) as StackExchange.Redis.IConnectionMultiplexer);
+
+        return new PluginContext(config, logger, _events, commands, http, data, _hostServices, state, scheduler);
+    }
+
+    /// <summary>
+    /// The plugin API's host services (docs/plugins.md), each published when what it needs is there (a bare host in
+    /// tests has no chat, beatmaps or pp calculator).
+    /// </summary>
+    private void PublishHostServices()
+    {
+        T? Get<T>() where T : class => _services.GetService(typeof(T)) as T;
+
+        var scopes = Get<Microsoft.Extensions.DependencyInjection.IServiceScopeFactory>();
+        if (scopes is null)
+            return;
+        if (Get<Bancho.BanchoBot>() is not null)
+            _hostServices.Register<IHostCommands>(new HostCommands(_services));
+        _hostServices.Register<IHostAccounts>(new HostAccounts(scopes));
+        if (Get<Bancho.ChannelRegistry>() is { } channels && Get<Bancho.ChatLog>() is { } chatLog)
+            _hostServices.Register<IHostChat>(new HostChat(scopes, channels, chatLog, Get<OsuWeb.OsuWebChatBridge>()));
+        _hostServices.Register<IHostReplays>(new HostReplays(scopes, _configuration));
+        _hostServices.Register<IHostBeatmaps>(new HostBeatmaps(scopes, Get<TomYum.Performance.OsuFileCache>()));
+        _hostServices.Register<IRulesetRegistry>(new HostRulesetRegistry(scopes));
+        if (Get<TomYum.Performance.IPerformanceCalculator>() is { } calculator)
+            _hostServices.Register<IHostPerformance>(new HostPerformance(calculator));
+    }
+
+    private void StopScheduler(string pluginId)
+    {
+        if (_schedulers.Remove(pluginId, out var scheduler))
+            scheduler.Dispose();
     }
 
     private string ResolvePluginsDirectory(string configured)

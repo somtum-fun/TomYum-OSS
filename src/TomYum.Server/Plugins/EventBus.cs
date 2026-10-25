@@ -35,6 +35,14 @@ public sealed class EventBus : IEventBus
         return subscription;
     }
 
+    /// <summary>Whether any plugin listens for <typeparamref name="TEvent"/> (the website feed skips the rest).</summary>
+    public bool HasSubscribers<TEvent>()
+        where TEvent : IPluginEvent
+    {
+        lock (_lock)
+            return _byType.TryGetValue(typeof(TEvent), out var list) && list.Count > 0;
+    }
+
     public async Task PublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken = default)
         where TEvent : IPluginEvent
     {

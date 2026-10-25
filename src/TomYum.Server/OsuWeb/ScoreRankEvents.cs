@@ -63,7 +63,9 @@ public sealed class ScoreRankEvents : BackgroundService
 
         foreach (var score in await community.GetScoresAfterAsync(mark, 200, cancellationToken).ConfigureAwait(false))
         {
-            if (await community.GetPlacementAsync(score, cancellationToken).ConfigureAwait(false) is { Position: <= MaxPosition } placement)
+            // A custom lazer ruleset's play (10 and up) is on the website's own score boards for it, not announced here.
+            if (score.Ruleset is >= 0 and <= 3
+                && await community.GetPlacementAsync(score, cancellationToken).ConfigureAwait(false) is { Position: <= MaxPosition } placement)
                 await AnnounceAsync(interop, score, placement, cancellationToken).ConfigureAwait(false);
             _mark = score.ScoreId;
         }
@@ -108,7 +110,7 @@ public sealed class ScoreRankEvents : BackgroundService
             foreach (var score in page)
             {
                 after = score.ScoreId;
-                if (score.ScoreId > upTo || (liveSince is { } since && score.EndedAt >= since))
+                if (score.ScoreId > upTo || (liveSince is { } since && score.EndedAt >= since) || score.Ruleset is < 0 or > 3)
                     continue;
                 if (await community.GetPlacementAsync(score, cancellationToken).ConfigureAwait(false) is not { Position: <= MaxPosition } placement)
                     continue;
