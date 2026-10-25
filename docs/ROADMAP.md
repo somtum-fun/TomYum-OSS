@@ -1,6 +1,6 @@
 # TomYum Roadmap
 
-_Last updated: 2026-10-14 (version 0.5.5)._ .NET 10; used in production for stable, lazer and the website.
+_Last updated: 2026-10-25 (version 0.6.0)._ .NET 10; used in production for stable, lazer and the website.
 
 `0.5.0` is the first **stable** release. `0.6.0` to `1.0.0` are small fixes and growing up:
 scaling, object storage, Kubernetes, and a core generic enough for anyone's server. How each feature
@@ -25,6 +25,11 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decisio
   guessing their name; `#announce` is staff-only; `X-Real-IP`/`CF-IPCountry` are only believed from your
   own proxy (a loopback or private-network address); the website's blocks and "friends only" apply to
   in-game private messages.
+- `0.6.0` (2026-10-25): a bigger plugin API (command options, commands as a user, accounts, chat, replays,
+  beatmaps, pp, rulesets, a state store, a scheduler; feed events for scores, medals, registrations, status
+  changes, reports, chat and server errors; a player message on vetoes); custom lazer rulesets from
+  rulesets.info, ranked by score (with osu-web-tomyum); lazer scores must fit their map (judgements,
+  combo, play time).
 
 ## 0.6.0 – 1.0.0: small fixes, scaling, a generic core
 - [ ] Small fixes from production.
