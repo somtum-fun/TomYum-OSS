@@ -61,6 +61,20 @@ public static class LazerScoreJson
         return root.ToJsonString();
     }
 
+    /// <summary>
+    /// <paramref name="lazerScore"/> as an SS with its own mods (the map's max pp as the player played it, a DT's
+    /// speed and DA's stats included): every result the map has, hit as well as it can be (its maximum_statistics).
+    /// </summary>
+    public static string? AsPerfect(string? lazerScore)
+    {
+        if (string.IsNullOrWhiteSpace(lazerScore) || JsonNode.Parse(lazerScore) is not JsonObject root
+            || root["maximum_statistics"] is not JsonObject maximum || maximum.Count == 0)
+            return lazerScore;
+        root["statistics"] = maximum.DeepClone();
+        root["accuracy"] = 1.0;
+        return root.ToJsonString();
+    }
+
     /// <summary>Lazer's tick results that a full combo hits all of, and their misses.</summary>
     private static readonly (string Hit, string Miss)[] TickResults =
         [("large_tick_hit", "large_tick_miss"), ("small_tick_hit", "small_tick_miss"), ("slider_tail_hit", "slider_tail_miss")];
