@@ -87,43 +87,6 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
         return pp;
     }
 
-    /// <summary>
-    /// A lazer play's total score as Reprise Lazer scores it: its score without mods times the mods' multiplier,
-    /// with Relax and Autopilot at 1x and Difficulty Adjust's gentler one (in osu! 0.01x per 0.1 a stat moves,
-    /// at least 0.5x; 0.9x elsewhere). Older clients (osu!'s 0.1x Relax, its harsher Difficulty Adjust) get
-    /// what the current one gives. Null when the map can't be read.
-    /// </summary>
-    public async Task<long?> RepriseTotalScoreAsync(int beatmapId, int rulesetId, string lazerScore, long withoutMods, CancellationToken cancellationToken = default)
-    {
-        if (rulesetId is < 0 or > 3)
-            return null;
-        var ruleset = GetRuleset(rulesetId);
-        var mods = LazerMods(ruleset, lazerScore);
-        var difficulty = await DifficultyAsync(beatmapId, rulesetId, "lazer:" + LazerScoreJson.ModsKey(lazerScore), ruleset, mods, cancellationToken).ConfigureAwait(false);
-        if (difficulty is null)
-            return null;
-
-        var map = difficulty.Beatmap.Difficulty;
-        var others = mods.Where(m => m is not osu.Game.Rulesets.Mods.ModRelax and not osu.Game.Rulesets.Osu.Mods.OsuModAutopilot and not osu.Game.Rulesets.Mods.ModDifficultyAdjust).ToArray();
-        var multiplier = ruleset.CreateScoreMultiplierCalculator(new ScoreMultiplierContext(map)).CalculateFor(others);
-        if (mods.OfType<osu.Game.Rulesets.Mods.ModDifficultyAdjust>().FirstOrDefault() is { } adjust)
-            multiplier *= DifficultyAdjustMultiplier(rulesetId, adjust, map);
-        return (long)Math.Round(withoutMods * multiplier);
-    }
-
-    /// <summary>Reprise Lazer's Difficulty Adjust multiplier (its OsuScoreMultiplierCalculatorV2 and the other rulesets').</summary>
-    public static double DifficultyAdjustMultiplier(int rulesetId, osu.Game.Rulesets.Mods.ModDifficultyAdjust adjust, IBeatmapDifficultyInfo map)
-    {
-        ArgumentNullException.ThrowIfNull(adjust);
-        ArgumentNullException.ThrowIfNull(map);
-        if (rulesetId != 0 || adjust is not osu.Game.Rulesets.Osu.Mods.OsuModDifficultyAdjust osu)
-            return 0.9;
-        static double Stat(double? chosen, double own) => Math.Max(0.5, 1.0 - Math.Abs((chosen ?? own) - own) * 0.1);
-        return Math.Max(0.5,
-            Stat(osu.CircleSize.Value, map.CircleSize) * Stat(osu.DrainRate.Value, map.DrainRate)
-            * Stat(osu.OverallDifficulty.Value, map.OverallDifficulty) * Stat(osu.ApproachRate.Value, map.ApproachRate));
-    }
-
     /// <summary>A lazer play's mods, settings and all, from its JSON.</summary>
     public static osu.Game.Rulesets.Mods.Mod[] LazerMods(Ruleset ruleset, string lazerScore)
     {

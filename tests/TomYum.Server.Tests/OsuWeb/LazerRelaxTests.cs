@@ -46,18 +46,6 @@ public sealed class LazerRelaxTests : OsuWebDatabaseTest
     public void SpeedChange_IsTheRateModsOwn(string data, double? speed) =>
         Assert.Equal(speed, LazerRelaxImport.SpeedChange(data));
 
-    [Theory]
-    // osu!'s 0.1x Relax (DT HD: 1.317 x 0.1): counted at 1x.
-    [InlineData("""{"mods":[{"acronym":"DT"},{"acronym":"HD"},{"acronym":"RX"}],"total_score_without_mods":945808}""", 124529, 1245290L)]
-    // Already 1x.
-    [InlineData("""{"mods":[{"acronym":"DT"},{"acronym":"HD"},{"acronym":"RX"}],"total_score_without_mods":945808}""", 1245290, null)]
-    // Easy and Half Time make a 1x play this low too: left as it is.
-    [InlineData("""{"mods":[{"acronym":"EZ"},{"acronym":"HT"},{"acronym":"RX"}],"total_score_without_mods":900000}""", 135000, null)]
-    // No score without mods to tell by.
-    [InlineData("""{"mods":[{"acronym":"RX"}]}""", 50000, null)]
-    public void FullScore_UndoesOsusTenthForRelax(string data, long total, long? full) =>
-        Assert.Equal(full, LazerRelaxImport.FullScore(data, total));
-
     [Fact]
     public void Pp_FollowsTheRateModsOwnSpeed()
     {

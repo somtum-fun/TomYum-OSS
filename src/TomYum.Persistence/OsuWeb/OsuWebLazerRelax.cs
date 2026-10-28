@@ -72,11 +72,6 @@ public sealed class OsuWebLazerRelax
     /// lazer's results), null for none. The score stays unranked, so the pp never counts toward
     /// vanilla totals (ppy's processor only adds up ranked scores, and leaves unranked mods' pp alone).
     /// </summary>
-    /// <summary>A lazer Relax/Autopilot play's score as it counts here (see LazerRelaxImport.FullScore).</summary>
-    public Task SetTotalScoreAsync(ulong scoreId, long totalScore, CancellationToken cancellationToken = default) =>
-        _db.Database.ExecuteSqlAsync(
-            $"UPDATE scores SET total_score = {totalScore} WHERE id = {scoreId} AND legacy_score_id IS NULL", cancellationToken);
-
     public Task SetPpAsync(ulong scoreId, double? pp, CancellationToken cancellationToken = default) =>
         _db.Database.ExecuteSqlAsync(
             $"UPDATE scores SET pp = {pp}, ranked = 0 WHERE id = {scoreId} AND legacy_score_id IS NULL", cancellationToken);
