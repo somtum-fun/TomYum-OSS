@@ -35,7 +35,9 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 IDs follow bancho.py: Relax is the mode + 4 and Autopilot the mode + 8 (osu!mania has no Relax).
 Relax and Autopilot have their own leaderboards, stats and rankings, ranked by pp, and lazer plays
 with those mods count towards them too. Their pp comes from the `pp-sidecar` (`sidecars/pp-sidecar`).
-Custom lazer rulesets (Sentakki, tau, Rush!, ...) aren't supported yet.
+Custom lazer rulesets from rulesets.info (sentakki, tau, Rush!, ...) are supported too, ranked by score
+(no pp): staff turn them on and pin a release in the website's admin panel. See
+[custom rulesets](https://docs.somtum.fun/features/custom-rulesets).
 
 ## Core features
 
