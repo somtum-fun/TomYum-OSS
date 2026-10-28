@@ -61,7 +61,9 @@ public sealed record ScoreCard(
     int Miss,
     DateTime EndedAt,
     // How fast the map played (lazer's DT/HT keep the speed picked: OsuWebCommunity.ReadRate); null: unknown, or it changed during the play.
-    double? Rate = null)
+    double? Rate = null,
+    // The score's data as the website keeps it (lazer: its mods with settings and judgements); null when unknown.
+    string? Data = null)
 {
     /// <summary>"Artist - Title (Mapper) [Version]", as lazer shows a map.</summary>
     public string MapName => string.IsNullOrEmpty(Creator) ? $"{Artist} - {Title} [{Version}]" : $"{Artist} - {Title} ({Creator}) [{Version}]";
@@ -649,7 +651,7 @@ public sealed partial class OsuWebCommunity
             row.Artist, row.Title, row.Version, row.Creator, row.StarRating, row.BeatmapStatus, mods,
             row.Accuracy, (int)row.MaxCombo, (int)row.BeatmapMaxCombo, row.Passed ? row.Grade : "F", row.Passed, row.Pp,
             row.TotalScore, row.LegacyTotalScore, row.IsStable, great, ok, meh, miss,
-            DateTime.SpecifyKind(row.EndedAt, DateTimeKind.Utc), ReadRate(row.Data));
+            DateTime.SpecifyKind(row.EndedAt, DateTimeKind.Utc), ReadRate(row.Data), row.Data);
     }
 
     /// <summary>

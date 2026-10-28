@@ -38,6 +38,33 @@ public static class LazerScoreJson
         return root.ToJsonString();
     }
 
+    /// <summary>
+    /// <paramref name="lazerScore"/> as a full combo ("pp if FC"): its misses hit as greats, and every slider
+    /// tick and end (and catch's droplets) caught, as many as the map has.
+    /// </summary>
+    public static string? AsFullCombo(string? lazerScore)
+    {
+        if (string.IsNullOrWhiteSpace(lazerScore) || JsonNode.Parse(lazerScore) is not JsonObject root || root["statistics"] is not JsonObject statistics)
+            return lazerScore;
+        int Count(JsonObject? counts, string name) => counts?[name] is JsonValue value && value.TryGetValue(out int n) ? n : 0;
+
+        statistics["great"] = Count(statistics, "great") + Count(statistics, "miss");
+        var maximum = root["maximum_statistics"] as JsonObject;
+        foreach (var (hit, miss) in TickResults)
+        {
+            var most = Math.Max(Count(maximum, hit), Count(statistics, hit) + Count(statistics, miss));
+            if (most > 0)
+                statistics[hit] = most;
+            statistics.Remove(miss);
+        }
+        statistics.Remove("miss");
+        return root.ToJsonString();
+    }
+
+    /// <summary>Lazer's tick results that a full combo hits all of, and their misses.</summary>
+    private static readonly (string Hit, string Miss)[] TickResults =
+        [("large_tick_hit", "large_tick_miss"), ("small_tick_hit", "small_tick_miss"), ("slider_tail_hit", "slider_tail_miss")];
+
     /// <summary>The play's mods as JSON (the difficulty cache's key for them).</summary>
     public static string ModsKey(string lazerScore) =>
         JsonNode.Parse(lazerScore)?["mods"]?.ToJsonString(new JsonSerializerOptions { WriteIndented = false }) ?? "[]";
