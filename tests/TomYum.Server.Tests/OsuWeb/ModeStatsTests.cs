@@ -57,6 +57,11 @@ public sealed class ModeStatsTests : OsuWebDatabaseTest
     {
         var db = await NewTomYumContextAsync();
         var now = DateTimeOffset.UtcNow;
+        // Top plays only count on maps that give pp.
+        db.Beatmaps.AddRange(
+            new Beatmap { Id = 10, SetId = 10, Md5 = "a", Status = RankedStatus.Ranked, Artist = "A", Title = "T", Version = "V", Creator = "C" },
+            new Beatmap { Id = 11, SetId = 11, Md5 = "b", Status = RankedStatus.Ranked, Artist = "A", Title = "T", Version = "V", Creator = "C" },
+            new Beatmap { Id = 12, SetId = 12, Md5 = "c", Status = RankedStatus.Ranked, Artist = "A", Title = "T", Version = "V", Creator = "C" });
         db.Scores.AddRange(
             new Score { UserId = 1, BeatmapId = 10, BeatmapMd5 = "a", Mode = 4, Grade = "S", Status = ScoreStatus.Best, Passed = true, Pp = 100, Count300 = 10, SubmittedAt = now.AddDays(-3) },
             new Score { UserId = 1, BeatmapId = 11, BeatmapMd5 = "b", Mode = 4, Grade = "A", Status = ScoreStatus.Best, Passed = true, Pp = 200, Count300 = 9, Count100 = 1, SubmittedAt = now.AddHours(-2) },
