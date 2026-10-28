@@ -135,6 +135,34 @@ public sealed class LazerRelaxImport : BackgroundService
     /// A lazer Relax/Autopilot play's score at Relax's and Autopilot's 1x, when its client scored them at osu!'s 0.1x (its
     /// score is about a tenth of its score without mods, times the other mods'); null when it's at 1x already.
     /// </summary>
+    /// <summary>The play's total as Reprise Lazer scores it (see the import); null when it can't be told.</summary>
+    private async Task<long?> RepriseScoreAsync(IServiceProvider services, int beatmapId, LazerRelaxPlay play, string? lazerScore, CancellationToken cancellationToken)
+    {
+        if (lazerScore is not null && WithoutMods(play.Data) is { } withoutMods)
+        {
+            try
+            {
+                if (await services.GetRequiredService<TomYum.Performance.OfficialPerformanceCalculator>()
+                        .RepriseTotalScoreAsync(beatmapId, play.Ruleset, lazerScore, withoutMods, cancellationToken).ConfigureAwait(false) is { } total)
+                {
+                    return total;
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Lazer relax: score {ScoreId}'s total couldn't be worked out from its map.", play.ScoreId);
+            }
+        }
+        return FullScore(play.Data, play.TotalScore);
+    }
+
+    /// <summary>The play's score without mods (lazer keeps it in its data), or null.</summary>
+    public static long? WithoutMods(string data)
+    {
+        using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(data) ? "{}" : data);
+        return document.RootElement.TryGetProperty("total_score_without_mods", out var without) && without.TryGetInt64(out var value) && value > 0 ? value : null;
+    }
+
     public static long? FullScore(string data, long totalScore)
     {
         using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(data) ? "{}" : data);
@@ -215,9 +243,11 @@ public sealed class LazerRelaxImport : BackgroundService
             await scores.MarkPreviousBestAsync((int)play.UserId, beatmap.Md5, gameMode, cancellationToken).ConfigureAwait(false);
 
         var value = play.LegacyTotalScore > 0 ? play.LegacyTotalScore : play.TotalScore;
-        // Relax and Autopilot score in full here (1x): a client that still scored them at osu!'s 0.1x gets its score
-        // as it counts, on the website too.
-        if (play.LegacyTotalScore <= 0 && FullScore(play.Data, play.TotalScore) is { } full)
+        // Scored as Reprise Lazer scores it (Relax and Autopilot at 1x, its gentler Difficulty Adjust), whatever the
+        // client: its score without mods times those multipliers, on the website too. Without the map, an old
+        // client's 0.1x Relax is still told by the score alone.
+        if (play.LegacyTotalScore <= 0 && await RepriseScoreAsync(services, beatmap.Id, play, lazerScore, cancellationToken).ConfigureAwait(false) is { } full
+            && full != play.TotalScore)
         {
             value = full;
             await services.GetRequiredService<OsuWebLazerRelax>().SetTotalScoreAsync(play.ScoreId, full, cancellationToken).ConfigureAwait(false);
