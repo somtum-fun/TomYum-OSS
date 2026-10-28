@@ -8,7 +8,7 @@ namespace TomYum.Server.Tests;
 /// <summary>A lazer Relax play's accuracy as lazer shows it (slider ticks and ends count), not from its 300/100/50s alone.</summary>
 public class LazerAccuracyTests
 {
-    // Lilily's Koko Soko [INCREDIBILIS] +DT(1.12x) RX on reprise: lazer (and the website) gave 0.906784; its
+    // Lilily's Koko Soko [INCREDIBILIS] +DT(1.12x) RX: lazer (and the website) gave 0.906784; its
     // 300/100/50/misses alone give 0.89761, which the Relax leaderboard showed.
     private const string Play = """
         {"statistics":{"ok":83,"meh":16,"miss":67,"great":1159,"ignore_hit":289,"ignore_miss":5,"large_tick_hit":10,"slider_tail_hit":288},
