@@ -472,6 +472,12 @@ public sealed partial class OsuWebCommunity
         return (firsts.Count, top);
     }
 
+    /// <summary>Whether <paramref name="userId"/> has an "achieved rank" activity entry on the map since <paramref name="since"/> (UTC).</summary>
+    public async Task<bool> HasRankEventSinceAsync(int userId, int beatmapId, DateTime since, CancellationToken cancellationToken = default) =>
+        await _db.Database.SqlQuery<long>(
+                $"SELECT COUNT(*) AS Value FROM osu_events WHERE user_id = {userId} AND beatmap_id = {beatmapId} AND `date` >= {since} AND text LIKE '%achieved%rank #%'")
+            .SingleAsync(cancellationToken).ConfigureAwait(false) > 0;
+
     /// <summary>When the oldest "achieved rank" activity entry was written (null: there's none).</summary>
     public async Task<DateTime?> FirstRankEventAtAsync(CancellationToken cancellationToken = default) =>
         (await _db.Database.SqlQueryRaw<DateTime?>("SELECT MIN(`date`) AS Value FROM osu_events WHERE text LIKE '%achieved%rank #%'")

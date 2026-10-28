@@ -25,6 +25,15 @@ public sealed class ScoreRankEvents : BackgroundService
     /// <summary>The <c>osu_counts</c> row marking the one-off backfill done.</summary>
     public const string BackfillName = "tomyum_rank_events_backfill";
 
+    /// <summary>
+    /// The <c>osu_counts</c> row marking done the one-off catch-up of Relax/Autopilot plays' entries (for a while
+    /// the website's placement left them out, so they got none).
+    /// </summary>
+    public const string RelaxCatchUpName = "tomyum_rank_events_relax_catchup";
+
+    /// <summary>How long a new Relax/Autopilot play is waited for (TomYum takes it in after the website has it).</summary>
+    private static readonly TimeSpan ImportWait = TimeSpan.FromMinutes(2);
+
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(3);
 
     private readonly IServiceScopeFactory _scopes;
@@ -58,17 +67,60 @@ public sealed class ScoreRankEvents : BackgroundService
             _mark = await community.GetLatestScoreIdAsync(cancellationToken).ConfigureAwait(false);
             if (!await community.WasDoneAsync(BackfillName, cancellationToken).ConfigureAwait(false))
                 await BackfillAsync(community, interop, _mark.Value, cancellationToken).ConfigureAwait(false);
+            if (!await community.WasDoneAsync(RelaxCatchUpName, cancellationToken).ConfigureAwait(false))
+                await RelaxCatchUpAsync(scope.ServiceProvider, community, interop, _mark.Value, cancellationToken).ConfigureAwait(false);
             return;
         }
 
         foreach (var score in await community.GetScoresAfterAsync(mark, 200, cancellationToken).ConfigureAwait(false))
         {
             // A custom lazer ruleset's play (10 and up) is on the website's own score boards for it, not announced here.
-            if (score.Ruleset is >= 0 and <= 3
-                && await community.GetPlacementAsync(score, cancellationToken).ConfigureAwait(false) is { Position: <= MaxPosition } placement)
+            if (score.Ruleset is < 0 or > 3)
+            {
+                _mark = score.ScoreId;
+                continue;
+            }
+
+            // A Relax/Autopilot play is placed on TomYum's board, once TomYum has taken it in (waited for, briefly).
+            var result = await ModePlacements.PlacementAsync(scope.ServiceProvider, community, score, cancellationToken).ConfigureAwait(false);
+            if (result.Pending && DateTime.UtcNow - score.EndedAt < ImportWait)
+                break;
+            if (result.Placement is { Position: <= MaxPosition } placement)
                 await AnnounceAsync(interop, score, placement, cancellationToken).ConfigureAwait(false);
             _mark = score.ScoreId;
         }
+    }
+
+    /// <summary>
+    /// Relax/Autopilot plays of the last two days (up to <paramref name="upTo"/>) that placed but have no entry: for a
+    /// while the website's placement (vanilla plays only) left them out. Dated now, as the backfill's; no #announce.
+    /// </summary>
+    private async Task RelaxCatchUpAsync(IServiceProvider services, OsuWebCommunity community, OsuWebInterop interop, ulong upTo, CancellationToken cancellationToken)
+    {
+        var since = DateTime.UtcNow.AddDays(-2);
+        var written = 0;
+        ulong after = 0;
+        while (true)
+        {
+            var page = await community.GetScoresAfterAsync(after, 200, cancellationToken).ConfigureAwait(false);
+            if (page.Count == 0)
+                break;
+            foreach (var score in page)
+            {
+                after = score.ScoreId;
+                if (score.ScoreId > upTo || score.EndedAt < since || !OsuWebCommunity.IsRelaxOrAutopilot(score))
+                    continue;
+                if ((await ModePlacements.PlacementAsync(services, community, score, cancellationToken).ConfigureAwait(false)).Placement is not { Position: <= MaxPosition } placement
+                    || await community.HasRankEventSinceAsync(score.UserId, score.BeatmapId, score.EndedAt.AddMinutes(-1), cancellationToken).ConfigureAwait(false))
+                    continue;
+                await interop.RankAchievedAsync(score.UserId, score.BeatmapId, score.Ruleset, placement.Position, score.Grade, score.IsStable, cancellationToken).ConfigureAwait(false);
+                written++;
+            }
+            if (after >= upTo)
+                break;
+        }
+        await community.MarkDoneAsync(RelaxCatchUpName, cancellationToken).ConfigureAwait(false);
+        _logger.LogInformation("Rank events: {Count} Relax/Autopilot entry(ies) caught up.", written);
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
