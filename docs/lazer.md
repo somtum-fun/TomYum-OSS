@@ -98,6 +98,11 @@ panel (**Admin panel → Ranked mods**) count as ranked too, whatever their sett
   15 seconds (`TomYumRelaxWait.cs`). The game asks for the player's statistics once the processor says
   a score is processed, so its results screen then shows the play counted (the client asks for the
   `osurx`/`osuap`/... statistics after an RX/AP play).
+- TomYum works out those plays' pp itself, from the play's own mods (with their settings: a rate mod's
+  own speed, Difficulty Adjust's) and judgements (`scores.LazerScore`, `LazerScoreJson`), as ppy's score
+  processor would; their accuracy is lazer's (slider ticks and ends count), they become a player's best and
+  count in ranked/total score as stable submissions do (`GameMode.BeatsBest`), and they keep the score the
+  client gave.
 - Relax and Autopilot aren't offered (they have their own leaderboards here, like stable's); Classic
   marks stable plays. Stable plays aren't affected.
 - The lazer client still shows such a mod as unranked while playing: only the server's answer changes.
@@ -144,7 +149,7 @@ osu-web fork, and the osu! wiki/news.
   carry the Classic mod (0.96x). Leaderboards and ranked score use the classic display.
 - **pp mods.** Only mods marked `Ranked` give pp (`AllModsValidForPerformance`); Classic is allowed
   on legacy scores only. **Relax/Autopilot give no pp in lazer** (`Mod.Ranked` defaults to false and
-  ModRelax doesn't override it). Only ranked/approved maps give pp (`IsBeatmapValidForPerformance`).
+  ModRelax doesn't override it): TomYum gives them theirs on its own boards (above). Only ranked/approved maps give pp (`IsBeatmapValidForPerformance`).
 - **Client builds.** With client checking on, a lazer score only gets pp if its build
   (`version_hash` → `osu_builds.allow_performance`) is allowed.
 
@@ -184,7 +189,7 @@ TomYum already mirrors stable scores as legacy rows, which matches ppy's model. 
   website, so stable shows the combined number like on osu.ppy.sh.
   - Stable scores' pp would come from lazer's formula on the website. TomYum's own in-game pp should
     use the same calculator, or the two numbers will differ.
-  - Relax/autopilot stay TomYum-only. They're not mirrored today and lazer gives them no pp anyway.
+  - Relax/autopilot stay TomYum-only: they aren't mirrored, and TomYum works out their pp itself.
 - **B: TomYum computes everything.** TomYum reads the website's lazer scores and does the pp and
   stats itself. It needs lazer-mod pp and standardised→classic conversion. That's more work and
   duplicates ppy's processor.
