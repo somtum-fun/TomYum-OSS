@@ -236,7 +236,7 @@ public static class AdminModeScoresEndpoints
     /// Every lazer Relax/Autopilot play scored again as Reprise Lazer scores it (Relax and Autopilot at 1x, its
     /// gentler Difficulty Adjust: LazerRelaxImport), from its score without mods: older clients' plays (osu!'s
     /// 0.1x Relax, its 0.1x-at-worst Difficulty Adjust) get what the current client gives, on the leaderboards,
-    /// the website and the players' ranked score.
+    /// the website and the players' ranked and total score (lazer plays counted as classic, as osu! adds them).
     /// </summary>
     internal static async Task<IResult> RescoreLazerAsync(
         TomYumDbContext db, TomYum.Persistence.OsuWeb.OsuWebLazerRelax website, TomYum.Performance.OfficialPerformanceCalculator calculator,
@@ -254,6 +254,8 @@ public static class AdminModeScoresEndpoints
                 if (score?.LazerScore is null || TomYum.Server.OsuWeb.LazerRelaxImport.WithoutMods(play.Data) is not { } withoutMods)
                     continue;
                 checkedCount++;
+                // Every Relax/Autopilot player's totals are counted again below (lazer plays as classic).
+                players.Add((score.UserId, score.Mode));
                 if (await calculator.RepriseTotalScoreAsync(score.BeatmapId, play.Ruleset, score.LazerScore, withoutMods, cancellationToken).ConfigureAwait(false) is not { } total)
                     continue;
                 if (total != play.TotalScore)
@@ -262,14 +264,17 @@ public static class AdminModeScoresEndpoints
                     continue;
                 await db.Scores.Where(s => s.Id == score.Id).ExecuteUpdateAsync(u => u.SetProperty(s => s.ScoreValue, total), cancellationToken).ConfigureAwait(false);
                 changed++;
-                players.Add((score.UserId, score.Mode));
             }
         }
 
         foreach (var (userId, mode) in players)
         {
-            if (await db.UserStats.FirstOrDefaultAsync(s => s.UserId == userId && s.Mode == mode, cancellationToken).ConfigureAwait(false) is { } stats)
-                await BestScoreStats.ApplyAsync(db, stats, cancellationToken).ConfigureAwait(false);
+            if (await db.UserStats.FirstOrDefaultAsync(s => s.UserId == userId && s.Mode == mode, cancellationToken).ConfigureAwait(false) is not { } stats)
+                continue;
+            await BestScoreStats.ApplyAsync(db, stats, cancellationToken).ConfigureAwait(false);
+            // Total score from every play kept in the mode, lazer ones as classic.
+            stats.TotalScore = (await db.Scores.AsNoTracking().Where(s => s.UserId == userId && s.Mode == mode).ToListAsync(cancellationToken).ConfigureAwait(false))
+                .Sum(OsuWeb.LazerRelaxImport.ClassicScore);
         }
         await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
@@ -279,7 +284,7 @@ public static class AdminModeScoresEndpoints
             ActorId = AdminEndpoints.ActorId(context),
             Action = "scores.rescore_lazer",
             Summary = string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                $"Lazer Relax/Autopilot plays scored as Reprise Lazer scores them: {changed} of {checkedCount} changed, {players.Count} player(s)' ranked score"),
+                $"Lazer Relax/Autopilot plays scored as Reprise Lazer scores them: {changed} of {checkedCount} changed; {players.Count} player(s)' ranked and total score counted again"),
         }, cancellationToken).ConfigureAwait(false);
         return Results.Ok(new { Checked = checkedCount, Changed = changed, Players = players.Count });
     }

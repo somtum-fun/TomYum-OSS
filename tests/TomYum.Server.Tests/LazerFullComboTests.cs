@@ -55,3 +55,18 @@ public class RepriseDifficultyAdjustTests
     public void OtherRulesets_AreFlat() =>
         Assert.Equal(0.9, OfficialPerformanceCalculator.DifficultyAdjustMultiplier(1, new osu.Game.Rulesets.Taiko.Mods.TaikoModDifficultyAdjust(), Map));
 }
+
+/// <summary><see cref="LazerScoreJson.Classic"/>: a lazer play's score as it counts in a player's totals.</summary>
+public class LazerClassicScoreTests
+{
+    [Fact]
+    public void Osu_AsTheWebsiteShowsIt() =>
+        // 279 objects at 579,789 standardised: 1,527,907 on the website's classic setting too.
+        Assert.Equal(1_527_907, LazerScoreJson.Classic("""{"maximum_statistics":{"great":279,"large_tick_hit":40}}""", 0, 579_789));
+
+    [Fact]
+    public void NoObjectsKnown_StaysStandardised() => Assert.Equal(618_901, LazerScoreJson.Classic(null, 0, 618_901));
+
+    [Fact]
+    public void Mania_IsStandardised() => Assert.Equal(900_000, LazerScoreJson.Classic("""{"maximum_statistics":{"perfect":500}}""", 3, 900_000));
+}

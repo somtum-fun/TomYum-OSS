@@ -156,6 +156,15 @@ public sealed class LazerRelaxImport : BackgroundService
         return FullScore(play.Data, play.TotalScore);
     }
 
+    /// <summary>A play's score as it counts in a player's ranked and total score: a lazer play's as classic, a stable play's as it is.</summary>
+    public static long ClassicScore(Score score)
+    {
+        ArgumentNullException.ThrowIfNull(score);
+        return score.FromLazer
+            ? TomYum.Performance.LazerScoreJson.Classic(score.LazerScore, GameMode.AsVanilla(score.Mode), score.ScoreValue)
+            : score.ScoreValue;
+    }
+
     /// <summary>The play's score without mods (lazer keeps it in its data), or null.</summary>
     public static long? WithoutMods(string data)
     {
@@ -287,10 +296,13 @@ public sealed class LazerRelaxImport : BackgroundService
         var userStats = services.GetRequiredService<IUserStatsRepository>();
         var stats = await userStats.GetOrCreateAsync((int)play.UserId, gameMode, cancellationToken).ConfigureAwait(false);
         stats.PlayCount++;
-        stats.TotalScore += value;
+        // A player's ranked and total score are classic, as osu! adds lazer plays to them (the play keeps its
+        // standardised score: leaderboards send that, and lazer shows it as the player picks).
+        var classic = TomYum.Performance.LazerScoreJson.Classic(lazerScore, play.Ruleset, value);
+        stats.TotalScore += classic;
         if (status == ScoreStatus.Best)
         {
-            stats.RankedScore = Math.Max(0, stats.RankedScore + value - (previous?.ScoreValue ?? 0));
+            stats.RankedScore = Math.Max(0, stats.RankedScore + classic - (previous is null ? 0 : ClassicScore(previous)));
             if (PerformanceTotals.Compute(await scores.GetBestPerformancesAsync((int)play.UserId, gameMode, cancellationToken).ConfigureAwait(false)) is { } totals)
             {
                 stats.Pp = totals.Pp;

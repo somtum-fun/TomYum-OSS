@@ -65,6 +65,36 @@ public static class LazerScoreJson
     private static readonly (string Hit, string Miss)[] TickResults =
         [("large_tick_hit", "large_tick_miss"), ("small_tick_hit", "small_tick_miss"), ("slider_tail_hit", "slider_tail_miss")];
 
+    /// <summary>Lazer's basic judgements (a map's objects, without ticks or bonus): what classic score counts.</summary>
+    private static readonly string[] BasicResults = ["great", "ok", "meh", "miss", "perfect", "good"];
+
+    /// <summary>
+    /// A lazer play's <paramref name="standardised"/> score as classic, as lazer shows it (and osu! adds it to a
+    /// player's ranked and total score): osu!'s conversion by ruleset, from the map's objects (the play's
+    /// maximum_statistics). <paramref name="standardised"/> as it is when the objects aren't known, or for mania.
+    /// </summary>
+    public static long Classic(string? lazerScore, int ruleset, long standardised)
+    {
+        if (string.IsNullOrWhiteSpace(lazerScore) || JsonNode.Parse(lazerScore) is not JsonObject root || root["maximum_statistics"] is not JsonObject maximum)
+            return standardised;
+        long objects = 0;
+        foreach (var name in BasicResults)
+        {
+            if (maximum[name] is JsonValue value && value.TryGetValue(out int n))
+                objects += n;
+        }
+        if (objects <= 0)
+            return standardised;
+        const double max = 1_000_000;
+        return ruleset switch
+        {
+            0 => (long)Math.Round((objects * objects * 32.57 + 100_000) * standardised / max, MidpointRounding.ToEven),
+            1 => (long)Math.Round((objects * 1109 + 100_000) * standardised / max, MidpointRounding.ToEven),
+            2 => (long)Math.Round(Math.Pow(standardised / max * objects, 2) * 21.62 + standardised / 10d, MidpointRounding.ToEven),
+            _ => standardised,
+        };
+    }
+
     /// <summary>The play's mods as JSON (the difficulty cache's key for them).</summary>
     public static string ModsKey(string lazerScore) =>
         JsonNode.Parse(lazerScore)?["mods"]?.ToJsonString(new JsonSerializerOptions { WriteIndented = false }) ?? "[]";

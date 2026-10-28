@@ -16,7 +16,8 @@ internal static class BestScoreStats
     public static async Task ApplyAsync(TomYumDbContext db, UserStats stats, CancellationToken cancellationToken)
     {
         var bests = db.Scores.AsNoTracking().Where(s => s.UserId == stats.UserId && s.Mode == stats.Mode && s.Status == ScoreStatus.Best);
-        stats.RankedScore = await bests.SumAsync(s => s.ScoreValue, cancellationToken).ConfigureAwait(false);
+        // Lazer plays count as classic (OsuWeb.LazerRelaxImport.ClassicScore), as osu! adds them.
+        stats.RankedScore = (await bests.ToListAsync(cancellationToken).ConfigureAwait(false)).Sum(OsuWeb.LazerRelaxImport.ClassicScore);
 
         var performances = await bests.Where(s => s.Pp > 0).OrderByDescending(s => s.Pp)
             .Select(s => new { s.Pp, s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss })
