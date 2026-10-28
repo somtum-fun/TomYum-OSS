@@ -179,11 +179,11 @@ public sealed partial class OsuWebCommunity
 
     /// <summary>
     /// The best pass on a map set in a time window (by pp, then total score) by a visible player, or
-    /// null: the map of the day's winner.
+    /// null: the map of the day's winner. Relax/Autopilot plays don't count: their pp is on another scale.
     /// </summary>
     public async Task<ScoreCard?> GetBestBetweenAsync(int beatmapId, int ruleset, DateTime from, DateTime to, CancellationToken cancellationToken = default) =>
         await QueryScoresAsync(
-            $"s.beatmap_id = {{0}} AND s.ruleset_id = {{1}} AND s.passed = 1 AND s.ended_at >= {{2}} AND s.ended_at < {{3}} AND {Visible}",
+            $"s.beatmap_id = {{0}} AND s.ruleset_id = {{1}} AND s.passed = 1 AND s.ended_at >= {{2}} AND s.ended_at < {{3}} AND {Visible} AND {NotRelaxOrAutopilot}",
             "COALESCE(s.pp, 0) DESC, s.total_score DESC, s.id",
             [beatmapId, ruleset, from, to],
             1,

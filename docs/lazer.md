@@ -64,13 +64,15 @@ scheduler (`daily-challenge:create-next`) opens a playlist room from the first u
 The spectator server tells lazer clients the room is open.
 
 TomYum keeps that queue filled (`DailyChallengeQueueJob`, hourly): a week ahead, each a random
-ranked map made for the day's ruleset, 1–5 minutes long, 4–6.5★, from a set that was never a daily
-challenge. Players may add EZ, NF, HD, HR (FI and MR in mania), SD, PF and FL, but no rate changes.
+ranked map made for the day's ruleset, 1–5 minutes long, from a set that was never a daily
+challenge; by weekday as osu! does it (Thursday 3–3.5★ up to Wednesday 6–6.5★), or between
+`MINSTARS` and `MAXSTARS` every day with `WEEKLY=false`. Players may add EZ, NF, HD, HR (FI and MR in mania), SD, PF and FL, but no rate changes.
 Settings (`tomyum.env`):
 
 ```
 TOMYUM_DAILYCHALLENGE__ENABLED=true         # false: fill daily_challenge_queue yourself
 TOMYUM_DAILYCHALLENGE__DAYSAHEAD=7
+TOMYUM_DAILYCHALLENGE__WEEKLY=true          # false: MINSTARS–MAXSTARS every day
 TOMYUM_DAILYCHALLENGE__MINSTARS=4
 TOMYUM_DAILYCHALLENGE__MAXSTARS=6.5
 TOMYUM_DAILYCHALLENGE__RULESETS=osu         # rotates by day, e.g. osu,osu,taiko,osu,osu,catch,mania
