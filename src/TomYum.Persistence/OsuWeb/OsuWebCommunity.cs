@@ -238,6 +238,27 @@ public sealed partial class OsuWebCommunity
     }
 
     /// <summary>The top players by pp in <paramref name="ruleset"/>, optionally in one country.</summary>
+    /// <summary>Every visible ranked player's pp in <paramref name="ruleset"/> (for the weekly "most improved").</summary>
+    public async Task<IReadOnlyDictionary<int, double>> GetAllPpAsync(int ruleset, CancellationToken cancellationToken = default)
+    {
+        var sql = $"SELECT s.user_id AS UserId, s.rank_score AS Pp FROM `{OsuWebScores.StatsTable(ruleset)}` s JOIN phpbb_users u ON u.user_id = s.user_id WHERE {Visible} AND s.rank_score > 0";
+        var rows = await _db.Database.SqlQueryRaw<PpRow>(sql).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.ToDictionary(r => (int)r.UserId, r => r.Pp);
+    }
+
+    private sealed class PpRow
+    {
+        public uint UserId { get; set; }
+        public double Pp { get; set; }
+    }
+
+    /// <summary>How many visible players <paramref name="ruleset"/>'s ranking has (pp above 0).</summary>
+    public async Task<int> GetRankedCountAsync(int ruleset, CancellationToken cancellationToken = default)
+    {
+        var sql = $"SELECT COUNT(*) AS Value FROM `{OsuWebScores.StatsTable(ruleset)}` s JOIN phpbb_users u ON u.user_id = s.user_id WHERE {Visible} AND s.rank_score > 0";
+        return (int)await _db.Database.SqlQueryRaw<long>(sql).SingleAsync(cancellationToken).ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<RankingEntry>> GetRankingAsync(int ruleset, int count, string? country = null, CancellationToken cancellationToken = default)
     {
         var sql = $$"""

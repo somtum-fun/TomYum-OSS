@@ -61,6 +61,41 @@ public sealed partial class OsuWebCommunity
             r.UpdatedAt is { } updated ? DateTime.SpecifyKind(updated, DateTimeKind.Utc) : null);
     }
 
+    /// <summary>
+    /// Maps to suggest to <paramref name="userId"/>: ranked or approved difficulties of <paramref name="ruleset"/>
+    /// (osu!'s own, no converts) rated between <paramref name="minStars"/> and <paramref name="maxStars"/> without
+    /// mods, none they've played (in any mode), one per set, <paramref name="count"/> picked at random from the
+    /// most played ones there.
+    /// </summary>
+    public async Task<IReadOnlyList<MapCard>> GetSuggestionsAsync(int userId, int ruleset, double minStars, double maxStars, int count, CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.Database.SqlQueryRaw<MapRow>(
+            """
+            SELECT * FROM (
+              SELECT b.beatmap_id AS BeatmapId, b.beatmapset_id AS BeatmapsetId, s.artist AS Artist, s.title AS Title, b.version AS Version,
+                s.creator AS Creator, b.playmode AS Ruleset, b.approved AS Status, b.difficultyrating AS StarRating,
+                CAST(b.total_length AS SIGNED) AS TotalLength, CAST(b.hit_length AS SIGNED) AS HitLength, b.bpm AS Bpm,
+                b.diff_size AS CircleSize, b.diff_approach AS ApproachRate, b.diff_overall AS OverallDifficulty, b.diff_drain AS DrainRate,
+                CAST(b.max_combo AS SIGNED) AS MaxCombo, CAST(b.playcount AS SIGNED) AS PlayCount, CAST(b.passcount AS SIGNED) AS PassCount,
+                CAST(b.countTotal AS SIGNED) AS ObjectCount, s.approved_date AS RankedAt, s.last_update AS UpdatedAt
+              FROM osu_beatmaps b JOIN osu_beatmapsets s ON s.beatmapset_id = b.beatmapset_id
+              WHERE b.playmode = {1} AND b.approved IN (1, 2) AND b.deleted_at IS NULL AND s.deleted_at IS NULL
+                AND b.difficultyrating BETWEEN {2} AND {3}
+                AND NOT EXISTS (SELECT 1 FROM scores p WHERE p.user_id = {0} AND p.beatmap_id = b.beatmap_id)
+              ORDER BY b.playcount DESC
+              LIMIT 300
+            ) candidates
+            ORDER BY RAND()
+            """, userId, ruleset, minStars, maxStars).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return rows.DistinctBy(r => r.BeatmapsetId).Take(Math.Clamp(count, 1, 25))
+            .Select(r => new MapCard((int)r.BeatmapId, (int)r.BeatmapsetId, r.Artist, r.Title, r.Version, r.Creator, r.Ruleset, r.Status,
+                r.StarRating, (int)r.TotalLength, (int)r.HitLength, r.Bpm, r.CircleSize, r.ApproachRate, r.OverallDifficulty, r.DrainRate,
+                (int)r.MaxCombo, r.PlayCount, r.PassCount, (int)r.ObjectCount,
+                r.RankedAt is { } ranked ? DateTime.SpecifyKind(ranked, DateTimeKind.Utc) : null,
+                r.UpdatedAt is { } updated ? DateTime.SpecifyKind(updated, DateTimeKind.Utc) : null))
+            .ToList();
+    }
+
     /// <summary>A set's hardest difficulty (for set links), or null.</summary>
     public async Task<int?> GetHardestMapAsync(int beatmapsetId, CancellationToken cancellationToken = default) =>
         await _db.Beatmaps.AsNoTracking()
