@@ -28,7 +28,7 @@ public sealed class StaffLogRepositoryTests : OsuWebDatabaseTest
 
             await new StaffLogRepository(context).AddAsync(entry);
 
-            var stored = await context.StaffLog.AsNoTracking().SingleAsync(e => e.TargetId == 487);
+            var stored = await context.StaffLog.AsNoTracking().SingleAsync(e => e.TargetId == 1000);
             Assert.Equal(512, stored.Summary.Length);
             Assert.StartsWith("Restricted a player: anti-cheat findings [", stored.Summary, StringComparison.Ordinal);
             Assert.EndsWith("…", stored.Summary, StringComparison.Ordinal);

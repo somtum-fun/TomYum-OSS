@@ -106,11 +106,11 @@ public class BeatmapStatusTests
         var api = new CountingApiClient(null) { Fails = true };
         var service = new BeatmapService(api);
 
-        Assert.Null(await service.GetByMd5Async("abc"));
+        Assert.Null(await service.GetByMd5Async(Abc));
         Assert.Equal(0, service.CachedCount);
 
         api.Fails = false;
-        Assert.Null(await service.GetByMd5Async("abc"));
+        Assert.Null(await service.GetByMd5Async(Abc));
         Assert.Equal(2, api.Calls);
         Assert.Equal(1, service.CachedCount);
     }
