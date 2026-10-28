@@ -59,7 +59,9 @@ public static class AdminModeScoresEndpoints
         {
             case "best":
             {
-                var best = plays.Where(s => s.Status == ScoreStatus.Best && s.Passed);
+                // Top plays are on maps that give pp (ranked, approved): not Loved, Qualified, graveyard or WIP ones.
+                var best = plays.Where(s => s.Status == ScoreStatus.Best && s.Passed
+                    && db.Beatmaps.Any(b => b.Md5 == s.BeatmapMd5 && (b.Status == RankedStatus.Ranked || b.Status == RankedStatus.Approved)));
                 var total = await best.CountAsync(cancellationToken).ConfigureAwait(false);
                 var page = await best.OrderByDescending(s => s.Pp).ThenByDescending(s => s.ScoreValue).Skip(skip).Take(take)
                     .ToListAsync(cancellationToken).ConfigureAwait(false);
