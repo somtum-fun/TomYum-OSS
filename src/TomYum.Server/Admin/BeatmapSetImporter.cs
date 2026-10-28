@@ -31,6 +31,12 @@ public sealed class BeatmapSetImporter
     // is done): the next waits, then finds the maps stored. Striped by set id, so different sets don't wait.
     private static readonly SemaphoreSlim[] SetLocks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
 
+    // Sets imported in the last minute, and what came of it: lazer asks for a new set once per difficulty
+    // (and again for the set), all at once, and each waiting request found the lock free and imported (and
+    // posted) it again. An automatic import of a set that was just imported is answered from here instead.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, (DateTime At, BeatmapSetImportResult Result)> Recent = new();
+    private static readonly TimeSpan RecentFor = TimeSpan.FromMinutes(1);
+
     private readonly BeatmapService _beatmaps;
     private readonly IBeatmapRepository _repository;
     private readonly IStaffLogRepository _log;
@@ -69,7 +75,18 @@ public sealed class BeatmapSetImporter
         await setLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            // Staff asking (no via) always import again; lazer's and the website's own lookups don't repeat one.
+            var now = _time.GetUtcNow().UtcDateTime;
+            if (via is not null && Recent.TryGetValue(setId, out var recent) && now - recent.At < RecentFor && recent.Result.Found)
+                return recent.Result;
+
             result = await ImportCoreAsync(setId, cancellationToken).ConfigureAwait(false);
+            Recent[setId] = (now, result);
+            foreach (var (id, entry) in Recent)
+            {
+                if (now - entry.At >= RecentFor)
+                    Recent.TryRemove(id, out _);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
