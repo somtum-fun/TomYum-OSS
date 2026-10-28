@@ -1,6 +1,6 @@
 # TomYum Roadmap
 
-_Last updated: 2026-10-25 (version 0.6.0)._ .NET 10; used in production for stable, lazer and the website.
+_Last updated: 2026-10-28 (version 0.7.0)._ .NET 10; used in production for stable, lazer and the website.
 
 `0.5.0` is the first **stable** release. `0.6.0` to `1.0.0` are small fixes and growing up:
 scaling, object storage, Kubernetes, and a core generic enough for anyone's server. How each feature
@@ -30,6 +30,16 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decisio
   changes, reports, chat and server errors; a player message on vetoes); custom lazer rulesets from
   rulesets.info, ranked by score (with osu-web-tomyum); lazer scores must fit their map (judgements,
   combo, play time).
+- `0.7.0` (2026-10-28): lazer Relax/Autopilot plays count like stable's: pp from the play's own mods (a
+  DT's own speed, Difficulty Adjust's settings) and judgements, accuracy as lazer shows it, a player's best
+  and ranked score as stable submissions do, and the score their client gave; Relax/Autopilot boards with
+  lazer mods' settings, every country in their rankings, profile best lists on maps that give pp, and their
+  "achieved rank" activity again, while the website's #1s and placements count vanilla plays only; everyone's
+  pp per mode and day (`pp_history`, for a profile's pp graph); `/pp-if-ranked`; converts' star ratings in
+  the website's `osu_beatmap_difficulty`; custom rulesets' mods (`/custom-rulesets/mods`) and no osu! pp for
+  their plays; pre-2024 lazer builds' scores processed; fixes (an osu! lookup that didn't answer isn't
+  remembered as an unsubmitted map, two requests storing the same new map, one set import at a time, Last.fm,
+  over-long staff log text).
 
 ## 0.6.0 – 1.0.0: small fixes, scaling, a generic core
 - [ ] Small fixes from production.

@@ -37,7 +37,7 @@
       Product version. VersionSuffix marks pre-release builds (e.g. 0.0.1-dev); the SDK folds
       prefix+suffix into AssemblyInformationalVersion, which TomYumVersion reads at startup.
     -->
-    <VersionPrefix>0.6.0</VersionPrefix>
+    <VersionPrefix>0.7.0</VersionPrefix>
   </PropertyGroup>
 
   <!--

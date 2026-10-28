@@ -16,7 +16,7 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 ## Progress
 
 > Status: **used in production** (osu!stable, osu!lazer and the website on one account system).
-> Version `0.6.0` (`0.5.0` was the first stable release). Docs: [docs.somtum.fun](https://docs.somtum.fun). What's left is in
+> Version `0.7.0` (`0.5.0` was the first stable release). Docs: [docs.somtum.fun](https://docs.somtum.fun). What's left is in
 > [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Supported rulesets

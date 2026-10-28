@@ -11,7 +11,7 @@ namespace TomYum.Server.Bancho;
 public sealed class TomYumVersion
 {
     /// <summary>Fallback used when no informational version is baked into the assembly.</summary>
-    public const string Fallback = "0.6.0";
+    public const string Fallback = "0.7.0";
 
     /// <summary>Used for <see cref="Commit"/> when no git revision is baked into the assembly.</summary>
     public const string UnknownCommit = "unknown";
