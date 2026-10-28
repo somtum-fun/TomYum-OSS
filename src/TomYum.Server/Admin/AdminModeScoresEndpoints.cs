@@ -40,6 +40,7 @@ public static class AdminModeScoresEndpoints
         ArgumentNullException.ThrowIfNull(admin);
         admin.MapGet("/users/{userId:int}/mode-scores/{mode:int}", GetAsync);
         admin.MapGet("/mode-scores/{scoreId:long}", GetOneAsync);
+        admin.MapGet("/mode-scores/by-website/{osuWebScoreId:long}", GetByWebsiteIdAsync);
         admin.MapGet("/mode-scores/top-plays/{mode:int}", TopPlaysAsync);
         admin.MapGet("/beatmaps/{beatmapId:int}/mode-scores/{mode:int}", LeaderboardAsync);
         admin.MapPost("/beatmaps/{beatmapId:int}/mode-scores/{mode:int}", PlayersLeaderboardAsync);
@@ -227,6 +228,16 @@ public static class AdminModeScoresEndpoints
             .Take(Math.Clamp(limit ?? 1000, 1, 1000))
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         return Results.Ok(new ModeLeaderboard([.. top.Select((s, i) => new ModeLeaderboardEntry(i + 1, s.UserId, Describe(s, mode, configuration)))], null));
+    }
+
+    /// <summary>The Relax/Autopilot play a lazer play's website score is (its page is TomYum's), by the website's score id.</summary>
+    internal static async Task<IResult> GetByWebsiteIdAsync(long osuWebScoreId, TomYumDbContext db, CancellationToken cancellationToken)
+    {
+        var webId = (ulong)osuWebScoreId;
+        var id = await db.Scores.AsNoTracking()
+            .Where(s => s.OsuWebScoreId == webId && s.Mode >= GameMode.RelaxOffset)
+            .Select(s => (long?)s.Id).FirstOrDefaultAsync(cancellationToken).ConfigureAwait(false);
+        return id is null ? Results.NotFound() : Results.Ok(new { id });
     }
 
     /// <summary>One Relax/Autopilot play for its page: who, which mode, its place on the map's leaderboard, whether there's a replay.</summary>
