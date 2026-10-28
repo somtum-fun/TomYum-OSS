@@ -464,6 +464,27 @@ namespace TomYum.Persistence.Migrations
                     b.ToTable("pp_rework_scores", (string)null);
                 });
 
+            modelBuilder.Entity("TomYum.Domain.Entities.PpSnapshot", b =>
+                {
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date");
+
+                    b.Property<double>("Pp")
+                        .HasColumnType("double");
+
+                    b.HasKey("UserId", "Mode", "Day");
+
+                    b.HasIndex("Day");
+
+                    b.ToTable("pp_history", (string)null);
+                });
+
             modelBuilder.Entity("TomYum.Domain.Entities.Score", b =>
                 {
                     b.Property<long>("Id")

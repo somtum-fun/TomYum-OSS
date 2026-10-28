@@ -54,6 +54,9 @@ public sealed class TomYumDbContext : DbContext
     /// <summary>Relax/Autopilot ranks by day (the profile's rank graph in those modes).</summary>
     public DbSet<ModeRankSnapshot> ModeRankHistory => Set<ModeRankSnapshot>();
 
+    /// <summary>Every player's pp per mode and day (the profile's pp graph).</summary>
+    public DbSet<PpSnapshot> PpHistory => Set<PpSnapshot>();
+
     /// <summary>Players' Last.fm accounts (their plays are scrobbled there).</summary>
     public DbSet<LastFmLink> LastFmLinks => Set<LastFmLink>();
 

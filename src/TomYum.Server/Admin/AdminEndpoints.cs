@@ -65,6 +65,7 @@ public static class AdminEndpoints
         admin.MapModeScores();
         admin.MapModeRankings();
         admin.MapPpIfRanked();
+        admin.MapGet("/users/{userId:int}/pp-history/{mode:int}", PpHistoryJob.GetAsync);
         admin.MapAccounts();
         TomYum.Server.LastFm.LastFmEndpoints.MapLastFm(admin);
         admin.MapPost("/beatmaps/import", ImportBeatmapAsync);

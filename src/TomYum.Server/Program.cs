@@ -206,6 +206,7 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService<TagSync>();
     builder.Services.AddHostedService<WebsiteLastVisit>();
     builder.Services.AddHostedService<TomYum.Server.Admin.ModeRankHistoryJob>();
+    builder.Services.AddHostedService<TomYum.Server.Admin.PpHistoryJob>();
     builder.Services.AddScoped<ScoreModeration>();
     builder.Services.AddSingleton<BeatmapImportRunner>();
     // Beatmap submission from the game clients (stable's .osz2, lazer's submission service).
