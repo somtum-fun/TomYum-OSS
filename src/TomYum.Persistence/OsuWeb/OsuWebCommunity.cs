@@ -425,6 +425,33 @@ public sealed partial class OsuWebCommunity
     public Task MarkDoneAsync(string name, CancellationToken cancellationToken = default) =>
         _db.Database.ExecuteSqlAsync($"INSERT INTO osu_counts (name, count) VALUES ({name}, 1) ON DUPLICATE KEY UPDATE count = 1", cancellationToken);
 
+    /// <summary>
+    /// Each player's avatar version: the upload time in the website's avatar file name (<c>4_1791962791.jpeg</c>),
+    /// which changes with every new avatar; players without one aren't listed. Image caches that key on the link
+    /// (Discord's) fetch an avatar again when its version is in the link.
+    /// </summary>
+    public async Task<IReadOnlyDictionary<int, string>> GetAvatarVersionsAsync(CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.Database.SqlQuery<AvatarRow>($"SELECT CAST(user_id AS SIGNED) AS UserId, user_avatar AS Avatar FROM phpbb_users WHERE user_avatar <> ''")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        var versions = new Dictionary<int, string>(rows.Count);
+        foreach (var row in rows)
+        {
+            var name = Path.GetFileNameWithoutExtension(row.Avatar);
+            var version = name[(name.IndexOf('_', StringComparison.Ordinal) + 1)..];
+            if (version.Length > 0)
+                versions[(int)row.UserId] = version;
+        }
+        return versions;
+    }
+
+    private sealed class AvatarRow
+    {
+        public long UserId { get; set; }
+
+        public string Avatar { get; set; } = string.Empty;
+    }
+
     /// <summary>Whether ppy's score processor has handled the score (its pp and stats are final).</summary>
     public async Task<bool> IsProcessedAsync(ulong scoreId, CancellationToken cancellationToken = default) =>
         await _db.Database.SqlQuery<long>($"SELECT COUNT(*) AS Value FROM score_process_history WHERE score_id = {scoreId}")
