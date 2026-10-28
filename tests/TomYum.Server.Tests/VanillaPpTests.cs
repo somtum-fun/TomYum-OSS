@@ -5,8 +5,8 @@ using Xunit;
 namespace TomYum.Server.Tests;
 
 /// <summary>
-/// <see cref="PerformanceOptions.VanillaPp"/>: relax (by default) is worth what the same score
-/// without Relax is, so the backend is asked without the Relax bit; the route still follows the variant.
+/// <see cref="PerformanceOptions.VanillaPp"/>: relax and autopilot (by default) are worth what the same score
+/// without that mod is, so the backend is asked without it; the route still follows the variant.
 /// </summary>
 public class VanillaPpTests
 {
@@ -38,15 +38,15 @@ public class VanillaPpTests
     }
 
     [Fact]
-    public async Task Autopilot_KeepsItsMod_UnlessListed()
+    public async Task Autopilot_IsWorkedOutAsVanilla_ByDefault_UnlessLeftOut()
     {
         var (router, backends) = Router();
         await router.CalculateAsync(Play(Autopilot | Hidden));
-        Assert.Equal(Autopilot | Hidden, backends["official"].Mods);
-
-        (router, backends) = Router("relax, autopilot");
-        await router.CalculateAsync(Play(Autopilot | Hidden));
         Assert.Equal(Hidden, backends["official"].Mods);
+
+        (router, backends) = Router("relax");
+        await router.CalculateAsync(Play(Autopilot | Hidden));
+        Assert.Equal(Autopilot | Hidden, backends["official"].Mods);
     }
 
     [Fact]
