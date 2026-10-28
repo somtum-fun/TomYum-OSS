@@ -52,7 +52,9 @@ public sealed class ConvertStarRatingsJob : BackgroundService
                 {
                     stars = await calculator.StarRatingAsync(beatmapId, mode, 0, cancellationToken).ConfigureAwait(false);
                 }
-                catch (Exception ex) when (ex is not OperationCanceledException)
+                // A map that can't be worked out (its .osu download timed out, say) is one map, not the run: only
+                // the server stopping ends it.
+                catch (Exception ex) when (ex is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
                 {
                     _logger.LogDebug(ex, "Convert star ratings: map {BeatmapId} in ruleset {Mode} failed.", beatmapId, mode);
                     stars = null;
