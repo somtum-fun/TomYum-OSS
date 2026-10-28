@@ -414,6 +414,43 @@ public sealed partial class OsuWebCommunity
         return new ScorePlacement(position, leader is null ? null : (int)leader.UserId);
     }
 
+    /// <summary>
+    /// The maps where <paramref name="userId"/> is #1 in <paramref name="ruleset"/> (vanilla: the website's
+    /// leaderboards, by score, earlier equal scores first): how many, and their plays there, the
+    /// <paramref name="count"/> worth the most pp first.
+    /// </summary>
+    public async Task<(int Count, IReadOnlyList<ScoreCard> Top)> GetFirstPlacesAsync(int userId, int ruleset, int count, CancellationToken cancellationToken = default)
+    {
+        var statuses = string.Join(',', LeaderboardStatuses);
+        var sql = $$"""
+            SELECT ranked.Id AS Value FROM (
+              SELECT best.user_id, best.Id, ROW_NUMBER() OVER (PARTITION BY best.beatmap_id ORDER BY best.total DESC, best.Id) AS place
+              FROM (
+                SELECT s.beatmap_id, s.user_id, MAX(s.total_score) AS total, MIN(s.id) AS Id
+                FROM scores s JOIN phpbb_users u ON u.user_id = s.user_id JOIN osu_beatmaps b ON b.beatmap_id = s.beatmap_id
+                WHERE s.ruleset_id = {0} AND s.passed = 1 AND s.preserve = 1 AND {{Visible}} AND {{NotRelaxOrAutopilot}} AND b.approved IN ({{statuses}})
+                GROUP BY s.beatmap_id, s.user_id
+              ) best
+            ) ranked
+            WHERE ranked.place = 1 AND ranked.user_id = {1}
+            """;
+        var firsts = await _db.Database.SqlQueryRaw<ulong>(sql, ruleset, userId).ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (firsts.Count == 0)
+            return (0, []);
+
+        // Each map's best play of theirs (MIN(id) above is only the first of them).
+        var maps = await QueryScoresAsync(
+            "s.user_id = {0} AND s.ruleset_id = {1} AND s.passed = 1 AND s.preserve = 1 AND " + NotRelaxOrAutopilot
+                + " AND s.beatmap_id IN (SELECT f.beatmap_id FROM scores f WHERE f.id IN (" + string.Join(',', firsts) + "))",
+            "s.total_score DESC, s.id",
+            [userId, ruleset],
+            500,
+            cancellationToken).ConfigureAwait(false);
+        var top = maps.GroupBy(m => m.BeatmapId).Select(g => g.First())
+            .OrderByDescending(m => m.Pp ?? 0).Take(Math.Clamp(count, 1, 50)).ToList();
+        return (firsts.Count, top);
+    }
+
     /// <summary>When the oldest "achieved rank" activity entry was written (null: there's none).</summary>
     public async Task<DateTime?> FirstRankEventAtAsync(CancellationToken cancellationToken = default) =>
         (await _db.Database.SqlQueryRaw<DateTime?>("SELECT MIN(`date`) AS Value FROM osu_events WHERE text LIKE '%achieved%rank #%'")
