@@ -99,6 +99,23 @@ public class BeatmapStatusTests
     }
 
     [Fact]
+    public async Task BeatmapService_DoesNotCacheAFailedLookup()
+    {
+        // osu! not answering isn't osu! not knowing the map: a slow moment mustn't leave a ranked
+        // map unsubmitted until the server restarts.
+        var api = new CountingApiClient(null) { Fails = true };
+        var service = new BeatmapService(api);
+
+        Assert.Null(await service.GetByMd5Async("abc"));
+        Assert.Equal(0, service.CachedCount);
+
+        api.Fails = false;
+        Assert.Null(await service.GetByMd5Async("abc"));
+        Assert.Equal(2, api.Calls);
+        Assert.Equal(1, service.CachedCount);
+    }
+
+    [Fact]
     public async Task StatusOverride_WinsOverTheApi_ForCachedAndNewLookups()
     {
         var api = new CountingApiClient(new Beatmap { Md5 = Abc, Id = 42, Status = RankedStatus.Pending, OsuApiStatus = -2 });
@@ -173,9 +190,14 @@ public class BeatmapStatusTests
 
         public int SetCalls { get; private set; }
 
+        /// <summary>Lookups fail (osu! doesn't answer), as <see cref="OsuApiClient"/> reports them.</summary>
+        public bool Fails { get; set; }
+
         public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default)
         {
             Calls++;
+            if (Fails)
+                OsuApiFailures.Report();
             return Task.FromResult(_result);
         }
 

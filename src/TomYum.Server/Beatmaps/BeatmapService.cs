@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Caching.Memory;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
@@ -125,7 +126,8 @@ public sealed class BeatmapService : IDisposable
     /// Resolves a beatmap by its <c>.osu</c> MD5 hash: the osu! API's map, or else a custom map of
     /// this server's. Returns <c>null</c> when neither knows it (treat as
     /// <see cref="Domain.Enums.RankedStatus.NotSubmitted"/>). Results — including the not-found
-    /// result — are cached. Anything but a checksum (<see cref="IsMd5"/>) is no map, without asking.
+    /// result — are cached, but not a failed osu! lookup (osu! didn't answer), which is asked again.
+    /// Anything but a checksum (<see cref="IsMd5"/>) is no map, without asking.
     /// </summary>
     public async Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default)
     {
@@ -140,9 +142,15 @@ public sealed class BeatmapService : IDisposable
             return cached.Beatmap;
         }
 
-        var resolved = ApplyOverride(await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false)
-            ?? await GetCustomAsync(md5, cancellationToken).ConfigureAwait(false));
-        Cache(md5, resolved);
+        var failed = new StrongBox<bool>();
+        Beatmap? fromApi;
+        using (OsuApiFailures.Watch(failed))
+            fromApi = await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
+        var resolved = ApplyOverride(fromApi ?? await GetCustomAsync(md5, cancellationToken).ConfigureAwait(false));
+        // osu! not answering isn't osu! not knowing the map: ask again next time instead of
+        // remembering it as unsubmitted.
+        if (resolved is not null || !failed.Value)
+            Cache(md5, resolved);
         return resolved;
     }
 

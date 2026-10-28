@@ -1,5 +1,6 @@
 using System.Net;
 using Microsoft.Extensions.Logging.Abstractions;
+using TomYum.Domain.Entities;
 using TomYum.Server.Beatmaps;
 using Xunit;
 
@@ -167,6 +168,42 @@ public class OsuApiClientResolutionTests
         var client = ClientReturning($$"""[{"file_md5":"aaa","beatmapset_id":"1","beatmap_id":"2","approved":"1"{{packs}}}]""");
 
         Assert.Null((await client.GetByMd5Async("aaa"))!.Details!.PackTags);
+    }
+
+    [Fact]
+    public async Task GetByMd5Async_Throws_WhenTheCallerGaveUp()
+    {
+        // The game hung up (the request was aborted): that ends the request, rather than carrying on
+        // as if osu! didn't know the map (to the database, with the aborted request's token).
+        var http = new HttpClient(new HangingHandler()) { BaseAddress = new Uri("https://osu.direct/api/") };
+        var client = new OsuApiClient(http, new OsuApiOptions { ApiKey = null }, NullLogger<OsuApiClient>.Instance);
+        using var aborted = new CancellationTokenSource(TimeSpan.FromMilliseconds(50));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.GetByMd5Async("aaa", aborted.Token));
+    }
+
+    [Fact]
+    public async Task GetByMd5Async_ReportsAFailure_WhenOsuDoesNotAnswer()
+    {
+        var http = new HttpClient(new HangingHandler()) { BaseAddress = new Uri("https://osu.direct/api/"), Timeout = TimeSpan.FromMilliseconds(50) };
+        var client = new OsuApiClient(http, new OsuApiOptions { ApiKey = null }, NullLogger<OsuApiClient>.Instance);
+        var failed = new System.Runtime.CompilerServices.StrongBox<bool>();
+
+        Beatmap? result;
+        using (OsuApiFailures.Watch(failed))
+            result = await client.GetByMd5Async("aaa");
+
+        Assert.Null(result);
+        Assert.True(failed.Value);
+    }
+
+    private sealed class HangingHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            throw new InvalidOperationException();
+        }
     }
 
     private sealed class StubHandler(string json) : HttpMessageHandler
