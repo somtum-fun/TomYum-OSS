@@ -23,6 +23,11 @@ RUN grep -q '            queue.Run(cancellationToken);' Commands/Queue/WatchQueu
 COPY TomYumRelaxWait.cs Helpers/TomYumRelaxWait.cs
 RUN grep -q '                    var score = item.Score;' ScoreStatisticsQueueProcessor.cs \
     && sed -i 's/^                    var score = item.Score;/                    var score = item.Score;\n                    global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumRelaxWait.WaitForTomYum(conn, score);/' ScoreStatisticsQueueProcessor.cs
+# Pre-2024 lazer builds send no total without mods: it's worked back out from the total (TomYumOldLazer.cs)
+# instead of the score being refused.
+COPY TomYumOldLazer.cs Helpers/TomYumOldLazer.cs
+RUN grep -q 'throw new ProcessingAbortedException("Score is missing total score without mods.");' Processors/ScoreMultiplierValidator.cs \
+    && sed -i 's/throw new ProcessingAbortedException("Score is missing total score without mods.");/totalScoreWithoutMods = global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumOldLazer.TotalScoreWithoutMods(score, conn, transaction);/' Processors/ScoreMultiplierValidator.cs
 # Global ranks the way TomYum works them out: visible players only, and the rankings' inactivity rule
 # (TomYumRankIndex.cs, TOMYUM_RANKING_INACTIVE_DAYS).
 COPY TomYumRankIndex.cs Helpers/TomYumRankIndex.cs
