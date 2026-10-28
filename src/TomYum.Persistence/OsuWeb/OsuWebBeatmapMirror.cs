@@ -32,10 +32,16 @@ public sealed class OsuWebBeatmapMirror
     }
 
     /// <summary>Inserts or updates <paramref name="beatmap"/> and its set on osu-web.</summary>
-    public async Task WriteAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
+    public Task WriteAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(beatmap);
 
+        // Two requests writing the same new map or set at once: the second updates what the first inserted.
+        return DuplicateKey.RetryAsync(_db, () => WriteOnceAsync(beatmap, cancellationToken));
+    }
+
+    private async Task WriteOnceAsync(Beatmap beatmap, CancellationToken cancellationToken)
+    {
         var set = await LoadSetAsync(beatmap, cancellationToken).ConfigureAwait(false);
         var map = await _db.Beatmaps.FirstOrDefaultAsync(b => b.BeatmapId == (uint)beatmap.Id, cancellationToken).ConfigureAwait(false);
         sbyte? setStatus = set?.Approved, mapStatus = map?.Approved;

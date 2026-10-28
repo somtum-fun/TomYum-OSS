@@ -27,6 +27,10 @@ public sealed class BeatmapSetImporter
     /// <summary>Staff log action for imports.</summary>
     public const string LogAction = "beatmapset.import";
 
+    // One import of a set at a time (lazer asks for a map it doesn't have again before the first import
+    // is done): the next waits, then finds the maps stored. Striped by set id, so different sets don't wait.
+    private static readonly SemaphoreSlim[] SetLocks = Enumerable.Range(0, 64).Select(_ => new SemaphoreSlim(1, 1)).ToArray();
+
     private readonly BeatmapService _beatmaps;
     private readonly IBeatmapRepository _repository;
     private readonly IStaffLogRepository _log;
@@ -61,6 +65,8 @@ public sealed class BeatmapSetImporter
     public async Task<BeatmapSetImportResult> ImportAsync(int setId, int actorId, string? jobId = null, string? via = null, CancellationToken cancellationToken = default)
     {
         BeatmapSetImportResult result;
+        var setLock = SetLocks[(uint)setId % (uint)SetLocks.Length];
+        await setLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             result = await ImportCoreAsync(setId, cancellationToken).ConfigureAwait(false);
@@ -69,6 +75,10 @@ public sealed class BeatmapSetImporter
         {
             await LogAsync(setId, actorId, jobId, via, "failed", Invariant($"Set {setId}: {ex.Message}"), cancellationToken).ConfigureAwait(false);
             throw;
+        }
+        finally
+        {
+            setLock.Release();
         }
 
         if (result.Found)

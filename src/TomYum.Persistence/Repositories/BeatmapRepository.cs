@@ -57,7 +57,11 @@ public sealed class BeatmapRepository : IBeatmapRepository
             .ConfigureAwait(false) > 0;
 
     /// <inheritdoc />
-    public async Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default)
+    public Task UpsertAsync(Beatmap beatmap, CancellationToken cancellationToken = default) =>
+        // Two requests storing the same new map at once: the second updates what the first inserted.
+        DuplicateKey.RetryAsync(_db, () => UpsertOnceAsync(beatmap, cancellationToken));
+
+    private async Task UpsertOnceAsync(Beatmap beatmap, CancellationToken cancellationToken)
     {
         var existing = await _db.Beatmaps
             .FirstOrDefaultAsync(b => b.Id == beatmap.Id, cancellationToken)
