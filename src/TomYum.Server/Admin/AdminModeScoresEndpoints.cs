@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Domain.Services;
+using TomYum.Performance;
 using TomYum.Persistence;
 using TomYum.Server.Beatmaps;
 
@@ -14,7 +15,7 @@ namespace TomYum.Server.Admin;
 public sealed record ModeScore(
     long Id, int BeatmapId, int Mods, double Pp, double Accuracy, string Grade, int MaxCombo, bool Perfect,
     long Score, bool Passed, DateTimeOffset PlayedAt, int Count300, int Count100, int Count50, int CountMiss, int CountGeki, int CountKatu,
-    bool Stable, bool HasReplay, ulong? OsuWebScoreId);
+    bool Stable, bool HasReplay, ulong? OsuWebScoreId, string? LazerMods = null);
 
 /// <summary>A page of a profile list, and how many there are in all.</summary>
 public sealed record ModeScorePage(int Total, IReadOnlyList<ModeScore> Scores);
@@ -271,5 +272,7 @@ public static class AdminModeScoresEndpoints
         AccuracyCalculator.Compute(GameMode.AsVanilla(mode), s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss),
         s.Grade, s.MaxCombo, s.Perfect, s.ScoreValue, s.Passed, s.SubmittedAt,
         s.Count300, s.Count100, s.Count50, s.CountMiss, s.CountGeki, s.CountKatu, !s.FromLazer, ReplayFiles.Find(configuration, s) is not null,
-        s.FromLazer ? s.OsuWebScoreId : null);
+        s.FromLazer ? s.OsuWebScoreId : null,
+        // A lazer play's mods with their settings (a DT's speed, DA's stats), which the mod bits don't have.
+        s.LazerScore is null ? null : LazerScoreJson.ModsKey(s.LazerScore));
 }
