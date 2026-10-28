@@ -109,6 +109,17 @@ public static class LazerScoreJson
         };
     }
 
+    /// <summary>A lazer play's judgements as JSON: <c>{"statistics":{...},"maximum_statistics":{...}}</c>.</summary>
+    public static string StatisticsKey(string lazerScore)
+    {
+        var root = JsonNode.Parse(lazerScore);
+        return new JsonObject
+        {
+            ["statistics"] = root?["statistics"]?.DeepClone() ?? new JsonObject(),
+            ["maximum_statistics"] = root?["maximum_statistics"]?.DeepClone() ?? new JsonObject(),
+        }.ToJsonString();
+    }
+
     /// <summary>The play's mods as JSON (the difficulty cache's key for them).</summary>
     public static string ModsKey(string lazerScore) =>
         JsonNode.Parse(lazerScore)?["mods"]?.ToJsonString(new JsonSerializerOptions { WriteIndented = false }) ?? "[]";
