@@ -511,6 +511,9 @@ namespace TomYum.Persistence.Migrations
                     b.Property<int?>("LargeTickHits")
                         .HasColumnType("int");
 
+                    b.Property<string>("LazerScore")
+                        .HasColumnType("longtext");
+
                     b.Property<int>("MaxCombo")
                         .HasColumnType("int");
 

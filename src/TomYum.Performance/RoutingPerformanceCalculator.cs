@@ -34,7 +34,7 @@ public sealed class RoutingPerformanceCalculator : IPerformanceCalculator, IAccu
         _log.LogDebug("pp route: {ShortName} (gamemode {GameMode}) -> backend '{Backend}'",
             GameMode.ToShortName(gameMode), gameMode, backend);
 
-        return _registry.Resolve(backend).CalculateAsync(request with { Mods = PpMods(request.RulesetId, request.Mods) }, cancellationToken);
+        return _registry.Resolve(backend).CalculateAsync(ForPp(request), cancellationToken);
     }
 
     public Task<IReadOnlyList<double>?> ForAccuraciesAsync(int beatmapId, int rulesetId, int mods, IReadOnlyList<double> accuracies, CancellationToken cancellationToken = default) =>
@@ -51,7 +51,7 @@ public sealed class RoutingPerformanceCalculator : IPerformanceCalculator, IAccu
     {
         ArgumentNullException.ThrowIfNull(request);
         return _registry.Resolve(ResolveBackendName(GameMode.FromLegacyMods(request.RulesetId, request.Mods))) is IPartialPerformance backend
-            ? backend.PartialAsync(request with { Mods = PpMods(request.RulesetId, request.Mods) }, cancellationToken)
+            ? backend.PartialAsync(ForPp(request), cancellationToken)
             : Task.FromResult<double?>(null);
     }
 
@@ -64,6 +64,18 @@ public sealed class RoutingPerformanceCalculator : IPerformanceCalculator, IAccu
     /// The mods the pp is worked out with: without Relax/Autopilot for the variants scored as
     /// vanilla (<see cref="PerformanceOptions.VanillaPp"/>), so their scores are worth what vanilla's are.
     /// </summary>
+    /// <summary>
+    /// <paramref name="request"/> as its pp is worked out: without Relax/Autopilot for the variants scored as
+    /// vanilla, in the legacy bits and in a lazer play's own mods alike.
+    /// </summary>
+    private PerformanceRequest ForPp(PerformanceRequest request)
+    {
+        var mods = PpMods(request.RulesetId, request.Mods);
+        return mods == request.Mods
+            ? request
+            : request with { Mods = mods, LazerScore = LazerScoreJson.WithoutMods(request.LazerScore, "RX", "AP") };
+    }
+
     internal int PpMods(int rulesetId, int mods)
     {
         var gameMode = GameMode.FromLegacyMods(rulesetId, mods);

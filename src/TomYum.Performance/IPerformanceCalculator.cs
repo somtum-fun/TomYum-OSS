@@ -59,6 +59,10 @@ public interface IPartialPerformance
 /// <param name="LargeTickHits">Lazer: slider ticks and repeats hit (null: all).</param>
 /// <param name="SliderEndHits">Lazer: slider ends hit (null: all).</param>
 /// <param name="SpeedChange">Lazer: the speed of a rate mod (DT, NC, HT, DC) set to its own (null: the mod's usual).</param>
+/// <param name="LazerScore">
+/// Lazer: the play's own mods (with settings) and judgements (JSON: mods, statistics, maximum_statistics).
+/// When given, pp is worked out from these as ppy's score processor does, not from the legacy counts and bits.
+/// </param>
 public sealed record PerformanceRequest(
     int BeatmapId,
     int RulesetId,
@@ -74,7 +78,8 @@ public sealed record PerformanceRequest(
     bool Lazer = false,
     int? LargeTickHits = null,
     int? SliderEndHits = null,
-    double? SpeedChange = null);
+    double? SpeedChange = null,
+    string? LazerScore = null);
 
 /// <summary>A map's own difficulty: star rating and max combo without mods.</summary>
 public sealed record BeatmapDifficulty(double StarRating, int MaxCombo);

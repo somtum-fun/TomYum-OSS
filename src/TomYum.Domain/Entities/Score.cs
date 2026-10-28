@@ -51,6 +51,13 @@ public sealed class Score
     /// </summary>
     public double? SpeedChange { get; init; }
 
+    /// <summary>
+    /// For a lazer play: its own mods (with their settings: a rate mod's speed, Difficulty Adjust's AR/OD,
+    /// ...) and judgements, as lazer sent them (JSON: mods, statistics, maximum_statistics), which its pp is
+    /// worked out from as ppy's does; null for osu!stable's plays.
+    /// </summary>
+    public string? LazerScore { get; init; }
+
     /// <summary>For a lazer play: its score on the website (the row its pp is shown on), else null.</summary>
     public ulong? OsuWebScoreId { get; set; }
 

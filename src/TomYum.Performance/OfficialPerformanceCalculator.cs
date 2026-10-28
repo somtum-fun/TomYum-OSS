@@ -41,6 +41,9 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
 
     public async Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
     {
+        if (request.LazerScore is { } lazerScore)
+            return await CalculateLazerAsync(request, lazerScore, cancellationToken).ConfigureAwait(false);
+
         var ruleset = GetRuleset(request.RulesetId);
         var mods = WithSpeed(StableMods(ruleset, request.Mods), request.SpeedChange);
 
@@ -62,6 +65,82 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
             request.BeatmapId, request.RulesetId, request.Mods, diffAttribs.StarRating, scoreInfo.Accuracy, request.MaxCombo, pp);
 
         return pp;
+    }
+
+    /// <summary>
+    /// A lazer play's pp from its own mods (settings included: a rate mod's speed, Difficulty Adjust's
+    /// AR/OD, ...) and judgements (slider ends, ticks), as ppy's score processor works it out; not as a
+    /// stable play with Classic, which the legacy counts and bits would make it.
+    /// </summary>
+    private async Task<double> CalculateLazerAsync(PerformanceRequest request, string lazerScore, CancellationToken cancellationToken)
+    {
+        var ruleset = GetRuleset(request.RulesetId);
+        var mods = LazerMods(ruleset, lazerScore);
+        var difficulty = await DifficultyAsync(request.BeatmapId, request.RulesetId, "lazer:" + LazerScoreJson.ModsKey(lazerScore), ruleset, mods, cancellationToken).ConfigureAwait(false);
+        if (difficulty?.Attributes is not { } attributes)
+            return 0.0;
+
+        var scoreInfo = LazerScoreInfo(request, ruleset, mods, difficulty.Beatmap, lazerScore);
+        var pp = ruleset.CreatePerformanceCalculator()?.Calculate(scoreInfo, attributes).Total ?? 0.0;
+        _log.LogDebug("PP calc (lazer): beatmap {BeatmapId} ruleset {RulesetId} mods {Mods} → SR={StarRating:F3} acc={Accuracy:P2} = {Pp:F2}pp",
+            request.BeatmapId, request.RulesetId, LazerScoreJson.ModsKey(lazerScore), attributes.StarRating, scoreInfo.Accuracy, pp);
+        return pp;
+    }
+
+    /// <summary>A lazer play's mods, settings and all, from its JSON.</summary>
+    public static osu.Game.Rulesets.Mods.Mod[] LazerMods(Ruleset ruleset, string lazerScore)
+    {
+        var mods = System.Text.Json.Nodes.JsonNode.Parse(lazerScore)?["mods"]?.ToJsonString() ?? "[]";
+        return (Newtonsoft.Json.JsonConvert.DeserializeObject<List<osu.Game.Online.API.APIMod>>(mods) ?? [])
+            .Select(m => m.ToMod(ruleset))
+            .ToArray();
+    }
+
+    /// <summary>A lazer play as the pp calculator reads it: its judgements, and the accuracy they give.</summary>
+    public static ScoreInfo LazerScoreInfo(PerformanceRequest request, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods, BeatmapInfo beatmap, string lazerScore)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(lazerScore);
+        var scoreInfo = new ScoreInfo(beatmap, ruleset.RulesetInfo)
+        {
+            Ruleset = ruleset.RulesetInfo,
+            Mods = mods,
+            MaxCombo = request.MaxCombo,
+            Passed = request.Passed,
+            IsLegacyScore = false,
+            Statistics = Judgements(root?["statistics"]),
+            MaximumStatistics = Judgements(root?["maximum_statistics"]),
+        };
+        // As ppy's score processor: the judgements' base score over the most they could have scored.
+        var processor = ruleset.CreateScoreProcessor();
+        double scored = 0, possible = 0;
+        foreach (var (result, count) in scoreInfo.Statistics)
+        {
+            if (result.AffectsAccuracy())
+                scored += count * processor.GetBaseScoreForResult(result);
+        }
+        foreach (var (result, count) in scoreInfo.MaximumStatistics)
+        {
+            if (result.AffectsAccuracy())
+                possible += count * processor.GetBaseScoreForResult(result);
+        }
+        scoreInfo.Accuracy = possible > 0 ? scored / possible : 1;
+        return scoreInfo;
+    }
+
+    /// <summary>Lazer's judgement counts ("large_tick_hit": 12, ...) as hit results.</summary>
+    private static Dictionary<HitResult, int> Judgements(System.Text.Json.Nodes.JsonNode? node)
+    {
+        var counts = new Dictionary<HitResult, int>();
+        if (node is System.Text.Json.Nodes.JsonObject judgements)
+        {
+            foreach (var (name, value) in judgements)
+            {
+                if (Enum.TryParse<HitResult>(name.Replace("_", string.Empty, StringComparison.Ordinal), ignoreCase: true, out var result)
+                    && value is not null && value.GetValueKind() == System.Text.Json.JsonValueKind.Number)
+                    counts[result] = value.GetValue<int>();
+            }
+        }
+        return counts;
     }
 
     /// <summary>

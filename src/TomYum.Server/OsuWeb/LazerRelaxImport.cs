@@ -164,6 +164,8 @@ public sealed class LazerRelaxImport : BackgroundService
 
         var (n300, n100, n50, nmiss, ngeki, nkatu) = Counts(play.Ruleset, play.Data);
         var speed = SpeedChange(play.Data);
+        // Its own mods (settings and all) and judgements: its pp is worked out from these, as ppy's is.
+        var lazerScore = TomYum.Performance.LazerScoreJson.FromScoreData(play.Data);
         var sliders = SliderHits(play.Ruleset, play.Data);
         var scores = services.GetRequiredService<IScoreRepository>();
         var ppValue = 0.0;
@@ -174,7 +176,7 @@ public sealed class LazerRelaxImport : BackgroundService
                 ppValue = await services.GetRequiredService<IPerformanceCalculator>().CalculateAsync(
                     new PerformanceRequest(beatmap.Id, play.Ruleset, (int)mods, (int)play.MaxCombo, n300, n100, n50, nmiss, ngeki, nkatu, Passed: true,
                         Lazer: sliders is not null, LargeTickHits: sliders?.LargeTickHits, SliderEndHits: sliders?.SliderEndHits,
-                        SpeedChange: speed),
+                        SpeedChange: speed, LazerScore: lazerScore),
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -219,6 +221,7 @@ public sealed class LazerRelaxImport : BackgroundService
             LargeTickHits = sliders?.LargeTickHits,
             SliderEndHits = sliders?.SliderEndHits,
             SpeedChange = speed,
+            LazerScore = lazerScore,
             PpHeld = held,
         }, cancellationToken).ConfigureAwait(false);
         await services.GetRequiredService<OsuWebLazerRelax>()

@@ -70,6 +70,16 @@ public class VanillaPpTests
         Assert.Equal(0, backends["sidecar"].Mods);
     }
 
+    [Fact]
+    public async Task ALazerPlaysOwnMods_LoseRelaxToo()
+    {
+        var (router, backends) = Router();
+
+        await router.CalculateAsync(Play(Relax) with { LazerScore = """{"mods":[{"acronym":"DT","settings":{"speed_change":1.6}},{"acronym":"RX"}],"statistics":{"great":1}}""" });
+
+        Assert.Equal("""{"mods":[{"acronym":"DT","settings":{"speed_change":1.6}}],"statistics":{"great":1}}""", backends["official"].LazerScore);
+    }
+
     private sealed class Registry(Dictionary<string, RecordingBackend> backends) : IPerformanceBackendRegistry
     {
         public IPerformanceCalculator Resolve(string name) => backends[name];
@@ -79,9 +89,12 @@ public class VanillaPpTests
     {
         public int? Mods { get; private set; }
 
+        public string? LazerScore { get; private set; }
+
         public Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
         {
             Mods = request.Mods;
+            LazerScore = request.LazerScore;
             return Task.FromResult(727.0);
         }
     }

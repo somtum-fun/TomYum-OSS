@@ -73,7 +73,52 @@ public sealed class StablePerformanceTests : IDisposable
         Assert.Equal(0, await calculator.PartialAsync(new PerformanceRequest(BeatmapId, 0, 0, 0, 0, 0, 0, 0, 0, 0, Passed: false)));
     }
 
+    [Fact]
+    public async Task ALazerPlay_IsWorkedOutFromItsOwnModsAndJudgements_AsLazerDoes()
+    {
+        var calculator = new OfficialPerformanceCalculator(
+            new OsuFileCache(_cache, new HttpClient(), NullLogger<OsuFileCache>.Instance),
+            new MemoryCache(new MemoryCacheOptions()),
+            NullLogger<OfficialPerformanceCalculator>.Instance);
+        var (objects, maxCombo, lazerSs, statistics) = LazerSsWithStatistics();
+        string Play(string mods) => $$"""{"mods":{{mods}},"statistics":{{statistics}},"maximum_statistics":{{statistics}}}""";
+        Task<double> Pp(string mods) => calculator.CalculateAsync(new PerformanceRequest(
+            BeatmapId, 0, 0, maxCombo, objects, 0, 0, 0, 0, 0, Passed: true, LazerScore: Play(mods)));
+
+        // An SS from lazer's own judgements is what lazer itself gives it (not a stable SS with Classic).
+        Assert.Equal(lazerSs, await Pp("[]"), 3);
+
+        // Settings count: DT at 1.6x is worth more than DT at its usual 1.5x, and Difficulty Adjust's AR too.
+        var dt = await Pp("""[{"acronym":"DT"}]""");
+        Assert.True(await Pp("""[{"acronym":"DT","settings":{"speed_change":1.6}}]""") > dt);
+        Assert.NotEqual(lazerSs, await Pp("""[{"acronym":"DA","settings":{"approach_rate":10.5,"extended_limits":true}}]"""), 3);
+    }
+
     public void Dispose() => Directory.Delete(_cache, recursive: true);
+
+    /// <summary><see cref="LazerSs"/>, and its judgements as lazer's JSON ("large_tick_hit": 12, ...).</summary>
+    private static (int Objects, int MaxCombo, double Pp, string Statistics) LazerSsWithStatistics()
+    {
+        var (objects, maxCombo, pp) = LazerSs();
+        var ruleset = new OsuRuleset();
+        using var reader = new LineBufferedReader(new MemoryStream(Encoding.UTF8.GetBytes(SliderMap())));
+        var working = new Working(osu.Game.Beatmaps.Formats.Decoder.GetDecoder<Beatmap>(reader).Decode(reader));
+        var counts = new Dictionary<HitResult, int>();
+        void Count(HitObject hitObject)
+        {
+            var result = hitObject.Judgement.MaxResult;
+            if (result is not HitResult.IgnoreHit and not HitResult.None)
+                counts[result] = counts.GetValueOrDefault(result) + 1;
+            foreach (var nested in hitObject.NestedHitObjects)
+                Count(nested);
+        }
+        foreach (var hitObject in working.GetPlayableBeatmap(ruleset.RulesetInfo).HitObjects)
+            Count(hitObject);
+
+        static string Snake(HitResult result) =>
+            string.Concat(result.ToString().Select((c, i) => i > 0 && char.IsUpper(c) ? "_" + char.ToLowerInvariant(c) : char.ToLowerInvariant(c).ToString()));
+        return (objects, maxCombo, pp, "{" + string.Join(",", counts.Select(c => $"\"{Snake(c.Key)}\":{c.Value}")) + "}");
+    }
 
     /// <summary>The same map as lazer scores it: every judgement (slider ends and ticks included) hit.</summary>
     private static (int Objects, int MaxCombo, double Pp) LazerSs()
