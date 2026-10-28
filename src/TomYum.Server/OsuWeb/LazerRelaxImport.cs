@@ -245,11 +245,6 @@ public sealed class LazerRelaxImport : BackgroundService
         var previous = await scores.GetPersonalBestAsync((int)play.UserId, beatmap.Md5, gameMode, cancellationToken).ConfigureAwait(false);
         // A pp rework in this mode: the play's pp waits until it's done (TomYum.Persistence.RankingPause).
         var held = play.Passed && TomYum.Persistence.RankingPause.IsPaused(gameMode);
-        var status = play.Passed
-            ? (!held && (previous is null || ppValue > previous.Pp) ? ScoreStatus.Best : ScoreStatus.Submitted)
-            : ScoreStatus.Failed;
-        if (status == ScoreStatus.Best && previous is not null)
-            await scores.MarkPreviousBestAsync((int)play.UserId, beatmap.Md5, gameMode, cancellationToken).ConfigureAwait(false);
 
         var value = play.LegacyTotalScore > 0 ? play.LegacyTotalScore : play.TotalScore;
         // Scored as Reprise Lazer scores it (Relax and Autopilot at 1x, its gentler Difficulty Adjust), whatever the
@@ -261,6 +256,15 @@ public sealed class LazerRelaxImport : BackgroundService
             value = full;
             await services.GetRequiredService<OsuWebLazerRelax>().SetTotalScoreAsync(play.ScoreId, full, cancellationToken).ConfigureAwait(false);
         }
+
+        // As a stable submission's (GameMode.BeatsBest): more pp, or as much and more score. By pp alone, a loved
+        // or unranked map's plays (all 0pp) never beat the first pass, however much better they were.
+        var status = play.Passed
+            ? (!held && (previous is null || GameMode.BeatsBest(gameMode, ppValue, value, previous.Pp, previous.ScoreValue)) ? ScoreStatus.Best : ScoreStatus.Submitted)
+            : ScoreStatus.Failed;
+        if (status == ScoreStatus.Best && previous is not null)
+            await scores.MarkPreviousBestAsync((int)play.UserId, beatmap.Md5, gameMode, cancellationToken).ConfigureAwait(false);
+
         await scores.AddAsync(new Score
         {
             UserId = (int)play.UserId,
