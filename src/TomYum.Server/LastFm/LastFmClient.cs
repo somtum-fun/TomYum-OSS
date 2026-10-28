@@ -103,12 +103,36 @@ public sealed class LastFmClient
         using var _ = await CallAsync(call, cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task ScrobbleAsync(string sessionKey, LastFmTrack track, DateTimeOffset startedAt, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Scrobbles <paramref name="track"/>. Last.fm takes some calls and still drops the scrobble (a filtered artist
+    /// or title, "Various Artists" say): its reason then, else null.
+    /// </summary>
+    public async Task<string?> ScrobbleAsync(string sessionKey, LastFmTrack track, DateTimeOffset startedAt, CancellationToken cancellationToken = default)
     {
         var call = Track("track.scrobble", sessionKey, track);
         call["timestamp"] = startedAt.ToUnixTimeSeconds().ToString(CultureInfo.InvariantCulture);
         call["chosenByUser"] = "1";
-        using var _ = await CallAsync(call, cancellationToken).ConfigureAwait(false);
+        using var answer = await CallAsync(call, cancellationToken).ConfigureAwait(false);
+        return IgnoredReason(answer.RootElement);
+    }
+
+    /// <summary>Why Last.fm dropped a scrobble it was sent (scrobbles.scrobble.ignoredMessage), or null when it kept it.</summary>
+    public static string? IgnoredReason(JsonElement answer)
+    {
+        if (!answer.TryGetProperty("scrobbles", out var scrobbles)
+            || !scrobbles.TryGetProperty("@attr", out var attr)
+            || !attr.TryGetProperty("ignored", out var ignored)
+            || (ignored.ValueKind == JsonValueKind.Number ? ignored.GetInt32() : int.TryParse(ignored.GetString(), out var n) ? n : 0) == 0)
+        {
+            return null;
+        }
+        var scrobble = scrobbles.TryGetProperty("scrobble", out var one) ? one : default;
+        if (scrobble.ValueKind == JsonValueKind.Array)
+            scrobble = scrobble.EnumerateArray().FirstOrDefault();
+        return scrobble.ValueKind == JsonValueKind.Object && scrobble.TryGetProperty("ignoredMessage", out var message)
+               && message.TryGetProperty("#text", out var text) && text.GetString() is { Length: > 0 } reason
+            ? reason
+            : "ignored by Last.fm";
     }
 
     /// <summary>What Last.fm says <paramref name="username"/> listened to lately, newest first (the one playing now first).</summary>

@@ -103,7 +103,8 @@ public sealed class LastFmScrobbler : BackgroundService
             if (play.Passed && links.TryGetValue((int)play.UserId, out var link))
             {
                 var track = Track(play.Artist, play.ArtistUnicode, play.Title, play.TitleUnicode, play.Length, Speed(play.Data));
-                if (track.DurationSeconds >= MinimumSeconds)
+                // Not a song: Last.fm drops compilations and practice sets credited to "Various Artists" anyway.
+                if (track.DurationSeconds >= MinimumSeconds && !IsNotASong(track))
                 {
                     var endedAt = new DateTimeOffset(DateTime.SpecifyKind(play.EndedAt, DateTimeKind.Utc));
                     var startedAt = play.StartedAt is { } started
@@ -111,9 +112,15 @@ public sealed class LastFmScrobbler : BackgroundService
                         : endedAt.AddSeconds(-track.DurationSeconds);
                     try
                     {
-                        await _lastFm.ScrobbleAsync(link.SessionKey, track, startedAt, cancellationToken).ConfigureAwait(false);
-                        await RememberAsync(db, link.UserId, track, play, startedAt.UtcDateTime, cancellationToken).ConfigureAwait(false);
-                        scrobbled++;
+                        if (await _lastFm.ScrobbleAsync(link.SessionKey, track, startedAt, cancellationToken).ConfigureAwait(false) is { } ignored)
+                        {
+                            _logger.LogInformation("Last.fm dropped score {ScoreId}'s scrobble ({Artist} - {Title}): {Reason}.", play.ScoreId, track.Artist, track.Title, ignored);
+                        }
+                        else
+                        {
+                            await RememberAsync(db, link.UserId, track, play, startedAt.UtcDateTime, cancellationToken).ConfigureAwait(false);
+                            scrobbled++;
+                        }
                     }
                     catch (LastFmException ex) when (ex.SessionInvalid)
                     {
@@ -203,6 +210,10 @@ public sealed class LastFmScrobbler : BackgroundService
         if (oldestKept is { } id)
             await db.LastFmScrobbles.Where(s => s.UserId == userId && s.Id < id).ExecuteDeleteAsync(cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>A map that isn't one song (credited to "Various Artists": compilations, practice sets), which Last.fm drops.</summary>
+    public static bool IsNotASong(LastFmTrack track) =>
+        string.Equals(track.Artist.Trim(), "Various Artists", StringComparison.OrdinalIgnoreCase);
 
     private async Task DisconnectAsync(TomYumDbContext db, int userId, Dictionary<int, Domain.Entities.LastFmLink> links, CancellationToken cancellationToken)
     {
