@@ -131,6 +131,26 @@ public sealed class LazerRelaxImport : BackgroundService
         return null;
     }
 
+    /// <summary>
+    /// A lazer Relax/Autopilot play's score at Relax's and Autopilot's 1x, when its client scored them at osu!'s 0.1x (its
+    /// score is about a tenth of its score without mods, times the other mods'); null when it's at 1x already.
+    /// </summary>
+    public static long? FullScore(string data, long totalScore)
+    {
+        using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(data) ? "{}" : data);
+        if (!document.RootElement.TryGetProperty("total_score_without_mods", out var without) || !without.TryGetInt64(out var withoutMods) || withoutMods <= 0)
+            return null;
+        // The other mods' multipliers make 0.3 to about 1.6 together, so at 0.1x it's under 0.2 and at 1x over it; but two of
+        // Easy (0.5), Half Time/Daycore (0.3) and No Fail (0.5) can make a 1x play that low too, so those are left as they are.
+        int reducers = 0;
+        if (document.RootElement.TryGetProperty("mods", out var mods) && mods.ValueKind == JsonValueKind.Array)
+        {
+            reducers = mods.EnumerateArray().Count(m => m.TryGetProperty("acronym", out var acronym)
+                                                        && acronym.GetString() is "EZ" or "HT" or "DC" or "NF");
+        }
+        return reducers < 2 && (double)totalScore / withoutMods < 0.2 ? totalScore * 10 : null;
+    }
+
     /// <summary>The play's mods as the stable bitmask (the ones stable has; Classic and lazer-only ones are left out).</summary>
     public static Mods LegacyMods(string data)
     {
@@ -195,6 +215,13 @@ public sealed class LazerRelaxImport : BackgroundService
             await scores.MarkPreviousBestAsync((int)play.UserId, beatmap.Md5, gameMode, cancellationToken).ConfigureAwait(false);
 
         var value = play.LegacyTotalScore > 0 ? play.LegacyTotalScore : play.TotalScore;
+        // Relax and Autopilot score in full here (1x): a client that still scored them at osu!'s 0.1x gets its score
+        // as it counts, on the website too.
+        if (play.LegacyTotalScore <= 0 && FullScore(play.Data, play.TotalScore) is { } full)
+        {
+            value = full;
+            await services.GetRequiredService<OsuWebLazerRelax>().SetTotalScoreAsync(play.ScoreId, full, cancellationToken).ConfigureAwait(false);
+        }
         await scores.AddAsync(new Score
         {
             UserId = (int)play.UserId,
