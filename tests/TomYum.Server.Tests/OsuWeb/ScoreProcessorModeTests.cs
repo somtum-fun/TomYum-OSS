@@ -47,6 +47,12 @@ public sealed class ScoreProcessorModeTests : OsuWebDatabaseTest
 
         using var again = JsonDocument.Parse(OsuWebScores.ProcessingItem(row, previousVersion: 10));
         Assert.Equal(10, again.RootElement.GetProperty("ProcessHistory").GetProperty("processed_version").GetInt32());
+
+        // A stable play has no start; a lazer play's goes along (the processor measures a failed lazer play from it).
+        Assert.Equal(JsonValueKind.Null, score.GetProperty("started_at").ValueKind);
+        row.StartedAt = new DateTime(2026, 9, 27, 11, 58, 0, DateTimeKind.Utc);
+        using var lazer = JsonDocument.Parse(OsuWebScores.ProcessingItem(row));
+        Assert.Equal(row.StartedAt, lazer.RootElement.GetProperty("Score").GetProperty("started_at").GetDateTimeOffset().UtcDateTime);
     }
 
     [MySqlFact]

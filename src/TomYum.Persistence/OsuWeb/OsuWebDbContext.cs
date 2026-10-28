@@ -190,6 +190,7 @@ public sealed class OsuWebDbContext : DbContext
             score.Property(s => s.Pp).HasColumnName("pp");
             score.Property(s => s.LegacyScoreId).HasColumnName("legacy_score_id");
             score.Property(s => s.LegacyTotalScore).HasColumnName("legacy_total_score");
+            score.Property(s => s.StartedAt).HasColumnName("started_at");
             score.Property(s => s.EndedAt).HasColumnName("ended_at");
         });
 

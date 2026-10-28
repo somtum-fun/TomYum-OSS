@@ -210,7 +210,10 @@ public static class OsuWebScores
                 ["pp"] = row.Pp,
                 ["legacy_score_id"] = row.LegacyScoreId,
                 ["legacy_total_score"] = row.LegacyTotalScore,
-                ["started_at"] = null,
+                // A lazer play's start: ppy's processor measures a failed lazer play's length from it (null crashed it).
+                ["started_at"] = row.StartedAt is { } started
+                    ? new DateTimeOffset(DateTime.SpecifyKind(started, DateTimeKind.Utc)).ToString("O", System.Globalization.CultureInfo.InvariantCulture)
+                    : null,
                 ["ended_at"] = new DateTimeOffset(DateTime.SpecifyKind(row.EndedAt, DateTimeKind.Utc)).ToString("O", System.Globalization.CultureInfo.InvariantCulture),
                 ["build_id"] = null,
             },

@@ -284,5 +284,8 @@ public sealed class OsuWebScore
 
     public uint LegacyTotalScore { get; set; }
 
+    /// <summary>When a lazer play started (null for stable's): ppy's processor measures a failed lazer play's length from it.</summary>
+    public DateTime? StartedAt { get; set; }
+
     public DateTime EndedAt { get; set; }
 }
