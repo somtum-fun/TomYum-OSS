@@ -237,7 +237,32 @@ public sealed partial class OsuWebCommunity
         return scores.GroupBy(s => s.BeatmapId).Select(g => g.First()).Take(Math.Clamp(count, 1, 100)).ToList();
     }
 
-    /// <summary>The top players by pp in <paramref name="ruleset"/>, optionally in one country.</summary>
+    /// <summary>
+    /// The player's profile banner as a path under the website's uploads (<c>uploads/default/</c>): their own upload
+    /// (<c>user-profile-covers/{user}/{file}</c>) or the preset they picked (<c>user-cover-presets/{id}/{file}</c>), as
+    /// osu-web's User\Cover has it; null without one.
+    /// </summary>
+    public async Task<string?> GetCoverPathAsync(int userId, CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.Database.SqlQuery<CoverRow>(
+                $"SELECT u.cover_preset_id AS PresetId, u.custom_cover_filename AS CustomFile, p.filename AS PresetFile FROM phpbb_users u LEFT JOIN user_cover_presets p ON p.id = u.cover_preset_id WHERE u.user_id = {userId}")
+            .ToListAsync(cancellationToken).ConfigureAwait(false);
+        if (rows is not [var row])
+            return null;
+        if (row.PresetId is null && !string.IsNullOrEmpty(row.CustomFile))
+            return string.Create(CultureInfo.InvariantCulture, $"user-profile-covers/{userId}/{row.CustomFile}");
+        return row.PresetId is { } preset && !string.IsNullOrEmpty(row.PresetFile)
+            ? string.Create(CultureInfo.InvariantCulture, $"user-cover-presets/{preset}/{row.PresetFile}")
+            : null;
+    }
+
+    private sealed class CoverRow
+    {
+        public uint? PresetId { get; set; }
+        public string? CustomFile { get; set; }
+        public string? PresetFile { get; set; }
+    }
+
     /// <summary>Every visible ranked player's pp in <paramref name="ruleset"/> (for the weekly "most improved").</summary>
     public async Task<IReadOnlyDictionary<int, double>> GetAllPpAsync(int ruleset, CancellationToken cancellationToken = default)
     {
@@ -259,6 +284,7 @@ public sealed partial class OsuWebCommunity
         return (int)await _db.Database.SqlQueryRaw<long>(sql).SingleAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>The top players by pp in <paramref name="ruleset"/>, optionally in one country.</summary>
     public async Task<IReadOnlyList<RankingEntry>> GetRankingAsync(int ruleset, int count, string? country = null, CancellationToken cancellationToken = default)
     {
         var sql = $$"""
