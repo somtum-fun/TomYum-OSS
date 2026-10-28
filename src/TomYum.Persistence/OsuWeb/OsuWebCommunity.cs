@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
@@ -450,6 +451,29 @@ public sealed partial class OsuWebCommunity
         public long UserId { get; set; }
 
         public string Avatar { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// Keeps a linked Discord account's name for the website (its "Connected profiles" and the profile's
+    /// connections: the website's own Discord login writes it the same way). A Discord account another player
+    /// had is left alone (false).
+    /// </summary>
+    public async Task<bool> SetDiscordNameAsync(int userId, ulong discordId, string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        var shown = name.Length > 100 ? name[..100] : name;
+        var external = discordId.ToString(CultureInfo.InvariantCulture);
+        try
+        {
+            await _db.Database.ExecuteSqlAsync(
+                $"INSERT INTO tomyum_user_connections (user_id, kind, external_id, display_name, connected_at) VALUES ({userId}, 'discord', {external}, {shown}, UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE external_id = VALUES(external_id), display_name = VALUES(display_name)",
+                cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (DbException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Whether ppy's score processor has handled the score (its pp and stats are final).</summary>
