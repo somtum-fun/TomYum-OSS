@@ -259,6 +259,8 @@ builder.Services.AddSingleton<CustomBeatmapStore>();
 builder.Services.AddHostedService<CustomPreviewBackfill>();
 // Uploaded maps get the BPM osu! gives (the one they are at the longest), not their first timing point's.
 builder.Services.AddHostedService<CustomBpmBackfill>();
+// osu! maps' taiko/catch/mania star ratings on the website (its pages show a convert's from them).
+builder.Services.AddHostedService<ConvertStarRatingsJob>();
 builder.Services.AddSingleton<CustomBeatmapCatalog>();
 builder.Services.AddScoped<CustomBeatmapImporter>();
 // osu! API v2 (descriptions, nominators) when an OAuth application is configured.

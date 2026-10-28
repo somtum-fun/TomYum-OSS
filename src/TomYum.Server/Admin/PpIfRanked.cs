@@ -60,7 +60,8 @@ public static class PpIfRanked
     public static PerformanceRequest? For(ScoreCard score)
     {
         ArgumentNullException.ThrowIfNull(score);
-        if (!score.Passed)
+        // A custom lazer ruleset's play (ruleset 10 and up) has no pp: it isn't osu!'s.
+        if (!score.Passed || score.Ruleset is < 0 or > 3)
             return null;
         var mods = Mods.None;
         foreach (var acronym in score.Mods)

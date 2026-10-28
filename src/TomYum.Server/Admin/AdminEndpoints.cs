@@ -65,6 +65,7 @@ public static class AdminEndpoints
         admin.MapModeScores();
         admin.MapModeRankings();
         admin.MapPpIfRanked();
+        admin.MapCustomRulesetMods();
         admin.MapGet("/users/{userId:int}/pp-history/{mode:int}", PpHistoryJob.GetAsync);
         admin.MapAccounts();
         TomYum.Server.LastFm.LastFmEndpoints.MapLastFm(admin);
