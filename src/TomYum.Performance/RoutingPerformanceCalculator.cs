@@ -34,24 +34,24 @@ public sealed class RoutingPerformanceCalculator : IPerformanceCalculator, IAccu
         _log.LogDebug("pp route: {ShortName} (gamemode {GameMode}) -> backend '{Backend}'",
             GameMode.ToShortName(gameMode), gameMode, backend);
 
-        return _registry.Resolve(backend).CalculateAsync(request, cancellationToken);
+        return _registry.Resolve(backend).CalculateAsync(request with { Mods = PpMods(request.RulesetId, request.Mods) }, cancellationToken);
     }
 
     public Task<IReadOnlyList<double>?> ForAccuraciesAsync(int beatmapId, int rulesetId, int mods, IReadOnlyList<double> accuracies, CancellationToken cancellationToken = default) =>
         _registry.Resolve(ResolveBackendName(GameMode.FromLegacyMods(rulesetId, mods))) is IAccuracyPerformance backend
-            ? backend.ForAccuraciesAsync(beatmapId, rulesetId, mods, accuracies, cancellationToken)
+            ? backend.ForAccuraciesAsync(beatmapId, rulesetId, PpMods(rulesetId, mods), accuracies, cancellationToken)
             : Task.FromResult<IReadOnlyList<double>?>(null);
 
     public Task<double?> StarRatingAsync(int beatmapId, int rulesetId, int mods, CancellationToken cancellationToken = default) =>
         _registry.Resolve(ResolveBackendName(GameMode.FromLegacyMods(rulesetId, mods))) is IAccuracyPerformance backend
-            ? backend.StarRatingAsync(beatmapId, rulesetId, mods, cancellationToken)
+            ? backend.StarRatingAsync(beatmapId, rulesetId, PpMods(rulesetId, mods), cancellationToken)
             : Task.FromResult<double?>(null);
 
     public Task<double?> PartialAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         return _registry.Resolve(ResolveBackendName(GameMode.FromLegacyMods(request.RulesetId, request.Mods))) is IPartialPerformance backend
-            ? backend.PartialAsync(request, cancellationToken)
+            ? backend.PartialAsync(request with { Mods = PpMods(request.RulesetId, request.Mods) }, cancellationToken)
             : Task.FromResult<double?>(null);
     }
 
@@ -59,6 +59,24 @@ public sealed class RoutingPerformanceCalculator : IPerformanceCalculator, IAccu
         _registry.Resolve(ResolveBackendName(GameMode.FromLegacyMods(rulesetId, 0))) is IBeatmapDifficulty backend
             ? backend.DifficultyAsync(beatmapId, rulesetId, cancellationToken)
             : Task.FromResult<BeatmapDifficulty?>(null);
+
+    /// <summary>
+    /// The mods the pp is worked out with: without Relax/Autopilot for the variants scored as
+    /// vanilla (<see cref="PerformanceOptions.VanillaPp"/>), so their scores are worth what vanilla's are.
+    /// </summary>
+    internal int PpMods(int rulesetId, int mods)
+    {
+        var gameMode = GameMode.FromLegacyMods(rulesetId, mods);
+        if (!GameMode.UsesPpLeaderboard(gameMode))
+            return mods;
+        var asVanilla = (_options.VanillaPp ?? string.Empty)
+            .Split([',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Any(token => GameMode.MatchesToken(token, gameMode));
+        return asVanilla ? mods & ~(RelaxBit | AutopilotBit) : mods;
+    }
+
+    private const int RelaxBit = 1 << 7;
+    private const int AutopilotBit = 1 << 13;
 
     private string ResolveBackendName(int gameMode)
     {

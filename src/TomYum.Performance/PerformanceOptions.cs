@@ -40,6 +40,14 @@ public sealed class PerformanceOptions
     /// </summary>
     public string? OsuCacheDirectory { get; set; }
 
+    /// <summary>
+    /// The variants whose scores are worth what the same score without Relax/Autopilot is worth
+    /// ("relax", "autopilot", both separated by commas or spaces, or none): a 727pp play is 727pp on
+    /// the relax board too, instead of ppy's or a sidecar's relax formula. The variant still picks
+    /// the route (backend). A string, not a list: the config binder adds to a list's defaults.
+    /// </summary>
+    public string VanillaPp { get; set; } = "relax";
+
     /// <summary>The always-available in-process backend name (auto-registered if absent).</summary>
     public const string OfficialBackendName = "official";
 }
