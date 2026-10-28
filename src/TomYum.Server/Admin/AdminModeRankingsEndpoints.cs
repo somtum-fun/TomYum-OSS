@@ -47,6 +47,17 @@ public static class AdminModeRankingsEndpoints
             ranked = ranked.Where(s => active.Contains(s.UserId));
         }
 
+        // Every country in the ranking (its country filter's choices), whatever this page is filtered to.
+        var countries = new SortedSet<string>(StringComparer.Ordinal);
+        var countryOf = new Dictionary<int, string?>();
+        foreach (var stats in ranked)
+        {
+            var code = (await users.GetByIdAsync(stats.UserId, cancellationToken).ConfigureAwait(false))?.Country?.ToUpperInvariant();
+            countryOf[stats.UserId] = code;
+            if (!string.IsNullOrEmpty(code))
+                countries.Add(code);
+        }
+
         if (friendsOf is { } viewer)
         {
             var circle = (await friends.GetFriendIdsAsync(viewer, cancellationToken).ConfigureAwait(false)).Append(viewer).ToHashSet();
@@ -54,13 +65,7 @@ public static class AdminModeRankingsEndpoints
         }
         if (!string.IsNullOrEmpty(country))
         {
-            var inCountry = new List<Domain.Entities.UserStats>();
-            foreach (var stats in ranked)
-            {
-                if (string.Equals((await users.GetByIdAsync(stats.UserId, cancellationToken).ConfigureAwait(false))?.Country, country, StringComparison.OrdinalIgnoreCase))
-                    inCountry.Add(stats);
-            }
-            ranked = inCountry;
+            ranked = ranked.Where(s => string.Equals(countryOf.GetValueOrDefault(s.UserId), country, StringComparison.OrdinalIgnoreCase)).ToList();
         }
 
         var ordered = (byScore ? ranked.OrderByDescending(s => s.RankedScore) : ranked.OrderByDescending(s => s.Pp)).ToList();
@@ -75,6 +80,7 @@ public static class AdminModeRankingsEndpoints
         return Results.Ok(new
         {
             total = ordered.Count,
+            countries,
             rows = page.Select(s => new ModeRankingRow(s.UserId, s.Pp, s.Accuracy, s.PlayCount, s.RankedScore,
                 Grades(s.UserId, "X", "XH"), Grades(s.UserId, "S", "SH"), Grades(s.UserId, "A"))),
         });
