@@ -19,11 +19,11 @@ internal static class BestScoreStats
         // Lazer plays count as classic (OsuWeb.LazerRelaxImport.ClassicScore), as osu! adds them.
         stats.RankedScore = (await bests.ToListAsync(cancellationToken).ConfigureAwait(false)).Sum(OsuWeb.LazerRelaxImport.ClassicScore);
 
+        // Each play's accuracy as its client showed it (a lazer play's with its slider ticks and ends).
         var performances = await bests.Where(s => s.Pp > 0).OrderByDescending(s => s.Pp)
-            .Select(s => new { s.Pp, s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss })
             .ToListAsync(cancellationToken).ConfigureAwait(false);
         var totals = PerformanceTotals.Compute(performances
-            .Select(p => (p.Pp, (float)AccuracyCalculator.Compute(GameMode.AsVanilla(stats.Mode), p.Count300, p.Count100, p.Count50, p.CountGeki, p.CountKatu, p.CountMiss)))
+            .Select(p => (p.Pp, (float)AdminModeScoresEndpoints.Accuracy(p)))
             .ToList());
         stats.Pp = totals?.Pp ?? 0;
         stats.Accuracy = totals?.Accuracy ?? 0;

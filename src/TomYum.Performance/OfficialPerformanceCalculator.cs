@@ -147,21 +147,46 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
             Statistics = Judgements(root?["statistics"]),
             MaximumStatistics = Judgements(root?["maximum_statistics"]),
         };
-        // As ppy's score processor: the judgements' base score over the most they could have scored.
+        scoreInfo.Accuracy = Accuracy(ruleset, scoreInfo.Statistics, scoreInfo.MaximumStatistics);
+        return scoreInfo;
+    }
+
+    /// <summary>
+    /// A lazer play's accuracy as lazer shows it (slider ticks and ends included, each at its own weight), from its
+    /// judgements (<paramref name="lazerScore"/>'s statistics and maximum_statistics); null without them.
+    /// </summary>
+    public static double? LazerAccuracy(int rulesetId, string? lazerScore)
+    {
+        if (string.IsNullOrWhiteSpace(lazerScore) || rulesetId is < 0 or > 3)
+            return null;
+        try
+        {
+            var root = System.Text.Json.Nodes.JsonNode.Parse(lazerScore);
+            var maximum = Judgements(root?["maximum_statistics"]);
+            return maximum.Count == 0 ? null : Accuracy(GetRuleset(rulesetId), Judgements(root?["statistics"]), maximum);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>As ppy's score processor: the judgements' base score over the most they could have scored.</summary>
+    private static double Accuracy(Ruleset ruleset, IReadOnlyDictionary<HitResult, int> statistics, IReadOnlyDictionary<HitResult, int> maximum)
+    {
         var processor = ruleset.CreateScoreProcessor();
         double scored = 0, possible = 0;
-        foreach (var (result, count) in scoreInfo.Statistics)
+        foreach (var (result, count) in statistics)
         {
             if (result.AffectsAccuracy())
                 scored += count * processor.GetBaseScoreForResult(result);
         }
-        foreach (var (result, count) in scoreInfo.MaximumStatistics)
+        foreach (var (result, count) in maximum)
         {
             if (result.AffectsAccuracy())
                 possible += count * processor.GetBaseScoreForResult(result);
         }
-        scoreInfo.Accuracy = possible > 0 ? scored / possible : 1;
-        return scoreInfo;
+        return possible > 0 ? scored / possible : 1;
     }
 
     /// <summary>Lazer's judgement counts ("large_tick_hit": 12, ...) as hit results.</summary>

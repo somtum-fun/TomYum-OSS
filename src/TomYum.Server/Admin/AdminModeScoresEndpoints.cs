@@ -337,9 +337,20 @@ public static class AdminModeScoresEndpoints
         return Results.File(OsrFile.Build(score, player, frames), "application/octet-stream", fileName);
     }
 
+    /// <summary>
+    /// A play's accuracy as its client showed it: a lazer play's as lazer works it out (slider ticks and ends
+    /// count), which its 300/100/50 counts alone don't give; a stable play's from its counts.
+    /// </summary>
+    public static double Accuracy(Score s)
+    {
+        ArgumentNullException.ThrowIfNull(s);
+        return (s.FromLazer ? OfficialPerformanceCalculator.LazerAccuracy(GameMode.AsVanilla(s.Mode), s.LazerScore) : null)
+            ?? AccuracyCalculator.Compute(GameMode.AsVanilla(s.Mode), s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss);
+    }
+
     private static ModeScore Describe(Score s, int mode, IConfiguration configuration) => new(
         s.Id, s.BeatmapId, s.Mods, s.Pp,
-        AccuracyCalculator.Compute(GameMode.AsVanilla(mode), s.Count300, s.Count100, s.Count50, s.CountGeki, s.CountKatu, s.CountMiss),
+        Accuracy(s),
         s.Grade, s.MaxCombo, s.Perfect, s.ScoreValue, s.Passed, s.SubmittedAt,
         s.Count300, s.Count100, s.Count50, s.CountMiss, s.CountGeki, s.CountKatu, !s.FromLazer, ReplayFiles.Find(configuration, s) is not null,
         s.FromLazer ? s.OsuWebScoreId : null,
