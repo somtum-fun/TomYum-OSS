@@ -548,6 +548,9 @@ namespace TomYum.Persistence.Migrations
                     b.Property<int?>("SliderEndHits")
                         .HasColumnType("int");
 
+                    b.Property<double?>("SpeedChange")
+                        .HasColumnType("double");
+
                     b.Property<int>("Status")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("int")

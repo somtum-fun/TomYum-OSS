@@ -216,7 +216,8 @@ public sealed class PpReworks : BackgroundService
                         CountGeki: score.CountGeki,
                         CountKatu: score.CountKatu,
                         Passed: score.Passed,
-                        Lazer: score.SliderEndHits is not null, LargeTickHits: score.LargeTickHits, SliderEndHits: score.SliderEndHits), cancellationToken).ConfigureAwait(false);
+                        Lazer: score.SliderEndHits is not null, LargeTickHits: score.LargeTickHits, SliderEndHits: score.SliderEndHits,
+                        SpeedChange: score.SpeedChange), cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

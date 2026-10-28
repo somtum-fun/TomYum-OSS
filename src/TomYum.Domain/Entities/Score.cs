@@ -45,6 +45,12 @@ public sealed class Score
 
     public int? SliderEndHits { get; init; }
 
+    /// <summary>
+    /// For a lazer play with Double Time, Nightcore, Half Time or Daycore at a speed of its own (1.6x,
+    /// say): that speed, which its stars and pp follow; null at the mod's usual speed (or no such mod).
+    /// </summary>
+    public double? SpeedChange { get; init; }
+
     /// <summary>For a lazer play: its score on the website (the row its pp is shown on), else null.</summary>
     public ulong? OsuWebScoreId { get; set; }
 

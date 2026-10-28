@@ -58,6 +58,7 @@ public interface IPartialPerformance
 /// <param name="Lazer">Whether the play was made on lazer without Classic (its slider judgements differ from stable's).</param>
 /// <param name="LargeTickHits">Lazer: slider ticks and repeats hit (null: all).</param>
 /// <param name="SliderEndHits">Lazer: slider ends hit (null: all).</param>
+/// <param name="SpeedChange">Lazer: the speed of a rate mod (DT, NC, HT, DC) set to its own (null: the mod's usual).</param>
 public sealed record PerformanceRequest(
     int BeatmapId,
     int RulesetId,
@@ -72,7 +73,8 @@ public sealed record PerformanceRequest(
     bool Passed,
     bool Lazer = false,
     int? LargeTickHits = null,
-    int? SliderEndHits = null);
+    int? SliderEndHits = null,
+    double? SpeedChange = null);
 
 /// <summary>A map's own difficulty: star rating and max combo without mods.</summary>
 public sealed record BeatmapDifficulty(double StarRating, int MaxCombo);

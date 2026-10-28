@@ -112,6 +112,25 @@ public sealed class LazerRelaxImport : BackgroundService
         return (Stat("large_tick_hit"), Stat("slider_tail_hit"));
     }
 
+    /// <summary>
+    /// The speed a rate mod (DT, NC, HT, DC) was set to, when the player set one (DT at 1.6x, say); null at
+    /// the mod's usual speed. The stable bitmask only says "DT", which is 1.5x.
+    /// </summary>
+    public static double? SpeedChange(string data)
+    {
+        using var document = JsonDocument.Parse(string.IsNullOrWhiteSpace(data) ? "{}" : data);
+        if (!document.RootElement.TryGetProperty("mods", out var list) || list.ValueKind != JsonValueKind.Array)
+            return null;
+        foreach (var mod in list.EnumerateArray())
+        {
+            if (mod.TryGetProperty("acronym", out var acronym) && acronym.GetString() is "DT" or "NC" or "HT" or "DC"
+                && mod.TryGetProperty("settings", out var settings) && settings.ValueKind == JsonValueKind.Object
+                && settings.TryGetProperty("speed_change", out var speed) && speed.TryGetDouble(out var value))
+                return value;
+        }
+        return null;
+    }
+
     /// <summary>The play's mods as the stable bitmask (the ones stable has; Classic and lazer-only ones are left out).</summary>
     public static Mods LegacyMods(string data)
     {
@@ -144,6 +163,7 @@ public sealed class LazerRelaxImport : BackgroundService
         }
 
         var (n300, n100, n50, nmiss, ngeki, nkatu) = Counts(play.Ruleset, play.Data);
+        var speed = SpeedChange(play.Data);
         var sliders = SliderHits(play.Ruleset, play.Data);
         var scores = services.GetRequiredService<IScoreRepository>();
         var ppValue = 0.0;
@@ -153,7 +173,8 @@ public sealed class LazerRelaxImport : BackgroundService
             {
                 ppValue = await services.GetRequiredService<IPerformanceCalculator>().CalculateAsync(
                     new PerformanceRequest(beatmap.Id, play.Ruleset, (int)mods, (int)play.MaxCombo, n300, n100, n50, nmiss, ngeki, nkatu, Passed: true,
-                        Lazer: sliders is not null, LargeTickHits: sliders?.LargeTickHits, SliderEndHits: sliders?.SliderEndHits),
+                        Lazer: sliders is not null, LargeTickHits: sliders?.LargeTickHits, SliderEndHits: sliders?.SliderEndHits,
+                        SpeedChange: speed),
                     cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
@@ -197,6 +218,7 @@ public sealed class LazerRelaxImport : BackgroundService
             OsuWebScoreId = play.ScoreId,
             LargeTickHits = sliders?.LargeTickHits,
             SliderEndHits = sliders?.SliderEndHits,
+            SpeedChange = speed,
             PpHeld = held,
         }, cancellationToken).ConfigureAwait(false);
         await services.GetRequiredService<OsuWebLazerRelax>()

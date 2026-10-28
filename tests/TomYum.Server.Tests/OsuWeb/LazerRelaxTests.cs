@@ -38,6 +38,25 @@ public sealed class LazerRelaxTests : OsuWebDatabaseTest
     public void Mods_AreTheStableOnes() =>
         Assert.Equal(Mods.Relax | Mods.Hidden, LazerRelaxImport.LegacyMods("""{"mods":[{"acronym":"RX"},{"acronym":"HD"},{"acronym":"CL"},{"acronym":"DA","settings":{"approach_rate":5}}]}"""));
 
+    [Theory]
+    [InlineData("""{"mods":[{"acronym":"DT","settings":{"speed_change":1.6}},{"acronym":"HD"},{"acronym":"RX"}]}""", 1.6)]
+    [InlineData("""{"mods":[{"acronym":"HT","settings":{"speed_change":0.6}},{"acronym":"RX"}]}""", 0.6)]
+    [InlineData("""{"mods":[{"acronym":"DT"},{"acronym":"RX"}]}""", null)]
+    [InlineData("""{"mods":[{"acronym":"RX"}]}""", null)]
+    public void SpeedChange_IsTheRateModsOwn(string data, double? speed) =>
+        Assert.Equal(speed, LazerRelaxImport.SpeedChange(data));
+
+    [Fact]
+    public void Pp_FollowsTheRateModsOwnSpeed()
+    {
+        // DT at 1.6x is worked out at 1.6x, not DT's usual 1.5x (the legacy bits only say "DT").
+        var mods = OfficialPerformanceCalculator.WithSpeed(OfficialPerformanceCalculator.StableMods(new osu.Game.Rulesets.Osu.OsuRuleset(), (int)Mods.DoubleTime), 1.6);
+        Assert.Equal(1.6, mods.OfType<osu.Game.Rulesets.Mods.ModRateAdjust>().Single().SpeedChange.Value);
+
+        var usual = OfficialPerformanceCalculator.WithSpeed(OfficialPerformanceCalculator.StableMods(new osu.Game.Rulesets.Osu.OsuRuleset(), (int)Mods.DoubleTime), null);
+        Assert.Equal(1.5, usual.OfType<osu.Game.Rulesets.Mods.ModRateAdjust>().Single().SpeedChange.Value);
+    }
+
     [MySqlFact]
     public async Task RelaxPlays_GetRelaxPp_AndARelaxBest()
     {

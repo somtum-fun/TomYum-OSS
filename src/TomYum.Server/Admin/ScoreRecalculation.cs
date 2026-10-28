@@ -246,7 +246,8 @@ public sealed class ScoreRecalculation
                     CountKatu: score.CountKatu,
                     MaxCombo: score.MaxCombo,
                     Passed: score.Passed,
-                    Lazer: score.SliderEndHits is not null, LargeTickHits: score.LargeTickHits, SliderEndHits: score.SliderEndHits),
+                    Lazer: score.SliderEndHits is not null, LargeTickHits: score.LargeTickHits, SliderEndHits: score.SliderEndHits,
+                        SpeedChange: score.SpeedChange),
                 cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

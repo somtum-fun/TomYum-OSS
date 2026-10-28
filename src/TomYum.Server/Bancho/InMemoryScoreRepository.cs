@@ -45,6 +45,7 @@ public sealed class InMemoryScoreRepository : IScoreRepository
             OffBoard = score.OffBoard,
             LargeTickHits = score.LargeTickHits,
             SliderEndHits = score.SliderEndHits,
+            SpeedChange = score.SpeedChange,
         };
         _scores[id] = stored;
         return Task.FromResult(stored);

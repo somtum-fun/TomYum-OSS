@@ -42,9 +42,9 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
     public async Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
     {
         var ruleset = GetRuleset(request.RulesetId);
-        var mods = StableMods(ruleset, request.Mods);
+        var mods = WithSpeed(StableMods(ruleset, request.Mods), request.SpeedChange);
 
-        var difficulty = await DifficultyAsync(request.BeatmapId, request.RulesetId, request.Mods, ruleset, mods, cancellationToken).ConfigureAwait(false);
+        var difficulty = await DifficultyAsync(request.BeatmapId, request.RulesetId, ModsKey(request), ruleset, mods, cancellationToken).ConfigureAwait(false);
         if (difficulty?.Attributes is not { } diffAttribs)
             return 0.0;
 
@@ -111,9 +111,9 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
             return 0;
 
         var ruleset = GetRuleset(request.RulesetId);
-        var mods = StableMods(ruleset, request.Mods);
+        var mods = WithSpeed(StableMods(ruleset, request.Mods), request.SpeedChange);
         var timed = await _cache.GetOrCreateAsync(
-            $"diff:timed:{request.BeatmapId}:{request.RulesetId}:{request.Mods}:{_files.Stamp(request.BeatmapId)}", async entry =>
+            $"diff:timed:{request.BeatmapId}:{request.RulesetId}:{ModsKey(request)}:{_files.Stamp(request.BeatmapId)}", async entry =>
             {
                 entry.SlidingExpiration = TimeSpan.FromMinutes(10);
                 var bytes = await _files.GetAsync(request.BeatmapId, cancellationToken).ConfigureAwait(false);
@@ -151,7 +151,10 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
     private sealed record Difficulty(DifficultyAttributes Attributes, BeatmapInfo Beatmap);
 
     private Task<Difficulty?> DifficultyAsync(int beatmapId, int rulesetId, int legacyMods, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods, CancellationToken cancellationToken) =>
-        _cache.GetOrCreateAsync($"diff:official:{beatmapId}:{rulesetId}:{legacyMods}:{_files.Stamp(beatmapId)}", async entry =>
+        DifficultyAsync(beatmapId, rulesetId, legacyMods.ToString(System.Globalization.CultureInfo.InvariantCulture), ruleset, mods, cancellationToken);
+
+    private Task<Difficulty?> DifficultyAsync(int beatmapId, int rulesetId, string modsKey, Ruleset ruleset, osu.Game.Rulesets.Mods.Mod[] mods, CancellationToken cancellationToken) =>
+        _cache.GetOrCreateAsync($"diff:official:{beatmapId}:{rulesetId}:{modsKey}:{_files.Stamp(beatmapId)}", async entry =>
         {
             entry.SlidingExpiration = TimeSpan.FromMinutes(30);
             var bytes = await _files.GetAsync(beatmapId, cancellationToken).ConfigureAwait(false);
@@ -166,7 +169,26 @@ public sealed class OfficialPerformanceCalculator : IPerformanceCalculator, IAcc
     /// lazer's slider-end and tick judgements, which stable scores don't have, and treats them as
     /// missed (an SS of a 7★ map came out at 460pp instead of 598pp).
     /// </summary>
-    internal static osu.Game.Rulesets.Mods.Mod[] StableMods(Ruleset ruleset, int legacyMods) =>
+    /// <summary>The cache key's part for a request's mods: the legacy bits, and a rate mod's own speed.</summary>
+    private static string ModsKey(PerformanceRequest request) =>
+        request.SpeedChange is { } speed
+            ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{request.Mods}@{speed:0.###}")
+            : request.Mods.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
+    /// <paramref name="mods"/> with their rate mod (DT, NC, HT, DC) at <paramref name="speed"/>: a lazer play
+    /// can set its own (DT at 1.6x, say), which the legacy bits can't say.
+    /// </summary>
+    public static osu.Game.Rulesets.Mods.Mod[] WithSpeed(osu.Game.Rulesets.Mods.Mod[] mods, double? speed)
+    {
+        if (speed is not { } value)
+            return mods;
+        foreach (var mod in mods.OfType<osu.Game.Rulesets.Mods.ModRateAdjust>())
+            mod.SpeedChange.Value = Math.Clamp(value, mod.SpeedChange.MinValue, mod.SpeedChange.MaxValue);
+        return mods;
+    }
+
+    public static osu.Game.Rulesets.Mods.Mod[] StableMods(Ruleset ruleset, int legacyMods) =>
         ruleset.ConvertFromLegacyMods((LegacyMods)legacyMods).Append(ruleset.CreateMod<osu.Game.Rulesets.Mods.ModClassic>()!).ToArray();
 
     /// <remarks>
