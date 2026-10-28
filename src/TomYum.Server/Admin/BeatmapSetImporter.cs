@@ -102,33 +102,40 @@ public sealed class BeatmapSetImporter
         foreach (var beatmap in set)
             await _repository.UpsertAsync(beatmap, cancellationToken).ConfigureAwait(false);
 
+        // The maps are stored, which is what lazer's lookup waits for: the website's description, nominators
+        // and listing follow in the background (they took up to half a minute, and lazer gives up after ten seconds).
         if (_interop is { IsConfigured: true })
-        {
-            // Description and nominators (osu! API v2), before indexing so the listing has them too.
-            if (_apiV2 is { IsConfigured: true } && await _apiV2.GetBeatmapsetExtrasAsync(setId, cancellationToken).ConfigureAwait(false) is { } extras)
-            {
-                try
-                {
-                    await _interop.SyncBeatmapsetExtrasAsync(setId, extras, cancellationToken).ConfigureAwait(false);
-                }
-                catch (HttpRequestException ex)
-                {
-                    _logger.LogWarning(ex, "Imported beatmap set {SetId} but sending its description/nominators to osu-web failed.", setId);
-                }
-            }
-
-            try
-            {
-                await _interop.IndexBeatmapsetAsync(setId, cancellationToken).ConfigureAwait(false);
-            }
-            catch (HttpRequestException ex)
-            {
-                // The maps are stored either way; only the listing lags until the next re-index.
-                _logger.LogWarning(ex, "Imported beatmap set {SetId} but osu-web search indexing failed.", setId);
-            }
-        }
+            _ = Task.Run(() => FinishOnWebsiteAsync(setId), CancellationToken.None);
 
         return new BeatmapSetImportResult(setId, set[0].Artist, set[0].Title, set.Count);
+    }
+
+    /// <summary>A stored set's description and nominators (osu! API v2) on the website, and the listing re-indexed.</summary>
+    private async Task FinishOnWebsiteAsync(int setId)
+    {
+        if (_interop is not { } interop)
+            return;
+
+        // Description and nominators, before indexing so the listing has them too.
+        try
+        {
+            if (_apiV2 is { IsConfigured: true } && await _apiV2.GetBeatmapsetExtrasAsync(setId).ConfigureAwait(false) is { } extras)
+                await interop.SyncBeatmapsetExtrasAsync(setId, extras).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Imported beatmap set {SetId} but sending its description/nominators to osu-web failed.", setId);
+        }
+
+        try
+        {
+            await interop.IndexBeatmapsetAsync(setId).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // The maps are stored either way; only the listing lags until the next re-index.
+            _logger.LogWarning(ex, "Imported beatmap set {SetId} but osu-web search indexing failed.", setId);
+        }
     }
 
     private async Task LogAsync(int setId, int actorId, string? jobId, string? via, string result, string summary, CancellationToken cancellationToken)

@@ -246,8 +246,10 @@ public static class AdminEndpoints
     /// </summary>
     private static async Task<IResult> ImportBeatmapAsync(
         BeatmapImportRequest request, IBeatmapRepository beatmaps, BeatmapService service, IOsuApiClient api, BeatmapSetImporter importer,
-        HttpContext context, CancellationToken cancellationToken)
+        HttpContext context, IHostApplicationLifetime lifetime)
     {
+        // Runs to the end even when the request gives up (see ImportSetAsync).
+        var cancellationToken = lifetime.ApplicationStopping;
         int? setId = null;
         if (request.BeatmapId is > 0 and var id)
         {
@@ -356,8 +358,11 @@ public static class AdminEndpoints
             : Results.Conflict(new { message = "That score id already exists (restores don't overwrite)." });
     }
 
-    private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, HttpContext context, CancellationToken cancellationToken)
+    private static async Task<IResult> ImportSetAsync(int setId, BeatmapSetImporter importer, HttpContext context, IHostApplicationLifetime lifetime)
     {
+        // An import runs to the end even when the request gives up (lazer's lookups do after ten seconds), so the
+        // next lookup finds the maps instead of starting over.
+        var cancellationToken = lifetime.ApplicationStopping;
         var result = await importer.ImportAsync(setId, ActorId(context), cancellationToken: cancellationToken, via: Via(context)).ConfigureAwait(false);
         return result.Found ? Results.Ok(result) : Results.NotFound(result);
     }
