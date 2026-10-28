@@ -5,7 +5,7 @@ using Xunit;
 namespace TomYum.Server.Tests;
 
 /// <summary>
-/// <see cref="PerformanceOptions.VanillaPp"/>: relax and autopilot (by default) are worth what the same score
+/// <see cref="PerformanceOptions.VanillaPp"/>: relax and autopilot (when turned on) are worth what the same score
 /// without that mod is, so the backend is asked without it; the route still follows the variant.
 /// </summary>
 public class VanillaPpTests
@@ -28,9 +28,19 @@ public class VanillaPpTests
     private static PerformanceRequest Play(int mods) => new(1, 0, mods, 500, 400, 10, 0, 1, 0, 0, Passed: true);
 
     [Fact]
-    public async Task Relax_IsWorkedOutAsVanilla_ByDefault()
+    public async Task Relax_KeepsItsMod_ByDefault()
     {
         var (router, backends) = Router();
+
+        await router.CalculateAsync(Play(Relax | Hidden));
+
+        Assert.Equal(Relax | Hidden, backends["official"].Mods);
+    }
+
+    [Fact]
+    public async Task Relax_IsWorkedOutAsVanilla_WhenOn()
+    {
+        var (router, backends) = Router("relax, autopilot");
 
         await router.CalculateAsync(Play(Relax | Hidden));
 
@@ -38,9 +48,9 @@ public class VanillaPpTests
     }
 
     [Fact]
-    public async Task Autopilot_IsWorkedOutAsVanilla_ByDefault_UnlessLeftOut()
+    public async Task Autopilot_IsWorkedOutAsVanilla_WhenOn_UnlessLeftOut()
     {
-        var (router, backends) = Router();
+        var (router, backends) = Router("relax, autopilot");
         await router.CalculateAsync(Play(Autopilot | Hidden));
         Assert.Equal(Hidden, backends["official"].Mods);
 
@@ -62,7 +72,7 @@ public class VanillaPpTests
     [Fact]
     public async Task TheRoute_StillFollowsTheVariant()
     {
-        var (router, backends) = Router(relaxRoute: true);
+        var (router, backends) = Router("relax, autopilot", relaxRoute: true);
 
         await router.CalculateAsync(Play(Relax));
 
@@ -73,7 +83,7 @@ public class VanillaPpTests
     [Fact]
     public async Task ALazerPlaysOwnMods_LoseRelaxToo()
     {
-        var (router, backends) = Router();
+        var (router, backends) = Router("relax, autopilot");
 
         await router.CalculateAsync(Play(Relax) with { LazerScore = """{"mods":[{"acronym":"DT","settings":{"speed_change":1.6}},{"acronym":"RX"}],"statistics":{"great":1}}""" });
 
