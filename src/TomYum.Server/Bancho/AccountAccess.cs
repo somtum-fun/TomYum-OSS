@@ -1,10 +1,11 @@
 using TomYum.Domain.Entities;
+using TomYum.Domain.Repositories;
 
 namespace TomYum.Server.Bancho;
 
 /// <summary>
-/// Whether an account whose credentials checked out may use them: not deleted, not locked by staff (the
-/// admin panel), and not a bot where bots don't belong. Every credential path asks this after the
+/// Whether an account whose credentials checked out may use them: not deleted, not banned or locked by staff
+/// (the admin panel), and not a bot where bots don't belong. Every credential path asks this after the
 /// password (the game's login has its own notices for the same rules, in <see cref="BanchoLoginHandler"/>).
 /// </summary>
 public static class AccountAccess
@@ -14,7 +15,11 @@ public static class AccountAccess
     /// <param name="services">Where the staff lock is read from (a request's or a scope's services).</param>
     /// <param name="allowBots">True where bot accounts belong (IRC).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    public static async Task<string?> RefusalAsync(User user, IServiceProvider services, bool allowBots, CancellationToken cancellationToken)
+    /// <param name="allowBanned">
+    /// True for the client's check before it logs in: a banned account must reach the login, whose -3
+    /// shows osu!'s own "you are banned" message (<c>error: pass</c> would only say the password is wrong).
+    /// </param>
+    public static async Task<string?> RefusalAsync(User user, IServiceProvider services, bool allowBots, CancellationToken cancellationToken, bool allowBanned = false)
     {
         ArgumentNullException.ThrowIfNull(user);
         ArgumentNullException.ThrowIfNull(services);
@@ -22,6 +27,9 @@ public static class AccountAccess
             return BanchoLoginHandler.DeletedNotice;
         if (user.IsBot && !allowBots)
             return BanchoLoginHandler.BotNotice;
+        if (!allowBanned && services.GetService<IAccountBans>() is { } bans
+            && await bans.IsBannedAsync(user.Id, cancellationToken).ConfigureAwait(false))
+            return BanchoLoginHandler.BannedNotice;
         if (services.GetService<TomYum.Persistence.OsuWeb.OsuWebAccountFlags>() is { } flags
             && await flags.IsLockedAsync(user.Id, cancellationToken).ConfigureAwait(false))
             return BanchoLoginHandler.LockedNotice;
@@ -33,6 +41,7 @@ public static class AccountAccess
     /// <param name="services">Where the staff lock is read from (a request's or a scope's services).</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <param name="allowBots">True where bot accounts belong (IRC).</param>
-    public static async Task<bool> CanAuthenticateAsync(User user, IServiceProvider services, CancellationToken cancellationToken, bool allowBots = false) =>
-        await RefusalAsync(user, services, allowBots, cancellationToken).ConfigureAwait(false) is null;
+    /// <param name="allowBanned">True for the client's check before it logs in (see <see cref="RefusalAsync"/>).</param>
+    public static async Task<bool> CanAuthenticateAsync(User user, IServiceProvider services, CancellationToken cancellationToken, bool allowBots = false, bool allowBanned = false) =>
+        await RefusalAsync(user, services, allowBots, cancellationToken, allowBanned).ConfigureAwait(false) is null;
 }

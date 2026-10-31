@@ -189,12 +189,14 @@ public static class ScoreSubmissionEndpoint
             return Rejected();
         }
 
-        // Deleted or locked by staff (the admin panel): no scores, as no logins.
+        // Deleted, banned or locked by staff (the admin panel): no scores, as no logins.
         if (user.IsDeleted
+            || (context.RequestServices.GetService<IAccountBans>() is { } accountBans
+                && await accountBans.IsBannedAsync(user.Id, cancellationToken).ConfigureAwait(false))
             || (context.RequestServices.GetService<TomYum.Persistence.OsuWeb.OsuWebAccountFlags>() is { } accountFlags
                 && await accountFlags.IsLockedAsync(user.Id, cancellationToken).ConfigureAwait(false)))
         {
-            logger.LogWarning("Score submission rejected: '{Username}''s account is deleted or locked", usernameFromScore);
+            logger.LogWarning("Score submission rejected: '{Username}''s account is deleted, banned or locked", usernameFromScore);
             return Rejected();
         }
 

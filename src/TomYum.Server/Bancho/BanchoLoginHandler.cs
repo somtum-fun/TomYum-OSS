@@ -58,12 +58,22 @@ public sealed class BanchoLoginHandler
     private readonly TomYum.Server.Admin.Maintenance? _maintenance;
     private readonly IServiceProvider? _services;
     private readonly TomYum.Plugins.Abstractions.IChallengeService? _challengeService;
+    private readonly IAccountBans? _bans;
 
     /// <summary>At most this many unread private messages are shown at login (the newest).</summary>
     public const int UnreadLimit = 50;
 
     /// <summary>What a locked account is told (staff lock it from the admin panel).</summary>
     public const string LockedNotice = "This account is locked. Please contact staff.";
+
+    /// <summary>What a banned account is told where there's no -3 to send (IRC). osu! shows its own message for -3.</summary>
+    public const string BannedNotice = "This account is banned. Please contact staff.";
+
+    /// <summary>
+    /// The staff log action for an account refused because it shares a machine with a banned one
+    /// (once per pair: a client that ignores osu!'s 24-hour wait could otherwise flood the log).
+    /// </summary>
+    public const string BannedMachineAction = "user.banned_machine";
 
     /// <summary>What a new account sharing a machine with a restricted one is told.</summary>
     public const string EvasionNotice = "Please contact staff directly to create an account.";
@@ -142,8 +152,10 @@ public sealed class BanchoLoginHandler
         TomYum.Server.Admin.Maintenance? maintenance = null,
         IServiceProvider? services = null,
         Microsoft.Extensions.Options.IOptions<TomYum.Server.Anticheat.OldClientProofOptions>? oldClientProof = null,
-        TomYum.Plugins.Abstractions.IChallengeService? challengeService = null)
+        TomYum.Plugins.Abstractions.IChallengeService? challengeService = null,
+        IAccountBans? bans = null)
     {
+        _bans = bans;
         _oldClientProof = oldClientProof?.Value is { IsEnabled: true } proofOptions ? proofOptions : null;
         _services = services;
         _maintenance = maintenance;
@@ -276,6 +288,30 @@ public sealed class BanchoLoginHandler
             _logger.LogInformation("Login refused: {Username} (id {UserId}) is a bot account.", user.Username, user.Id);
             await RecordLoginAsync(user.Id, "bot", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
             return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.AuthenticationFailed, BotNotice), null);
+        }
+
+        // Banned (the admin panel): like a restriction, but they can't log in at all, here or on the
+        // website, and their hardware is banned with them.
+        // Honestly nobody uses this one any more, unless you're an Akatsuki dev banning people for no reason, to tell them "we went on your profile and clicked the ban user button" 🙏
+        // -3 makes osu! show "You are banned", forget the saved password and refuse logins for a day.
+        if (_bans is not null && await _bans.IsBannedAsync(user.Id, cancellationToken).ConfigureAwait(false))
+        {
+            _logger.LogInformation("Login refused: {Username} (id {UserId}) is banned.", user.Username, user.Id);
+            // Recorded first, so a machine they try from is banned along with the rest.
+            if (_clientHashes is not null)
+                await RecordHashesAsync(user.Id, request.ClientHashes, DateTime.UtcNow, cancellationToken).ConfigureAwait(false);
+            await RecordLoginAsync(user.Id, "banned", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.Banned), null);
+        }
+
+        // The hardware ban: any other account seen on a banned account's machine, however old it is.
+        if (await BannedMachineOwnerAsync(user, request.ClientHashes, cancellationToken).ConfigureAwait(false) is { } bannedOwner)
+        {
+            _logger.LogWarning("Login refused: {Username} (id {UserId}) shares a machine with banned account {OwnerId}.", user.Username, user.Id, bannedOwner);
+            await RecordHashesAsync(user.Id, request.ClientHashes, DateTime.UtcNow, cancellationToken).ConfigureAwait(false);
+            await RecordLoginAsync(user.Id, "banned_device", clientAddress, countryIso, request.OsuVersion, cancellationToken).ConfigureAwait(false);
+            await AlertBannedMachineAsync(user, bannedOwner, cancellationToken).ConfigureAwait(false);
+            return new LoginOutcome(LoginResponseBuilder.BuildFailure(LoginFailureReason.Banned), null);
         }
 
         // Locked by staff (the admin panel): no logins anywhere until unlocked.
@@ -587,6 +623,53 @@ public sealed class BanchoLoginHandler
         }
     }
 
+    private Task RecordHashesAsync(int userId, ClientHashes hashes, DateTime now, CancellationToken cancellationToken) =>
+        _clientHashes!.RecordAsync(new ClientHash
+        {
+            UserId = userId,
+            OsuPath = ClientHashMatch.Normalize(hashes.OsuPathMd5),
+            Adapters = ClientHashMatch.Normalize(hashes.AdaptersMd5),
+            UninstallId = ClientHashMatch.Normalize(hashes.UninstallMd5),
+            DiskSerial = ClientHashMatch.Normalize(hashes.DiskSignatureMd5),
+            LatestTime = now,
+        }, cancellationToken);
+
+    /// <summary>
+    /// The banned account whose machine these hashes belong to, or null. Staff, BanchoBot and accounts on
+    /// the anti-cheat whitelist (how staff let an innocent player through on a shared machine) are never refused.
+    /// </summary>
+    private async Task<int?> BannedMachineOwnerAsync(User user, ClientHashes hashes, CancellationToken cancellationToken)
+    {
+        if (_bans is null || _clientHashes is null || user.Id == BanchoBot.UserId || ModerationCommands.IsStaff(user.Privileges))
+            return null;
+        var query = ClientHashMatch.For(hashes.AdaptersStr, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5);
+        if (query.IsEmpty)
+            return null;
+        var others = await _clientHashes.FindOtherUsersAsync(user.Id, query, limit: 500, cancellationToken: cancellationToken).ConfigureAwait(false);
+        if (await _bans.FirstBannedAsync(others, cancellationToken).ConfigureAwait(false) is not { } owner)
+            return null;
+        return await _bans.IsWhitelistedAsync(user.Id, cancellationToken).ConfigureAwait(false) ? null : owner;
+    }
+
+    /// <summary>Tells staff (once per pair) that an account was refused for sharing a banned account's machine.</summary>
+    private async Task AlertBannedMachineAsync(User user, int ownerId, CancellationToken cancellationToken)
+    {
+        if (_staffLog is null)
+            return;
+        var pair = ownerId.ToString(CultureInfo.InvariantCulture);
+        var earlier = await _staffLog.ListAsync(new StaffLogQuery(Action: BannedMachineAction, TargetId: user.Id, Limit: 200), cancellationToken).ConfigureAwait(false);
+        if (earlier.Any(e => e.Result == pair))
+            return;
+        await _staffLog.AddAsync(new StaffLogEntry
+        {
+            CreatedAt = DateTime.UtcNow,
+            Action = BannedMachineAction,
+            TargetId = user.Id,
+            Summary = $"{user.Username}'s login was refused: same machine as banned account {pair}. If they're innocent, put them on the anti-cheat whitelist.",
+            Result = pair,
+        }, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Records the login's hashes and looks for restricted accounts on the same machine (staff and
     /// BanchoBot are never checked). An unverified account is refused when there's one, else it's
@@ -596,20 +679,12 @@ public sealed class BanchoLoginHandler
     private async Task<bool> IsEvadingAsync(User user, ClientHashes hashes, CancellationToken cancellationToken)
     {
         var now = DateTime.UtcNow;
-        await _clientHashes!.RecordAsync(new ClientHash
-        {
-            UserId = user.Id,
-            OsuPath = ClientHashMatch.Normalize(hashes.OsuPathMd5),
-            Adapters = ClientHashMatch.Normalize(hashes.AdaptersMd5),
-            UninstallId = ClientHashMatch.Normalize(hashes.UninstallMd5),
-            DiskSerial = ClientHashMatch.Normalize(hashes.DiskSignatureMd5),
-            LatestTime = now,
-        }, cancellationToken).ConfigureAwait(false);
+        await RecordHashesAsync(user.Id, hashes, now, cancellationToken).ConfigureAwait(false);
 
         if (user.Id == BanchoBot.UserId || ModerationCommands.IsStaff(user.Privileges))
             return false;
 
-        var verified = await _clientHashes.IsVerifiedAsync(user.Id, cancellationToken).ConfigureAwait(false);
+        var verified = await _clientHashes!.IsVerifiedAsync(user.Id, cancellationToken).ConfigureAwait(false);
         var query = ClientHashMatch.For(hashes.AdaptersStr, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5);
         var others = query.IsEmpty
             ? []

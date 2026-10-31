@@ -86,7 +86,8 @@ public static partial class StableClientEndpoints
         if (string.IsNullOrEmpty(query["v"]) || build.IsBefore(CountryAnswerFrom))
             return Results.Text("127.0.0.1", "text/plain");
 
-        var user = await UserAsync(context, query["u"], query["h"], cancellationToken).ConfigureAwait(false);
+        // A banned account passes this check: its login is what answers -3.
+        var user = await UserAsync(context, query["u"], query["h"], cancellationToken, allowBanned: true).ConfigureAwait(false);
         if (user is null)
             return Results.Text("error: pass\n", "text/plain");
 
@@ -461,7 +462,7 @@ public static partial class StableClientEndpoints
         Path.GetFullPath(configuration["Screenshots:Path"] is { Length: > 0 } path ? path : "data/screenshots");
 
     /// <summary>The player, when the name and password md5 check out and the account may sign in (<see cref="AccountAccess"/>).</summary>
-    private static async Task<User?> UserAsync(HttpContext context, string? username, string? passwordMd5, CancellationToken cancellationToken)
+    private static async Task<User?> UserAsync(HttpContext context, string? username, string? passwordMd5, CancellationToken cancellationToken, bool allowBanned = false)
     {
         if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(passwordMd5))
             return null;
@@ -469,7 +470,7 @@ public static partial class StableClientEndpoints
         var passwords = context.RequestServices.GetRequiredService<IPasswordHasher>();
         return await users.GetBySafeNameAsync(User.MakeSafeName(username), cancellationToken).ConfigureAwait(false) is { } user
                && passwords.Verify(passwordMd5, user.PasswordBcrypt)
-               && await AccountAccess.CanAuthenticateAsync(user, context.RequestServices, cancellationToken).ConfigureAwait(false)
+               && await AccountAccess.CanAuthenticateAsync(user, context.RequestServices, cancellationToken, allowBanned: allowBanned).ConfigureAwait(false)
             ? user
             : null;
     }

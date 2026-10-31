@@ -6,6 +6,7 @@ using TomYum.Domain.Enums;
 using TomYum.Domain.Repositories;
 using TomYum.Domain.Services;
 using TomYum.Server.Bancho;
+using TomYum.Server.Tests.Bancho;
 using Xunit;
 
 namespace TomYum.Server.Tests.Admin;
@@ -213,13 +214,104 @@ public sealed class BanEvasionTests
         Assert.NotNull((await LogInAsync(handler, "Fresh", AdaptersA, Other, Other)).Token);
     }
 
-    private static (BanchoLoginHandler, PlayerRegistry, InMemoryUserRepository, InMemoryClientHashRepository) NewLogin(IStaffLogRepository? staffLog = null)
+    [Fact]
+    public async Task BannedAccount_GetsMinusThree_AndNoSession()
+    {
+        var bans = new BannedAccounts();
+        var (handler, registry, users, _) = NewLogin(bans: bans);
+        var cheater = await AddUserAsync(users, "Cheater");
+        bans.Banned.Add(cheater.Id);
+
+        var outcome = await LogInAsync(handler, "Cheater", AdaptersA, UninstallA, DiskA);
+
+        Assert.Null(outcome.Token);
+        Assert.Null(registry.GetByUserId(cheater.Id));
+        Assert.Equal(-3, UserIdPacket(outcome.Body));
+    }
+
+    [Fact]
+    public async Task BannedAccount_WrongPassword_StaysAPlainFailure()
+    {
+        var bans = new BannedAccounts();
+        var (handler, _, users, _) = NewLogin(bans: bans);
+        var cheater = await AddUserAsync(users, "Cheater");
+        bans.Banned.Add(cheater.Id);
+
+        var body = $"Cheater\n{new BcryptPasswordHasher().ComputeMd5Hex("wrong")}\nb20231228.1|0|0|{PathA}:1c.1b.0d:{AdaptersA}:{UninstallA}:{DiskA}:|0\n";
+        var outcome = await handler.HandleAsync(body, "TH", CancellationToken.None);
+
+        Assert.Equal(-1, UserIdPacket(outcome.Body));
+    }
+
+    [Fact]
+    public async Task HardwareBan_RefusesOldAndNewAccountsOnTheMachine_OncePerPairInTheLog()
+    {
+        var staffLog = new RecordingStaffLog();
+        var bans = new BannedAccounts();
+        var (handler, registry, users, _) = NewLogin(staffLog, bans);
+        var cheater = await AddUserAsync(users, "Cheater");
+        var alt = await AddUserAsync(users, "VerifiedAlt");
+        registry.Remove((await LogInAsync(handler, "Cheater", AdaptersA, UninstallA, DiskA)).Token!);
+        registry.Remove((await LogInAsync(handler, "VerifiedAlt", AdaptersA, UninstallA, DiskA)).Token!);
+        bans.Banned.Add(cheater.Id);
+        var fresh = await AddUserAsync(users, "Fresh");
+
+        var oldAccount = await LogInAsync(handler, "VerifiedAlt", AdaptersA, UninstallA, DiskA);
+        await LogInAsync(handler, "VerifiedAlt", AdaptersA, UninstallA, DiskA);
+        var newAccount = await LogInAsync(handler, "Fresh", Other, Other, DiskA);
+
+        Assert.Equal(-3, UserIdPacket(oldAccount.Body));
+        Assert.Equal(-3, UserIdPacket(newAccount.Body));
+        Assert.Null(registry.GetByUserId(alt.Id));
+        Assert.Null(registry.GetByUserId(fresh.Id));
+        Assert.Equal(2, staffLog.Entries.Count(e => e.Action == BanchoLoginHandler.BannedMachineAction));
+    }
+
+    [Fact]
+    public async Task HardwareBan_FollowsTheMachinesABannedAccountTriesFrom()
+    {
+        var bans = new BannedAccounts();
+        var (handler, _, users, _) = NewLogin(bans: bans);
+        var cheater = await AddUserAsync(users, "Cheater");
+        await AddUserAsync(users, "SecondPc");
+        bans.Banned.Add(cheater.Id);
+
+        await LogInAsync(handler, "Cheater", AdaptersA, UninstallA, DiskA);
+        var outcome = await LogInAsync(handler, "SecondPc", AdaptersA, UninstallA, DiskA);
+
+        Assert.Equal(-3, UserIdPacket(outcome.Body));
+    }
+
+    [Fact]
+    public async Task HardwareBan_LeavesStaffWhitelistedAndOtherMachinesAlone()
+    {
+        var bans = new BannedAccounts();
+        var (handler, _, users, _) = NewLogin(bans: bans);
+        var cheater = await AddUserAsync(users, "Cheater");
+        await LogInAsync(handler, "Cheater", AdaptersA, UninstallA, DiskA);
+        bans.Banned.Add(cheater.Id);
+        await AddUserAsync(users, "Helper", UserPrivileges.Normal | UserPrivileges.Moderator);
+        var cafe = await AddUserAsync(users, "CafePlayer");
+        await AddUserAsync(users, "Stranger");
+        bans.Whitelisted.Add(cafe.Id);
+
+        Assert.NotNull((await LogInAsync(handler, "Helper", AdaptersA, UninstallA, DiskA)).Token);
+        Assert.NotNull((await LogInAsync(handler, "CafePlayer", AdaptersA, UninstallA, DiskA)).Token);
+        Assert.NotNull((await LogInAsync(handler, "Stranger", Other, Other, Other)).Token);
+
+        // Unbanning lifts the hardware ban with it.
+        bans.Banned.Clear();
+        await AddUserAsync(users, "Unbanned");
+        Assert.NotNull((await LogInAsync(handler, "Unbanned", AdaptersA, UninstallA, DiskA)).Token);
+    }
+
+    private static (BanchoLoginHandler, PlayerRegistry, InMemoryUserRepository, InMemoryClientHashRepository) NewLogin(IStaffLogRepository? staffLog = null, IAccountBans? bans = null)
     {
         var users = new InMemoryUserRepository();
         var registry = new PlayerRegistry();
         var hashes = new InMemoryClientHashRepository();
         var handler = new BanchoLoginHandler(users, new BcryptPasswordHasher(), new InMemoryUserStatsRepository(), registry,
-            new ChannelRegistry(), NullLogger<BanchoLoginHandler>.Instance, clientHashes: hashes, staffLog: staffLog);
+            new ChannelRegistry(), NullLogger<BanchoLoginHandler>.Instance, clientHashes: hashes, staffLog: staffLog, bans: bans);
         return (handler, registry, users, hashes);
     }
 
