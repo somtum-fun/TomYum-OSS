@@ -1,4 +1,6 @@
+using System.Reflection;
 using Microsoft.Extensions.Logging.Abstractions;
+using StackExchange.Redis;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Services;
 using TomYum.Server.Bancho;
@@ -12,63 +14,63 @@ public sealed class PasswordGuessesTests
     private const string Right = "right";
 
     [Fact]
-    public void TooManyWrongGuesses_RefuseEvenTheRightPassword_UntilTheWindowEnds()
+    public async Task TooManyWrongGuesses_RefuseEvenTheRightPassword_UntilTheWindowEnds()
     {
         var clock = new ManualClock();
         var (hasher, inner) = Guarded(clock);
         for (var i = 0; i < PasswordGuesses.AccountLimit; i++)
-            Assert.False(hasher.Verify("guess" + i, "stored-a"));
+            Assert.False(await hasher.VerifyAsync("guess" + i, "stored-a"));
 
-        Assert.False(hasher.Verify(Right, "stored-a"));
+        Assert.False(await hasher.VerifyAsync(Right, "stored-a"));
         Assert.Equal(PasswordGuesses.AccountLimit, inner.Checks);   // refused without bcrypt
-        Assert.True(hasher.Verify(Right, "stored-b"));              // other accounts are fine
+        Assert.True(await hasher.VerifyAsync(Right, "stored-b"));              // other accounts are fine
 
         clock.Advance(PasswordGuesses.Window + TimeSpan.FromSeconds(1));
-        Assert.True(hasher.Verify(Right, "stored-a"));
+        Assert.True(await hasher.VerifyAsync(Right, "stored-a"));
     }
 
     [Fact]
-    public void TheSameWrongPassword_CountsOnce_AndSkipsBcrypt()
+    public async Task TheSameWrongPassword_CountsOnce_AndSkipsBcrypt()
     {
         var (hasher, inner) = Guarded(new ManualClock());
         for (var i = 0; i < 50; i++)
-            Assert.False(hasher.Verify("old password", "stored"));
+            Assert.False(await hasher.VerifyAsync("old password", "stored"));
 
         Assert.Equal(1, inner.Checks);
-        Assert.True(hasher.Verify(Right, "stored"));   // a client stuck on an old password locks no one out
+        Assert.True(await hasher.VerifyAsync(Right, "stored"));   // a client stuck on an old password locks no one out
     }
 
     [Fact]
-    public void TheRightPassword_ClearsTheAccountsCount()
+    public async Task TheRightPassword_ClearsTheAccountsCount()
     {
         var (hasher, _) = Guarded(new ManualClock());
         for (var i = 0; i < PasswordGuesses.AccountLimit - 1; i++)
-            Assert.False(hasher.Verify("guess" + i, "stored"));
-        Assert.True(hasher.Verify(Right, "stored"));
+            Assert.False(await hasher.VerifyAsync("guess" + i, "stored"));
+        Assert.True(await hasher.VerifyAsync(Right, "stored"));
         for (var i = 0; i < PasswordGuesses.AccountLimit - 1; i++)
-            Assert.False(hasher.Verify("other" + i, "stored"));
+            Assert.False(await hasher.VerifyAsync("other" + i, "stored"));
 
-        Assert.True(hasher.Verify(Right, "stored"));
+        Assert.True(await hasher.VerifyAsync(Right, "stored"));
     }
 
     [Fact]
-    public void OneAddress_GuessingAcrossAccounts_IsRefused()
+    public async Task OneAddress_GuessingAcrossAccounts_IsRefused()
     {
         var (hasher, _) = Guarded(new ManualClock());
         using (PasswordGuesses.From("203.0.113.9"))
         {
             for (var i = 0; i < PasswordGuesses.AddressLimit; i++)
-                Assert.False(hasher.Verify("guess", "stored-" + i));
-            Assert.False(hasher.Verify(Right, "someone-else"));
+                Assert.False(await hasher.VerifyAsync("guess", "stored-" + i));
+            Assert.False(await hasher.VerifyAsync(Right, "someone-else"));
         }
 
-        Assert.True(hasher.Verify(Right, "someone-else"));                // from elsewhere
+        Assert.True(await hasher.VerifyAsync(Right, "someone-else"));                // from elsewhere
         using (PasswordGuesses.From("2001:db8::1"))
-            Assert.True(hasher.Verify(Right, "someone-else"));
+            Assert.True(await hasher.VerifyAsync(Right, "someone-else"));
     }
 
     [Fact]
-    public void GuessesFromElsewhere_DontLockThePlayerOut()
+    public async Task GuessesFromElsewhere_DontLockThePlayerOut()
     {
         // Guessing a player's password from another address (osu-rate.php?u=<name>&p=<anything>, ...)
         // mustn't refuse their own logins or score submissions.
@@ -76,16 +78,16 @@ public sealed class PasswordGuessesTests
         using (PasswordGuesses.From("198.51.100.7"))
         {
             for (var i = 0; i < PasswordGuesses.AccountLimit; i++)
-                Assert.False(hasher.Verify("guess" + i, "stored"));
-            Assert.False(hasher.Verify(Right, "stored"));   // the guesser's own address is refused
+                Assert.False(await hasher.VerifyAsync("guess" + i, "stored"));
+            Assert.False(await hasher.VerifyAsync(Right, "stored"));   // the guesser's own address is refused
         }
 
         using (PasswordGuesses.From("203.0.113.20"))
-            Assert.True(hasher.Verify(Right, "stored"));
+            Assert.True(await hasher.VerifyAsync(Right, "stored"));
     }
 
     [Fact]
-    public void GuessesSpreadOverAddresses_CostAnAddressEveryFew_ButTyposDont()
+    public async Task GuessesSpreadOverAddresses_CostAnAddressEveryFew_ButTyposDont()
     {
         var (hasher, _) = Guarded(new ManualClock());
         var n = 0;
@@ -94,19 +96,19 @@ public sealed class PasswordGuessesTests
             using (PasswordGuesses.From($"198.51.100.{address}"))
             {
                 for (var i = 0; i < PasswordGuesses.SuspectGuesses && n < PasswordGuesses.AccountLimit; i++)
-                    Assert.False(hasher.Verify("guess" + n++, "stored"));
+                    Assert.False(await hasher.VerifyAsync("guess" + n++, "stored"));
             }
         }
 
         // The account is guarded now: an address that guessed SuspectGuesses times is refused even with
         // the right password; one that mistyped once or twice still gets in.
         using (PasswordGuesses.From("198.51.100.1"))
-            Assert.False(hasher.Verify(Right, "stored"));
+            Assert.False(await hasher.VerifyAsync(Right, "stored"));
         using (PasswordGuesses.From("203.0.113.30"))
         {
-            Assert.False(hasher.Verify("typo", "stored"));
-            Assert.False(hasher.Verify("typo2", "stored"));
-            Assert.True(hasher.Verify(Right, "stored"));
+            Assert.False(await hasher.VerifyAsync("typo", "stored"));
+            Assert.False(await hasher.VerifyAsync("typo2", "stored"));
+            Assert.True(await hasher.VerifyAsync(Right, "stored"));
         }
     }
 
@@ -133,17 +135,47 @@ public sealed class PasswordGuessesTests
 
         var wrong = await login.HandleAsync(Body(bcrypt.ComputeMd5Hex("nope")), "TH", CancellationToken.None, "198.51.100.7");
         for (var i = 0; i < PasswordGuesses.AccountLimit; i++)
-            guesses.Failed(PasswordGuesses.AccountKey((await users.GetBySafeNameAsync("player"))!.PasswordBcrypt), "198.51.100.7", "x" + i);
+            await guesses.FailedAsync(PasswordGuesses.AccountKey((await users.GetBySafeNameAsync("player"))!.PasswordBcrypt), "198.51.100.7", "x" + i);
         var refused = await login.HandleAsync(Body(md5), "TH", CancellationToken.None, "198.51.100.7");
 
         Assert.Null(refused.Token);
         Assert.Equal(wrong.Body, refused.Body);
     }
 
+    [Fact]
+    public async Task ARedisTimeout_LetsTheCheckThrough()
+    {
+        // RedisTimeoutException isn't a RedisException: a slow Redis used to fail the login or score submission.
+        var redis = DispatchProxy.Create<IConnectionMultiplexer, TimingOutRedis>();
+        var hasher = new GuardedPasswordHasher(new CountingHasher(), new PasswordGuesses(new ManualClock(), redis));
+
+        Assert.True(await hasher.VerifyAsync(Right, "stored"));
+        Assert.False(await hasher.VerifyAsync("wrong", "stored"));
+    }
+
+    [Fact]
+    public async Task ParallelChecksOfOneCredential_AllGetTheAnswer()
+    {
+        var hasher = new BcryptPasswordHasher();
+        var md5 = hasher.ComputeMd5Hex("password");
+        var stored = BCrypt.Net.BCrypt.HashPassword(md5, 4);
+
+        var answers = await Task.WhenAll(Enumerable.Range(0, 16).Select(_ => hasher.VerifyAsync(md5, stored).AsTask()));
+
+        Assert.All(answers, Assert.True);
+        Assert.False(await hasher.VerifyAsync(hasher.ComputeMd5Hex("nope"), stored));
+    }
+
     private static (GuardedPasswordHasher Hasher, CountingHasher Inner) Guarded(TimeProvider clock)
     {
         var inner = new CountingHasher();
         return (new GuardedPasswordHasher(inner, new PasswordGuesses(clock)), inner);
+    }
+
+    /// <summary>A Redis where everything times out (<c>RedisTimeoutException</c> derives from <see cref="TimeoutException"/>).</summary>
+    public class TimingOutRedis : DispatchProxy
+    {
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args) => throw new TimeoutException("Timeout performing SCARD");
     }
 
     /// <summary>A hasher where only <see cref="Right"/> is right, counting the (would-be bcrypt) checks.</summary>
@@ -155,10 +187,10 @@ public sealed class PasswordGuessesTests
 
         public string HashPassword(string passwordMd5Hex) => passwordMd5Hex;
 
-        public bool Verify(string passwordMd5Hex, string storedBcrypt)
+        public ValueTask<bool> VerifyAsync(string passwordMd5Hex, string storedBcrypt, CancellationToken cancellationToken = default)
         {
             Checks++;
-            return passwordMd5Hex == Right;
+            return ValueTask.FromResult(passwordMd5Hex == Right);
         }
     }
 

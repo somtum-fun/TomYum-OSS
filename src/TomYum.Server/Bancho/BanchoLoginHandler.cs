@@ -265,7 +265,7 @@ public sealed class BanchoLoginHandler
         // guesses count against this address too (PasswordGuesses: the TCP port has no HTTP request).
         bool passwordOk;
         using (PasswordGuesses.From(clientAddress))
-            passwordOk = _passwordHasher.Verify(request.PasswordMd5, user.PasswordBcrypt);
+            passwordOk = await _passwordHasher.VerifyAsync(request.PasswordMd5, user.PasswordBcrypt, cancellationToken).ConfigureAwait(false);
         if (!passwordOk)
         {
             _logger.LogInformation("Login failed: bad password for {Username}.", request.Username);

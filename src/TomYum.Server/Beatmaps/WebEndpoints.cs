@@ -118,7 +118,7 @@ public static class WebEndpoints
         if (requesterId is { } requester && restricted.Contains(requester)
             && (await users.GetByIdAsync(requester, cancellationToken).ConfigureAwait(false) is not { } requesterUser
                 || context.Request.Query["ha"].ToString() is not { Length: > 0 } passwordMd5
-                || !passwords.Verify(passwordMd5, requesterUser.PasswordBcrypt)))
+                || !await passwords.VerifyAsync(passwordMd5, requesterUser.PasswordBcrypt, cancellationToken).ConfigureAwait(false)))
         {
             requesterId = null;
         }
@@ -322,7 +322,7 @@ public static class WebEndpoints
     {
         var query = context.Request.Query;
         var user = await users.GetBySafeNameAsync(User.MakeSafeName(query["u"].ToString()), cancellationToken).ConfigureAwait(false);
-        if (user is null || query["p"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt)
+        if (user is null || query["p"].ToString() is not { Length: > 0 } passwordMd5 || !await passwords.VerifyAsync(passwordMd5, user.PasswordBcrypt, cancellationToken).ConfigureAwait(false)
             || !await AccountAccess.CanAuthenticateAsync(user, context.RequestServices, cancellationToken).ConfigureAwait(false))
             return (RateAnswer.AuthFail, 0);
         if (context.RequestServices.GetService<TomYum.Persistence.OsuWeb.OsuWebStableClient>() is not { } website)
@@ -347,7 +347,7 @@ public static class WebEndpoints
     {
         var query = context.Request.Query;
         var user = await users.GetBySafeNameAsync(User.MakeSafeName(query["us"].ToString()), cancellationToken).ConfigureAwait(false);
-        if (user is null || query["ha"].ToString() is not { Length: > 0 } passwordMd5 || !passwords.Verify(passwordMd5, user.PasswordBcrypt)
+        if (user is null || query["ha"].ToString() is not { Length: > 0 } passwordMd5 || !await passwords.VerifyAsync(passwordMd5, user.PasswordBcrypt, cancellationToken).ConfigureAwait(false)
             || !await AccountAccess.CanAuthenticateAsync(user, context.RequestServices, cancellationToken).ConfigureAwait(false))
             return Results.Unauthorized();
         if (Anticheat.ClientFlags.Parse(query["b"].ToString()) is not { } flags)
@@ -450,7 +450,7 @@ public static class WebEndpoints
         if (name.Length > 0 || passwordMd5.Length > 0)
         {
             var viewer = await users.GetBySafeNameAsync(User.MakeSafeName(name), cancellationToken).ConfigureAwait(false);
-            if (viewer is null || passwordMd5.Length == 0 || !passwords.Verify(passwordMd5, viewer.PasswordBcrypt))
+            if (viewer is null || passwordMd5.Length == 0 || !await passwords.VerifyAsync(passwordMd5, viewer.PasswordBcrypt, cancellationToken).ConfigureAwait(false))
                 return Results.Unauthorized();
             viewerId = viewer.Id;
         }

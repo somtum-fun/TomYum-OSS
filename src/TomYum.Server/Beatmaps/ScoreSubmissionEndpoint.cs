@@ -177,7 +177,7 @@ public static class ScoreSubmissionEndpoint
 
         var passwordMd5 = plainInQuery ? context.Request.Query["pass"].ToString() : form["pass"].ToString();
         // Every score needs the password: nothing else ties it to the player (the encryption keys are public).
-        if (string.IsNullOrEmpty(passwordMd5) || !hasher.Verify(passwordMd5, user.PasswordBcrypt))
+        if (string.IsNullOrEmpty(passwordMd5) || !await hasher.VerifyAsync(passwordMd5, user.PasswordBcrypt, cancellationToken).ConfigureAwait(false))
         {
             logger.LogWarning("Score submission rejected: pass verification failed for '{Username}'", usernameFromScore);
             return Rejected();

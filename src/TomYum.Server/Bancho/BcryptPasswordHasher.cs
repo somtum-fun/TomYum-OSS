@@ -17,11 +17,15 @@ namespace TomYum.Server.Bancho;
 /// cached in memory keyed by the stored hash. A later login with the same credential then
 /// does a constant-time byte compare instead of re-running bcrypt — the same optimisation
 /// bancho.py uses (<c>app.state.cache.bcrypt</c>). The cache only ever holds values that have
-/// already been verified, so a hit is as trustworthy as the original bcrypt check.
+/// already been verified, so a hit is as trustworthy as the original bcrypt check. The cache is
+/// empty after a restart, when every online player's next request checks a password at once:
+/// <see cref="SlowChecks"/> keeps those (and wrong-password floods) from taking every core.
 /// </remarks>
 public sealed class BcryptPasswordHasher : IPasswordHasher
 {
     private const int WorkFactor = 12;
+
+    private static readonly SemaphoreSlim SlowChecks = new(Math.Max(1, Environment.ProcessorCount / 2));
 
     // Stored bcrypt hash -> the md5-hex bytes proven to match it. Bounds: this is unbounded
     // in principle; a future slice should cap/evict it. Fine for the in-memory slice.
@@ -39,7 +43,7 @@ public sealed class BcryptPasswordHasher : IPasswordHasher
     }
 
     /// <inheritdoc />
-    public bool Verify(string passwordMd5Hex, string storedBcrypt)
+    public async ValueTask<bool> VerifyAsync(string passwordMd5Hex, string storedBcrypt, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(passwordMd5Hex);
         ArgumentException.ThrowIfNullOrEmpty(storedBcrypt);
@@ -53,13 +57,27 @@ public sealed class BcryptPasswordHasher : IPasswordHasher
         }
 
         // Slow path: real bcrypt check, then cache the proven pair.
-        if (!BCrypt.Net.BCrypt.Verify(passwordMd5Hex, storedBcrypt))
+        await SlowChecks.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            return false;
-        }
+            // A client's parallel requests all land here after a restart: the first one's result answers the rest.
+            if (_verified.TryGetValue(storedBcrypt, out known))
+            {
+                return CryptographicOperations.FixedTimeEquals(candidate, known);
+            }
 
-        _verified[storedBcrypt] = candidate;
-        return true;
+            if (!BCrypt.Net.BCrypt.Verify(passwordMd5Hex, storedBcrypt))
+            {
+                return false;
+            }
+
+            _verified[storedBcrypt] = candidate;
+            return true;
+        }
+        finally
+        {
+            SlowChecks.Release();
+        }
     }
 
     /// <inheritdoc />

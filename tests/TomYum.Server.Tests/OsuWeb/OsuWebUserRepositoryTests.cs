@@ -60,8 +60,8 @@ public sealed class OsuWebUserRepositoryTests : OsuWebDatabaseTest
         Assert.NotNull(user);
         Assert.Equal("de", user.Country);
         var hasher = new BcryptPasswordHasher();
-        Assert.True(hasher.Verify(hasher.ComputeMd5Hex("website-password-123"), user.PasswordBcrypt));
-        Assert.False(hasher.Verify(hasher.ComputeMd5Hex("wrong"), user.PasswordBcrypt));
+        Assert.True(await hasher.VerifyAsync(hasher.ComputeMd5Hex("website-password-123"), user.PasswordBcrypt));
+        Assert.False(await hasher.VerifyAsync(hasher.ComputeMd5Hex("wrong"), user.PasswordBcrypt));
     }
 
     [MySqlFact]

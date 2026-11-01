@@ -20,7 +20,7 @@ public class BcryptPasswordHasherTests
     }
 
     [Fact]
-    public void HashPassword_ThenVerify_RoundTrips()
+    public async Task HashPassword_ThenVerify_RoundTrips()
     {
         var hasher = new BcryptPasswordHasher();
         var md5 = hasher.ComputeMd5Hex("correct horse battery");
@@ -28,28 +28,28 @@ public class BcryptPasswordHasherTests
         var stored = hasher.HashPassword(md5);
 
         Assert.StartsWith("$2", stored, StringComparison.Ordinal);
-        Assert.True(hasher.Verify(md5, stored));
+        Assert.True(await hasher.VerifyAsync(md5, stored));
     }
 
     [Fact]
-    public void Verify_RejectsWrongPassword()
+    public async Task Verify_RejectsWrongPassword()
     {
         var hasher = new BcryptPasswordHasher();
         var stored = hasher.HashPassword(hasher.ComputeMd5Hex("the-right-one"));
 
-        Assert.False(hasher.Verify(hasher.ComputeMd5Hex("a-wrong-one"), stored));
+        Assert.False(await hasher.VerifyAsync(hasher.ComputeMd5Hex("a-wrong-one"), stored));
     }
 
     [Fact]
-    public void Verify_CacheHit_StillMatchesAfterFirstCheck()
+    public async Task Verify_CacheHit_StillMatchesAfterFirstCheck()
     {
         var hasher = new BcryptPasswordHasher();
         var md5 = hasher.ComputeMd5Hex("repeat-me-please");
         var stored = hasher.HashPassword(md5);
 
         // First call may populate the verification cache; the second must agree with it.
-        Assert.True(hasher.Verify(md5, stored));
-        Assert.True(hasher.Verify(md5, stored));
-        Assert.False(hasher.Verify(hasher.ComputeMd5Hex("nope-nope-nope"), stored));
+        Assert.True(await hasher.VerifyAsync(md5, stored));
+        Assert.True(await hasher.VerifyAsync(md5, stored));
+        Assert.False(await hasher.VerifyAsync(hasher.ComputeMd5Hex("nope-nope-nope"), stored));
     }
 }

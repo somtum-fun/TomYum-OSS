@@ -201,7 +201,7 @@ public static class SubmissionEndpoints
         var users = context.RequestServices.GetRequiredService<IUserRepository>();
         var passwords = context.RequestServices.GetRequiredService<IPasswordHasher>();
         return await users.GetByUsernameAsync(username, cancellationToken).ConfigureAwait(false) is { } user
-               && passwords.Verify(passwordMd5, user.PasswordBcrypt)
+               && await passwords.VerifyAsync(passwordMd5, user.PasswordBcrypt, cancellationToken).ConfigureAwait(false)
                && await TomYum.Server.Bancho.AccountAccess.CanAuthenticateAsync(user, context.RequestServices, cancellationToken).ConfigureAwait(false)
             ? user
             : null;

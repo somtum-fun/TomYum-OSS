@@ -92,55 +92,36 @@ public sealed class PasswordGuesses
     public static string AccountKey(string storedHash) => Digest("account\n" + storedHash);
 
     /// <summary>
-    /// Whether checks for <paramref name="account"/> from <paramref name="address"/> are refused for now.
+    /// Whether this check should be answered as wrong without trying it: checks for
+    /// <paramref name="account"/> from <paramref name="address"/> are refused for now, or
+    /// <paramref name="guess"/> was already found wrong in this window. Runs on every credential check
+    /// (each score submission and most of stable's <c>/web</c> calls), so in Redis it's one batch: it mustn't
+    /// hold a thread-pool thread while it waits, and a burst of blocking calls here starved the pool.
     /// </summary>
     /// <param name="account">The account key (<see cref="AccountKey"/>, or another stable name for it).</param>
     /// <param name="address">The client's IP address, or null when unknown.</param>
-    public bool IsRefused(string account, string? address)
+    /// <param name="guess">The credential tried.</param>
+    public async ValueTask<bool> ShouldRefuseAsync(string account, string? address, string guess)
     {
         var from = AddressKey(address);
         var pair = PairKey(account, from);
-        if (_redis is not null)
-        {
-            try
-            {
-                var database = _redis.GetDatabase();
-                var fromHere = database.SetLength(RedisPair(pair));
-                if (fromHere >= AccountLimit || (fromHere >= SuspectGuesses && database.SetLength(RedisAccount(account)) >= AccountLimit))
-                    return true;
-                return from is not null && (long?)database.StringGet(RedisAddress(from)) >= AddressLimit;
-            }
-            catch (RedisException ex)
-            {
-                _logger?.LogWarning(ex, "Password guesses: Redis is unavailable; checking without the limit.");
-                return false;
-            }
-        }
-
-        var now = _time.GetUtcNow();
-        lock (_gate)
-        {
-            var fromHere = _pairs.TryGetValue(pair, out var mine) && mine.Until > now ? mine.Guesses.Count : 0;
-            var total = _accounts.TryGetValue(account, out var guesses) && guesses.Until > now ? guesses.Guesses.Count : 0;
-            if (fromHere >= AccountLimit || (fromHere >= SuspectGuesses && total >= AccountLimit))
-                return true;
-            return from is not null && _addresses.TryGetValue(from, out var count) && count.Until > now && count.Count >= AddressLimit;
-        }
-    }
-
-    /// <summary>Whether <paramref name="guess"/> was already found wrong for <paramref name="account"/> in this window.</summary>
-    /// <param name="account">The account key.</param>
-    /// <param name="guess">The credential tried.</param>
-    public bool IsKnownWrong(string account, string guess)
-    {
         var member = GuessKey(account, guess);
         if (_redis is not null)
         {
             try
             {
-                return _redis.GetDatabase().SetContains(RedisAccount(account), member);
+                var accountKey = RedisAccount(account);
+                var batch = _redis.GetDatabase().CreateBatch();
+                var fromHere = batch.SetLengthAsync(RedisPair(pair));
+                var total = batch.SetLengthAsync(accountKey);
+                var addressCount = from is null ? Task.FromResult(RedisValue.Null) : batch.StringGetAsync(RedisAddress(from));
+                var known = batch.SetContainsAsync(accountKey, member);
+                batch.Execute();
+                await Task.WhenAll(fromHere, total, addressCount, known).ConfigureAwait(false);
+                return Refused(await fromHere.ConfigureAwait(false), await total.ConfigureAwait(false), (long?)await addressCount.ConfigureAwait(false) ?? 0)
+                    || await known.ConfigureAwait(false);
             }
-            catch (RedisException ex)
+            catch (Exception ex) when (IsRedisFault(ex))
             {
                 _logger?.LogWarning(ex, "Password guesses: Redis is unavailable; checking without the limit.");
                 return false;
@@ -149,14 +130,19 @@ public sealed class PasswordGuesses
 
         var now = _time.GetUtcNow();
         lock (_gate)
-            return _accounts.TryGetValue(account, out var guesses) && guesses.Until > now && guesses.Guesses.Contains(member);
+        {
+            var mine = _pairs.TryGetValue(pair, out var fromAddress) && fromAddress.Until > now ? fromAddress.Guesses.Count : 0;
+            var accountGuesses = _accounts.TryGetValue(account, out var guesses) && guesses.Until > now ? guesses.Guesses : null;
+            var addressCount = from is not null && _addresses.TryGetValue(from, out var count) && count.Until > now ? count.Count : 0;
+            return Refused(mine, accountGuesses?.Count ?? 0, addressCount) || accountGuesses?.Contains(member) == true;
+        }
     }
 
     /// <summary>Counts a wrong <paramref name="guess"/> for <paramref name="account"/> and <paramref name="address"/>.</summary>
     /// <param name="account">The account key.</param>
     /// <param name="address">The client's IP address, or null when unknown.</param>
     /// <param name="guess">The credential tried (only a digest of it is kept).</param>
-    public void Failed(string account, string? address, string guess)
+    public async ValueTask FailedAsync(string account, string? address, string guess)
     {
         var member = GuessKey(account, guess);
         var from = AddressKey(address);
@@ -166,9 +152,9 @@ public sealed class PasswordGuesses
             {
                 var accountKey = RedisAccount(account);
                 RedisKey[] keys = [accountKey, from is null ? accountKey : RedisAddress(from), RedisPair(PairKey(account, from))];
-                _redis.GetDatabase().ScriptEvaluate(FailScript, keys, [member, (long)Window.TotalSeconds]);
+                await _redis.GetDatabase().ScriptEvaluateAsync(FailScript, keys, [member, (long)Window.TotalSeconds]).ConfigureAwait(false);
             }
-            catch (RedisException ex)
+            catch (Exception ex) when (IsRedisFault(ex))
             {
                 _logger?.LogWarning(ex, "Password guesses: Redis is unavailable; a wrong password wasn't counted.");
             }
@@ -206,7 +192,7 @@ public sealed class PasswordGuesses
             {
                 _redis.GetDatabase().KeyDelete([RedisAccount(account), RedisPair(pair)], CommandFlags.FireAndForget);
             }
-            catch (RedisException ex)
+            catch (Exception ex) when (IsRedisFault(ex))
             {
                 _logger?.LogWarning(ex, "Password guesses: Redis is unavailable; an account's count wasn't cleared.");
             }
@@ -219,6 +205,12 @@ public sealed class PasswordGuesses
             _pairs.Remove(pair);
         }
     }
+
+    private static bool Refused(long fromHere, long total, long addressCount) =>
+        fromHere >= AccountLimit || (fromHere >= SuspectGuesses && total >= AccountLimit) || addressCount >= AddressLimit;
+
+    /// <summary>A Redis fault this limiter lets a check through on. <c>RedisTimeoutException</c> is a <see cref="TimeoutException"/>, not a <see cref="RedisException"/>.</summary>
+    private static bool IsRedisFault(Exception ex) => ex is RedisException or TimeoutException;
 
     private void Prune(DateTimeOffset now)
     {
@@ -301,7 +293,7 @@ public sealed class GuardedPasswordHasher : TomYum.Domain.Services.IPasswordHash
     public string HashPassword(string passwordMd5Hex) => _inner.HashPassword(passwordMd5Hex);
 
     /// <inheritdoc />
-    public bool Verify(string passwordMd5Hex, string storedBcrypt)
+    public async ValueTask<bool> VerifyAsync(string passwordMd5Hex, string storedBcrypt, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrEmpty(passwordMd5Hex);
         ArgumentException.ThrowIfNullOrEmpty(storedBcrypt);
@@ -309,15 +301,15 @@ public sealed class GuardedPasswordHasher : TomYum.Domain.Services.IPasswordHash
         var account = PasswordGuesses.AccountKey(storedBcrypt);
         var address = PasswordGuesses.CurrentAddress
             ?? (_http?.HttpContext is { } context ? LoginIps.ClientAddress(context) : null);
-        if (_guesses.IsRefused(account, address) || _guesses.IsKnownWrong(account, passwordMd5Hex))
+        if (await _guesses.ShouldRefuseAsync(account, address, passwordMd5Hex).ConfigureAwait(false))
             return false;
 
-        if (_inner.Verify(passwordMd5Hex, storedBcrypt))
+        if (await _inner.VerifyAsync(passwordMd5Hex, storedBcrypt, cancellationToken).ConfigureAwait(false))
         {
             _guesses.Succeeded(account, address);
             return true;
         }
-        _guesses.Failed(account, address, passwordMd5Hex);
+        await _guesses.FailedAsync(account, address, passwordMd5Hex).ConfigureAwait(false);
         return false;
     }
 }

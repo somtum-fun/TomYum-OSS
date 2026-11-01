@@ -158,11 +158,11 @@ public sealed class IrcSession : IDisposable
         var guessAccount = user is null ? null : PasswordGuesses.AccountKey("irc:" + user.Id.ToString(CultureInfo.InvariantCulture));
         var address = ((_connection as NetworkStream)?.Socket.RemoteEndPoint as System.Net.IPEndPoint)?.Address.ToString();
         var refused = guesses is not null && guessAccount is not null && password is not null
-            && (guesses.IsRefused(guessAccount, address) || guesses.IsKnownWrong(guessAccount, password));
+            && await guesses.ShouldRefuseAsync(guessAccount, address, password).ConfigureAwait(false);
         if (user is null || password is null || refused || !await _tokens.VerifyAsync(user.Id, password).ConfigureAwait(false))
         {
-            if (!refused && guessAccount is not null && password is not null)
-                guesses?.Failed(guessAccount, address, password);
+            if (!refused && guesses is not null && guessAccount is not null && password is not null)
+                await guesses.FailedAsync(guessAccount, address, password).ConfigureAwait(false);
             await SendAsync(Host, "464", nick, _tokens.FromWebsite
                 ? $"Bad username or IRC key. Make your IRC key in the website's account settings{(_options.KeyPageUrl is { } page ? ": " + page : ".")}"
                 : "Bad username or IRC password. Send !irc to BanchoBot in the game or on the website for your IRC password.").ConfigureAwait(false);

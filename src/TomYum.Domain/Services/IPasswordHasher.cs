@@ -28,6 +28,8 @@ public interface IPasswordHasher
     /// Verifies the md5-hex credential sent by the osu! client at login against the stored
     /// bcrypt hash. <paramref name="passwordMd5Hex"/> is the 32-char lowercase md5 hex from
     /// the login body; <paramref name="storedBcrypt"/> is <c>User.PasswordBcrypt</c>.
+    /// Asynchronous: it can wait on Redis and on the limit of bcrypt checks running at once, and it runs on
+    /// every score submission, so it must not hold a thread while it does.
     /// </summary>
-    bool Verify(string passwordMd5Hex, string storedBcrypt);
+    ValueTask<bool> VerifyAsync(string passwordMd5Hex, string storedBcrypt, CancellationToken cancellationToken = default);
 }
