@@ -70,20 +70,27 @@
     arrays allocated before the depth check) — safe at 3.1.9+.
   -->
   <ItemGroup>
-    <PackageReference Include="AutoMapper" Version="16.1.1" />
+    <PackageReference Include="AutoMapper" Version="16.2.0" />
     <PackageReference Include="MessagePack" Version="3.1.12" />
     <!-- Microsoft.AspNetCore.SignalR.Protocols.MessagePack and .Common: GHSA-f8h2-vmm9-qhj6, GHSA-334f-vvp4-7g6p
          (CVE-2026-70159) and GHSA-86xp-94pg-8r6r (CVE-2026-92707), denial of service — safe at 10.0.13+. -->
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.13" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.MessagePack" Version="10.0.14" />
     <!-- (web projects get .Common from the ASP.NET Core runtime, which must be 10.0.13+ too: the Docker images' aspnet:10.0) -->
-    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.13" Condition="'$(UsingMicrosoftNETSdkWeb)' != 'true'" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Common" Version="10.0.14" Condition="'$(UsingMicrosoftNETSdkWeb)' != 'true'" />
   </ItemGroup>
 
   <!--
     osu.Framework (through TomYum.Performance) pulls in SixLabors.ImageSharp 3.1.x, whose image decoding
     advisories are only fixed in 4.x, which osu.Framework doesn't support. The pp calculator never decodes images.
+    GHSA-v76p-62qx-wwq2 (tiled fax TIFF) is fixed in 3.2.0, but 3.2.0 refuses to build without a Six Labors license key.
   -->
   <ItemGroup>
+    <!-- GHSA-473q-m89c-ghf8, password sent to a man-in-the-middle in zero-configuration TLS: safe at 2.6.1+ (Pomelo asks for 2.4.0). -->
+    <PackageReference Include="MySqlConnector" Version="2.6.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-v76p-62qx-wwq2" />
     <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-j3p4-wp97-rph4" />
     <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-j9gm-c75j-xc9q" />
     <NuGetAuditSuppress Include="https://github.com/advisories/GHSA-jjfr-hcj7-qf5w" />

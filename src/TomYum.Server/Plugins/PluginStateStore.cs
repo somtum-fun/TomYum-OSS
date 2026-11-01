@@ -54,7 +54,8 @@ internal sealed class PluginStateStore : IPluginStateStore
 
         if (_redis is not null)
         {
-            await _redis.GetDatabase().StringSetAsync(_prefix + key, value, ttl).ConfigureAwait(false);
+            var database = _redis.GetDatabase();
+            await (ttl is { } expiry ? database.StringSetAsync(_prefix + key, value, expiry) : database.StringSetAsync(_prefix + key, value)).ConfigureAwait(false);
             return;
         }
 

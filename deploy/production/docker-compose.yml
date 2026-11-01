@@ -103,6 +103,10 @@ services:
     environment:
       ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080
+      # Every request was three or four log lines (the stack's Caddy has the access log). TomYum's own stays on.
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__System.Net.Http.HttpClient: Warning
+      Logging__LogLevel__TomYum.Server.Admin.AdminAuthFilter: Warning
       TOMYUM_SERVER__DOMAIN: ${DOMAIN}
       # Lazer replays (the spectator server writes them), for downloads and plugins.
       TOMYUM_REPLAYS__LAZERPATH: /app/lazer-replays
@@ -298,7 +302,7 @@ services:
       retries: 20
 
   elasticsearch:
-    image: elasticsearch:7.17.16
+    image: elasticsearch:7.17.28
     restart: unless-stopped
     environment:
       discovery.type: single-node

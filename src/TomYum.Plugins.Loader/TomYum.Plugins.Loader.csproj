@@ -4,7 +4,7 @@
     Runtime loading: AssemblyLoadContext for .dll plugins, Roslyn for loose .cs plugins.
   -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.14.0" />
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.9.0" />
   </ItemGroup>
 
   <ItemGroup>
