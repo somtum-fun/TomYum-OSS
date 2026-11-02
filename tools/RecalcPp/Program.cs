@@ -21,6 +21,11 @@ namespace TomYum.Tools.RecalcPp;
 ///   --dry-run         Calculate PP but do not persist changes to the database
 ///   --mode MODE       Only recalc scores for the given mode (0=osu, 1=taiko, 2=catch, 3=mania)
 ///   --batch-size N    Number of scores to process per transaction (default 100)
+///   --force           Write pp for every score, changed or not
+///   --all-passed      Also recompute passed scores that aren't the player's best
+///   --create-stats    Give players with scores but no stats row in a mode a new row
+///   With OsuWeb:ScoreProcessor on, vanilla totals are the website's: run the score processor's
+///   `performance user-totals all --ruleset-id N` after this.
 /// </remarks>
 internal static class Program
 {
@@ -32,12 +37,14 @@ internal static class Program
         var force     = args.Contains("--force",     StringComparer.OrdinalIgnoreCase);
         var backfill  = args.Contains("--backfill",  StringComparer.OrdinalIgnoreCase);
         var allPassed = args.Contains("--all-passed", StringComparer.OrdinalIgnoreCase);
+        var createStats = args.Contains("--create-stats", StringComparer.OrdinalIgnoreCase);
         var mode      = GetArgValue(args, "--mode");
         var batchSize = GetArgValue(args, "--batch-size") is { } bsStr && int.TryParse(bsStr, out var bs) ? bs : DefaultBatchSize;
 
         Console.WriteLine("TomYum PP Recalculation Tool");
         Console.WriteLine($"Mode: {(dryRun ? "DRY RUN (no changes will be saved)" : "LIVE")}");
         if (force)    Console.WriteLine("Force: enabled (PP written for every score regardless of change)");
+        if (createStats) Console.WriteLine("Create stats: players with scores but no stats row in a mode get one");
         if (backfill) Console.WriteLine("Backfill: enabled (will resolve missing beatmap rows before recalc)");
         Console.WriteLine($"Filter: {(mode is not null ? $"mode {mode}" : "all modes")}");
         Console.WriteLine($"Batch size: {batchSize}");
@@ -65,8 +72,12 @@ internal static class Program
             Console.WriteLine();
         }
 
+        var websiteTotals = sp.GetRequiredService<IConfiguration>().GetValue<bool>("OsuWeb:ScoreProcessor");
+        if (websiteTotals)
+            Console.WriteLine("Vanilla totals: left to the website (OsuWeb:ScoreProcessor); run the score processor's `performance user-totals all` per ruleset");
+
         Console.WriteLine("--- Recalculating PP ---");
-        var engine     = new RecalculationEngine(db, pp, logFactory.CreateLogger<RecalculationEngine>(), dryRun, batchSize, force, allPassed);
+        var engine     = new RecalculationEngine(db, pp, logFactory.CreateLogger<RecalculationEngine>(), dryRun, batchSize, force, allPassed, websiteTotals, createStats);
         var modeFilter = mode is not null && int.TryParse(mode, out var m) ? m : (int?)null;
 
         var result = await engine.RecalculateAsync(modeFilter, CancellationToken.None).ConfigureAwait(false);

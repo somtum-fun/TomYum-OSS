@@ -30,6 +30,8 @@ internal sealed class RecalculationEngine
     private readonly bool _dryRun;
     private readonly bool _force;
     private readonly bool _allPassed;
+    private readonly bool _websiteTotals;
+    private readonly bool _createStats;
     private readonly int _batchSize;
 
     public RecalculationEngine(
@@ -39,7 +41,9 @@ internal sealed class RecalculationEngine
         bool dryRun,
         int batchSize,
         bool force = false,
-        bool allPassed = false)
+        bool allPassed = false,
+        bool websiteTotals = false,
+        bool createStats = false)
     {
         _db = db;
         _pp = pp;
@@ -47,6 +51,8 @@ internal sealed class RecalculationEngine
         _dryRun = dryRun;
         _force = force;
         _allPassed = allPassed;
+        _websiteTotals = websiteTotals;
+        _createStats = createStats;
         _batchSize = batchSize;
     }
 
@@ -147,6 +153,12 @@ internal sealed class RecalculationEngine
         foreach (var (userId, mode) in updatedUserModes)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            // With the website's score pool (OsuWeb:ScoreProcessor), a vanilla mode's totals are the
+            // website's (stable and lazer together, ranked maps only, ppy's formula), which TomYum
+            // copies in-game. Summing only TomYum's stable scores here would overwrite them with a
+            // different number: run the processor's `performance user-totals all` for those instead.
+            if (_websiteTotals && GameMode.AsVanilla(mode) == mode)
+                continue;
             var change = await RecalcUserStatsAsync(userId, mode, cancellationToken).ConfigureAwait(false);
             if (change is not null)
                 userStatChanges.Add(change);
@@ -188,6 +200,12 @@ internal sealed class RecalculationEngine
         var stats = await _db.UserStats
             .FirstOrDefaultAsync(s => s.UserId == userId && s.Mode == mode, cancellationToken)
             .ConfigureAwait(false);
+
+        // A player with scores but no stats row in this mode (e.g. imported scores never played on
+        // since) only gets one with --create-stats: a new row has pp but no play count or ranked
+        // score, and puts the player on that mode's leaderboard.
+        if (stats is null && !_createStats)
+            return null;
 
         var oldPp  = stats?.Pp ?? 0.0;
         var oldAcc = stats?.Accuracy ?? 0f;

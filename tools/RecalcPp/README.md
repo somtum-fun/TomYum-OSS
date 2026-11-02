@@ -32,6 +32,18 @@ dotnet run --project tools/RecalcPp -- --batch-size 50
 - `--dry-run` — Calculate PP but do not persist changes (useful for testing)
 - `--mode MODE` — Only process scores for the given mode (0=osu, 1=taiko, 2=catch, 3=mania)
 - `--batch-size N` — Number of scores to process per transaction (default 100)
+- `--force` — Write pp for every score, changed or not
+- `--all-passed` — Also recompute passed scores that aren't the player's best
+- `--create-stats` — Give players who have scores but no stats row in a mode a new row (pp and accuracy only; it puts them on that mode's leaderboard). Off by default: only existing rows are updated.
+
+With the website's score pool on (`OsuWeb:ScoreProcessor`), the vanilla modes' totals are the website's (stable and lazer together, ranked maps only, ppy's formula) and TomYum copies them in-game, so this tool leaves them alone. After it, run ppy's processor for the website side:
+
+```bash
+docker compose run --rm --no-deps score-processor performance scores all -t 4
+for r in 0 1 2 3; do docker compose run --rm --no-deps score-processor performance user-totals all --ruleset-id $r -t 2; done
+```
+
+To run the tool against a deployed stack, publish it (`dotnet publish tools/RecalcPp -c Release -o out -p:UseAppHost=false`) and run it in `mcr.microsoft.com/dotnet/aspnet:10.0` as the server's user (`--user 1654:1654`), on the stack's network, with the server container's environment and `--volumes-from` the server (so it uses its `.osu` cache: set `TOMYUM_PERFORMANCE__OSUCACHEDIRECTORY=/app/data/osu-cache`).
 
 ## Configuration
 
