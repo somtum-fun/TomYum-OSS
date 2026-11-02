@@ -285,7 +285,7 @@ public static class ScoreSubmissionEndpoint
             logger.LogWarning("Score submission rejected: Co-op from an old client ({Build})", LegacyScoreRules.Describe(build));
             return Rejected();
         }
-        if (mode == 0 && (mods & (int)(Mods.TouchDevice | Mods.Autopilot)) == 0 && LegacyScoreRules.IsTouchDevice(replayBytes))
+        if (mode == 0 && (mods & (int)(Mods.TouchDevice | Mods.Autopilot)) == 0 && LegacyScoreRules.ChecksReplayForTouch(build) && LegacyScoreRules.IsTouchDevice(replayBytes))
         {
             mods |= (int)Mods.TouchDevice;
             logger.LogInformation("Score submission: TouchDevice detected in '{Username}''s replay ({Build})", usernameFromScore, LegacyScoreRules.Describe(build));

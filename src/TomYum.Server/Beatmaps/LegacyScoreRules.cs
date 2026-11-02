@@ -54,6 +54,22 @@ public static class LegacyScoreRules
     }
 
     /// <summary>
+    /// Whether the server checks the build's replays for a touchscreen: only builds from before Touch Device
+    /// existed (bit 4 was NoVideo until 2014). Later builds set it themselves with osu!'s own rule
+    /// (<c>Player.UpdateTouchDeviceFlag</c>: a jump of over 100 osu!px that lands on a hittable circle and
+    /// settles within 74 ms of a press, outside breaks and spinners, more than 10 times), which knows where
+    /// the circles are; this replay-only version can't, and on today's clients it flagged tablet players
+    /// whose client hadn't (19 bancho.py-era scores of 11 players, checked against somtum.fun's replays on
+    /// 2026-11-02), lowering their pp.
+    /// </summary>
+    /// <param name="build">The build that played the score.</param>
+    public static bool ChecksReplayForTouch(ClientBuild build)
+    {
+        ArgumentNullException.ThrowIfNull(build);
+        return build.IsBefore(NoVideoUntil);
+    }
+
+    /// <summary>
     /// Whether an osu! replay's LZMA-compressed frames show touchscreen cursor movement (single-frame
     /// teleports to notes while unpressed cursor frames stay still). Old builds never set
     /// <see cref="TomYum.Bancho.Mods.TouchDevice"/> themselves, and pre-2014 builds used bit 4 for NoVideo.

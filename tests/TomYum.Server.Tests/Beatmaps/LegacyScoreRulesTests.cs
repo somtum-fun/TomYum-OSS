@@ -100,6 +100,15 @@ public class LegacyScoreRulesTests
     public void Judgements_MustCoverTheMap_InTaikoAndCatch(int mode, int n300, int n100, int miss, int? maxCombo, bool expected) =>
         Assert.Equal(expected, LegacyScoreRules.JudgementsMatch(mode, n300, n100, miss, maxCombo));
 
+    [Theory]
+    [InlineData("b1807", true)]        // numbered build: no Touch Device yet
+    [InlineData("b20130606.1", true)]
+    [InlineData("b20140226", false)]   // sets Touch Device itself
+    [InlineData("b20151228.3", false)]
+    [InlineData("b20260101", false)]
+    public void ReplayTouchCheck_IsOnlyForBuildsWithoutTouchDevice(string version, bool expected) =>
+        Assert.Equal(expected, LegacyScoreRules.ChecksReplayForTouch(ClientBuild.Parse(version)));
+
     [Fact]
     public void TouchDevice_IsDetected_WhenCursorTeleportsOnClicks()
     {
