@@ -9,6 +9,9 @@
 # Nothing listens on the host: MySQL, Redis and Elasticsearch stay on the compose network.
 # Needs Docker Compose 2.26+ (volume subpaths).
 
+# The project name the scripts expect (backup.sh finds volumes as tomyum_<name>; the pp updater uses tomyum_default).
+name: tomyum
+
 x-osu-web: &osu-web
   image: tomyum/osu-web:production
   restart: unless-stopped
