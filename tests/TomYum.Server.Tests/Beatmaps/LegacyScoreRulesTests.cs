@@ -100,14 +100,66 @@ public class LegacyScoreRulesTests
     public void Judgements_MustCoverTheMap_InTaikoAndCatch(int mode, int n300, int n100, int miss, int? maxCombo, bool expected) =>
         Assert.Equal(expected, LegacyScoreRules.JudgementsMatch(mode, n300, n100, miss, maxCombo));
 
-    [Theory]
-    [InlineData("b1807", true)]        // numbered build: no Touch Device yet
-    [InlineData("b20130606.1", true)]
-    [InlineData("b20140226", false)]   // sets Touch Device itself
-    [InlineData("b20151228.3", false)]
-    [InlineData("b20260101", false)]
-    public void ReplayTouchCheck_IsOnlyForBuildsWithoutTouchDevice(string version, bool expected) =>
-        Assert.Equal(expected, LegacyScoreRules.ChecksReplayForTouch(ClientBuild.Parse(version)));
+    // Twelve circles 300 ms apart, alternating between two corners 400 osu!px apart.
+    private static TomYum.Performance.TouchLayout Layout(IReadOnlyList<TomYum.Performance.TouchSpan>? breaks = null) =>
+        new(Enumerable.Range(0, 12).Select(i => new TomYum.Performance.TouchCircle(1000 + i * 300, i % 2 == 0 ? 50 : 450, 192)).ToList(),
+            Radius: 36, PreEmpt: 450, HitWindow50: 100, breaks ?? [], [], Rate: 1);
+
+    // A touchscreen: the cursor sits still, jumps onto each circle as it's tapped, and wobbles a pixel.
+    private static string Taps(bool presses = true)
+    {
+        var frames = new StringBuilder("0|256|192|0,");
+        var time = 0;
+        void Frame(int t, float x, float y, int keys)
+        {
+            frames.Append(CultureInfo.InvariantCulture, $"{t - time}|{x}|{y}|{keys},");
+            time = t;
+        }
+        for (var i = 0; i < 12; i++)
+        {
+            var at = 1000 + i * 300;
+            var x = i % 2 == 0 ? 50f : 450f;
+            Frame(at - 40, x, 192, presses ? 1 : 0);
+            Frame(at - 24, x + 1, 192, presses ? 1 : 0);
+            Frame(at + 60, x + 1, 192, 0);
+        }
+        return frames.ToString();
+    }
+
+    // A mouse: the cursor glides between the circles 20 osu!px at a time.
+    private static string Glides()
+    {
+        var frames = new StringBuilder("0|50|192|0,");
+        float x = 50;
+        for (var t = 0; t < 4600; t += 16)
+        {
+            x = (t / 300) % 2 == 0 ? Math.Min(450, x + 20) : Math.Max(50, x - 20);
+            frames.Append(CultureInfo.InvariantCulture, $"16|{x}|192|{((t % 300) < 30 ? 1 : 0)},");
+        }
+        return frames.ToString();
+    }
+
+    [Fact]
+    public void StablesRule_CountsTapsThatLandOnCircles()
+    {
+        Assert.Equal(12, LegacyScoreRules.TouchJumps(Taps(), Layout()));
+        Assert.Equal(0, LegacyScoreRules.TouchJumps(Taps(presses: false), Layout())); // Relax: no presses, can't be judged
+        Assert.Equal(0, LegacyScoreRules.TouchJumps(Glides(), Layout()));
+        Assert.Equal(0, LegacyScoreRules.TouchJumps(Taps(), Layout([new TomYum.Performance.TouchSpan(0, 10_000)]))); // a break
+    }
+
+    [Fact]
+    public void TouchDevice_IsAdded_WhenTodaysClientMissedIt_AndKeptWhenItSetIt()
+    {
+        var today = ClientBuild.Parse("b20260101");
+        var td = (int)Mods.TouchDevice;
+
+        Assert.Equal(new TouchVerdict(td, TouchChange.Added, 12), LegacyScoreRules.DecideTouch(0, today, Taps(), Layout()));
+        Assert.Equal(new TouchVerdict(0, TouchChange.None, 0), LegacyScoreRules.DecideTouch(0, today, Glides(), Layout()));
+        Assert.Equal(new TouchVerdict(td, TouchChange.ClientOnly, 0), LegacyScoreRules.DecideTouch(td, today, Glides(), Layout()));
+        Assert.Equal(TouchChange.None, LegacyScoreRules.DecideTouch((int)Mods.Autopilot, today, Taps(), Layout()).Change);
+        Assert.Equal(TouchChange.None, LegacyScoreRules.DecideTouch(0, today, Taps(), layout: null).Change); // map unknown: the client's word
+    }
 
     [Fact]
     public void TouchDevice_IsDetected_WhenCursorTeleportsOnClicks()

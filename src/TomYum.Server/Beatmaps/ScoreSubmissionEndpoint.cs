@@ -285,12 +285,6 @@ public static class ScoreSubmissionEndpoint
             logger.LogWarning("Score submission rejected: Co-op from an old client ({Build})", LegacyScoreRules.Describe(build));
             return Rejected();
         }
-        if (mode == 0 && (mods & (int)(Mods.TouchDevice | Mods.Autopilot)) == 0 && LegacyScoreRules.ChecksReplayForTouch(build) && LegacyScoreRules.IsTouchDevice(replayBytes))
-        {
-            mods |= (int)Mods.TouchDevice;
-            logger.LogInformation("Score submission: TouchDevice detected in '{Username}''s replay ({Build})", usernameFromScore, LegacyScoreRules.Describe(build));
-        }
-
         // Fold Relax/Autopilot into the combined gamemode used for stats + leaderboards so those
         // scores stay off the vanilla boards. The vanilla ruleset (`mode`) still drives pp and
         // accuracy. See TomYum.Domain.Enums.GameMode.
@@ -323,6 +317,34 @@ public static class ScoreSubmissionEndpoint
         {
             logger.LogWarning("Score submission rejected: {Problem} ('{Username}' on beatmap {BeatmapId})", mapProblem, usernameFromScore, beatmap.Id);
             return Rejected();
+        }
+
+        // Touch Device (lowers pp): judged from the replay, with stable's own rule and the map for today's builds,
+        // since the client sometimes misses it (LegacyScoreRules.DecideTouch).
+        if (mode == 0 && replayBytes is { Length: > 0 })
+        {
+            var layout = build.IsBefore(LegacyScoreRules.NoVideoUntil)
+                ? null
+                : context.RequestServices.GetService<TomYum.Performance.TouchLayoutProvider>() is { } touchLayouts
+                    ? await touchLayouts.GetAsync(beatmap.Id, mods, cancellationToken).ConfigureAwait(false)
+                    : null;
+            var touch = LegacyScoreRules.DecideTouch(mods, build, LegacyScoreRules.Frames(replayBytes), layout);
+            if (touch.Change == TouchChange.Added)
+            {
+                mods = touch.Mods;
+                logger.LogInformation("Score submission: Touch Device added to '{Username}''s play on {BeatmapId} ({Build}): {Jumps} taps in the replay",
+                    usernameFromScore, beatmap.Id, LegacyScoreRules.Describe(build), touch.Jumps?.ToString(CultureInfo.InvariantCulture) ?? "old-build check");
+            }
+            if (touch.Change != TouchChange.None && context.RequestServices.GetService<IStaffLogRepository>() is { } touchLog)
+                await touchLog.AddAsync(new StaffLogEntry
+                {
+                    CreatedAt = DateTime.UtcNow,
+                    Action = touch.Change == TouchChange.Added ? "score.touch_added" : "score.touch_client_only",
+                    TargetId = user.Id,
+                    Summary = touch.Change == TouchChange.Added
+                        ? $"{user.Username}'s play on beatmap {beatmap.Id}: the replay shows a touchscreen ({touch.Jumps?.ToString(CultureInfo.InvariantCulture) ?? "old build"} taps) the client didn't mark. Touch Device added."
+                        : $"{user.Username}'s play on beatmap {beatmap.Id}: marked Touch Device, but the replay shows no tap. Kept; check the replay.",
+                }, cancellationToken).ConfigureAwait(false);
         }
 
         // Persist beatmap metadata so tools like RecalcPp can join against the beatmaps table.

@@ -20,6 +20,7 @@ public static class LegacyScoreRules
     private const double MaxSettleDistance = 10.0;
     private const int MaxPressDelayMs = 100;
     private const int MinTouchJumps = 11; // osu!stable: jumpCount > 10.0
+    private const double StablePressWindowMs = 74; // Player.UpdateTouchDeviceFlag: GameBase.Time - lastPressTime < 74
     private const long MaxDecompressedReplayBytes = 16 * 1024 * 1024;
 
     private readonly record struct ReplayPoint(int TimeDelta, int Time, float X, float Y, int Keys);
@@ -54,38 +55,26 @@ public static class LegacyScoreRules
     }
 
     /// <summary>
-    /// Whether the server checks the build's replays for a touchscreen: only builds from before Touch Device
-    /// existed (bit 4 was NoVideo until 2014). Later builds set it themselves with osu!'s own rule
-    /// (<c>Player.UpdateTouchDeviceFlag</c>: a jump of over 100 osu!px that lands on a hittable circle and
-    /// settles within 74 ms of a press, outside breaks and spinners, more than 10 times), which knows where
-    /// the circles are; this replay-only version can't, and on today's clients it flagged tablet players
-    /// whose client hadn't (19 bancho.py-era scores of 11 players, checked against somtum.fun's replays on
-    /// 2026-11-02), lowering their pp.
-    /// </summary>
-    /// <param name="build">The build that played the score.</param>
-    public static bool ChecksReplayForTouch(ClientBuild build)
-    {
-        ArgumentNullException.ThrowIfNull(build);
-        return build.IsBefore(NoVideoUntil);
-    }
-
-    /// <summary>
     /// Whether an osu! replay's LZMA-compressed frames show touchscreen cursor movement (single-frame
     /// teleports to notes while unpressed cursor frames stay still). Old builds never set
     /// <see cref="TomYum.Bancho.Mods.TouchDevice"/> themselves, and pre-2014 builds used bit 4 for NoVideo.
     /// </summary>
     /// <param name="compressedFrames">The LZMA-compressed replay frame stream uploaded with the score.</param>
-    public static bool IsTouchDevice(byte[]? compressedFrames)
+    public static bool IsTouchDevice(byte[]? compressedFrames) => IsTouchDeviceFrames(Frames(compressedFrames));
+
+    /// <summary>The <c>w|x|y|z</c> frame text of an LZMA-compressed replay frame stream, or null when it can't be read.</summary>
+    /// <param name="compressedFrames">The LZMA-compressed replay frame stream uploaded with the score.</param>
+    public static string? Frames(byte[]? compressedFrames)
     {
         if (compressedFrames is not { Length: >= 13 })
-            return false;
+            return null;
 
         try
         {
             var properties = compressedFrames[..5];
             var size = BitConverter.ToInt64(compressedFrames, 5);
             if (size is <= 0 or > MaxDecompressedReplayBytes)
-                return false;
+                return null;
 
             using var input = new MemoryStream(compressedFrames, 13, compressedFrames.Length - 13, writable: false);
             using var lzma = LzmaStream.Create(properties, input, compressedFrames.Length - 13, size, leaveOpen: false);
@@ -97,18 +86,148 @@ public static class LegacyScoreRules
             {
                 totalRead += read;
                 if (totalRead > MaxDecompressedReplayBytes)
-                    return false;
+                    return null;
                 output.Write(buffer, 0, read);
             }
 
-            return IsTouchDeviceFrames(Encoding.ASCII.GetString(output.GetBuffer(), 0, (int)output.Length));
+            return Encoding.ASCII.GetString(output.GetBuffer(), 0, (int)output.Length);
         }
 #pragma warning disable CA1031 // corrupt or truncated replay bytes must never fail score submission
         catch (Exception)
 #pragma warning restore CA1031
         {
-            return false;
+            return null;
         }
+    }
+
+    /// <summary>
+    /// How many touchscreen taps osu!stable's own rule finds in a replay (<c>Player.UpdateTouchDeviceFlag</c>, read
+    /// from today's cuttingedge client): each time the cursor moves, a move of over 100 osu!px that lands on a circle
+    /// that can be hit then (its time minus the approach, up to its 50 window) marks a jump, and the next move counts
+    /// it when it's under 10 osu!px and a key was pressed less than 74 ms (real time) before; breaks and spinners don't
+    /// count. The client sets Touch Device at more than 10. The replay has fewer frames than the client checks (one
+    /// per input change rather than per game frame), so the count can differ a little from the client's own.
+    /// </summary>
+    /// <param name="frameText">The comma-separated <c>w|x|y|z</c> frame string.</param>
+    /// <param name="layout">The map as played (circles, windows, breaks, spinners, speed).</param>
+    public static int TouchJumps(string? frameText, TomYum.Performance.TouchLayout layout)
+    {
+        ArgumentNullException.ThrowIfNull(layout);
+        if (string.IsNullOrEmpty(frameText) || layout.Circles.Count == 0)
+            return 0;
+
+        var frames = ParseFrames(frameText);
+        var pressWindow = StablePressWindowMs * layout.Rate;
+        // Relax presses for the player, so its replays have no presses at all: without them every flick that stops
+        // on a circle would look like a tap (290 of somtum.fun's Relax plays), so such a replay can't be judged.
+        if (!frames.Exists(f => (f.Keys & ClickKeys) != 0))
+            return 0;
+        var jumps = 0;
+        var jumpFrame = false;
+        double lastPressTime = double.NegativeInfinity;
+        var prevClick = 0;
+        for (var i = 1; i < frames.Count; i++)
+        {
+            var prev = frames[i - 1];
+            var curr = frames[i];
+            var click = curr.Keys & ClickKeys;
+            if ((click & ~prevClick) != 0)
+                lastPressTime = curr.Time;
+            prevClick = click;
+
+            var dist = Distance(prev.X, prev.Y, curr.X, curr.Y);
+            if (dist <= 0)
+                continue; // stable only checks when the cursor moved
+
+            if (Within(layout.Breaks, curr.Time) || Within(layout.Spinners, curr.Time))
+            {
+                jumpFrame = false;
+                continue;
+            }
+
+            if (jumpFrame)
+            {
+                if (dist < MaxSettleDistance && curr.Time - lastPressTime < pressWindow)
+                    jumps++;
+                jumpFrame = false;
+            }
+
+            if (dist > MinJumpDistance && CircleAt(layout, curr.X, curr.Y, curr.Time))
+                jumpFrame = true;
+        }
+
+        return jumps;
+    }
+
+    /// <summary>
+    /// Touch Device as the server decides it for an osu! play (not Autopilot, which is never touch). Builds from
+    /// before 2014 (no Touch Device of their own) get the replay-only check. Later builds are judged by stable's own
+    /// rule with the map (<see cref="TouchJumps"/>): more than 10 taps adds it when the client missed it (the client
+    /// sometimes does). When the client set it and the replay shows no tap at all, it stays: replays have fewer
+    /// frames than the client checks, and on somtum.fun's replays (2026-11-02) such plays came from players who
+    /// play touch, so taking it off would have raised real touch plays' pp; it's reported instead.
+    /// </summary>
+    /// <param name="mods">The play's mods.</param>
+    /// <param name="build">The build that played it.</param>
+    /// <param name="frameText">The replay's frames, if any.</param>
+    /// <param name="layout">The map as played, if it could be read (for builds from 2014 on).</param>
+    public static TouchVerdict DecideTouch(int mods, ClientBuild build, string? frameText, TomYum.Performance.TouchLayout? layout)
+    {
+        ArgumentNullException.ThrowIfNull(build);
+        const int touch = (int)TomYum.Bancho.Mods.TouchDevice;
+        if ((mods & (int)TomYum.Bancho.Mods.Autopilot) != 0)
+            return new TouchVerdict(mods, TouchChange.None, null);
+        var clientSet = (mods & touch) != 0;
+        if (build.IsBefore(NoVideoUntil))
+            return !clientSet && IsTouchDeviceFrames(frameText)
+                ? new TouchVerdict(mods | touch, TouchChange.Added, null)
+                : new TouchVerdict(mods, TouchChange.None, null);
+        if (layout is null)
+            return new TouchVerdict(mods, TouchChange.None, null);
+
+        var jumps = TouchJumps(frameText, layout);
+        if (!clientSet && jumps >= MinTouchJumps)
+            return new TouchVerdict(mods | touch, TouchChange.Added, jumps);
+        if (clientSet && jumps == 0 && layout.Circles.Count >= MinTouchJumps && HasPresses(frameText))
+            return new TouchVerdict(mods, TouchChange.ClientOnly, jumps);
+        return new TouchVerdict(mods, TouchChange.None, jumps);
+    }
+
+    /// <summary>Whether a circle can be hit at <paramref name="time"/> where the cursor is (stable's <c>FindCircleAt</c>, hittable range only).</summary>
+    private static bool CircleAt(TomYum.Performance.TouchLayout layout, float x, float y, int time)
+    {
+        var circles = layout.Circles;
+        // The first circle whose time is late enough to still be hittable: time <= start + window50.
+        int lo = 0, hi = circles.Count;
+        while (lo < hi)
+        {
+            var mid = (lo + hi) / 2;
+            if (circles[mid].StartTime + layout.HitWindow50 < time)
+                lo = mid + 1;
+            else
+                hi = mid;
+        }
+        var radiusSquared = (double)layout.Radius * layout.Radius;
+        for (var i = lo; i < circles.Count && circles[i].StartTime - layout.PreEmpt <= time; i++)
+        {
+            double dx = circles[i].X - x, dy = circles[i].Y - y;
+            if (dx * dx + dy * dy <= radiusSquared)
+                return true;
+        }
+        return false;
+    }
+
+    private static bool HasPresses(string? frameText) =>
+        !string.IsNullOrEmpty(frameText) && ParseFrames(frameText).Exists(f => (f.Keys & ClickKeys) != 0);
+
+    private static bool Within(IReadOnlyList<TomYum.Performance.TouchSpan> spans, int time)
+    {
+        foreach (var span in spans)
+        {
+            if (time >= span.Start && time <= span.End)
+                return true;
+        }
+        return false;
     }
 
     /// <summary>
@@ -263,3 +382,22 @@ public static class LegacyScoreRules
         _ => "unknown",
     };
 }
+
+/// <summary>What the server's Touch Device check did.</summary>
+public enum TouchChange
+{
+    /// <summary>Left as the client sent it.</summary>
+    None,
+
+    /// <summary>The replay shows a touchscreen the client didn't mark: Touch Device added.</summary>
+    Added,
+
+    /// <summary>The client marked Touch Device but the replay shows no tap: kept, and reported.</summary>
+    ClientOnly,
+}
+
+/// <summary>The play's mods after the Touch Device check, what changed, and stable's tap count when the map was read.</summary>
+/// <param name="Mods">The mods.</param>
+/// <param name="Change">What changed.</param>
+/// <param name="Jumps">The taps stable's rule found, when it was used.</param>
+public readonly record struct TouchVerdict(int Mods, TouchChange Change, int? Jumps);

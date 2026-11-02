@@ -74,6 +74,7 @@ public static class PerformanceServiceCollectionExtensions
 
         services.AddTransient<OfficialPerformanceCalculator>(); // cheap; resolved per pp calc
         services.AddSingleton<LegacyScoreConverter>();          // stable scores in lazer's scoring (website copies)
+        services.AddSingleton<TouchLayoutProvider>();           // where circles are, for the touchscreen check
 
         services.AddSingleton<IPerformanceBackendRegistry, PerformanceBackendRegistry>();
         services.AddSingleton<IPerformanceCalculator, RoutingPerformanceCalculator>();
