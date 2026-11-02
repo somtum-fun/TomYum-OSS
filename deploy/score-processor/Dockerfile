@@ -35,8 +35,8 @@ RUN grep -q 'userStats.rank_score_index = await getUserRankScoreIndex(userStats,
     && sed -i 's/userStats.rank_score_index = await getUserRankScoreIndex(userStats, connection, transaction, dbInfo);/userStats.rank_score_index = await global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumRankIndex.GetAsync(userStats, dbInfo.UserStatsTable, connection, transaction);/' Processors/UserTotalPerformanceProcessor.cs
 # ppy.osu.Game brings MessagePack 3.1.7: 3.1.9 fixes a denial of service (CVE-2026-92707), 3.1.10 a ReDoS.
 RUN dotnet add package MessagePack --version 3.1.12
-# MySqlConnector 2.6.1 fixes a password leak in zero-configuration TLS (GHSA-473q-m89c-ghf8); AutoMapper as in TomYum.
-RUN dotnet add package MySqlConnector --version 2.6.2 && dotnet add package AutoMapper --version 16.2.0
+# MySqlConnector 2.6.1 fixes a password leak in zero-configuration TLS (GHSA-473q-m89c-ghf8). AutoMapper stays on osu.Game's 13.0.1 (MIT), as in TomYum.
+RUN dotnet add package MySqlConnector --version 2.6.2
 RUN dotnet publish -c Release -o /out && rm -rf /out/runtimes /out/osu.Game.Resources.dll
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0
