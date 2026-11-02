@@ -1,6 +1,6 @@
 # TomYum Roadmap
 
-_Last updated: 2026-10-28 (version 0.7.0)._ .NET 10; used in production for stable, lazer and the website.
+_Last updated: 2026-11-01 (version 0.7.1)._ .NET 10; used in production for stable, lazer and the website.
 
 `0.5.0` is the first **stable** release. `0.6.0` to `1.0.0` are small fixes and growing up:
 scaling, object storage, Kubernetes, and a core generic enough for anyone's server. How each feature
@@ -40,6 +40,9 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decisio
   their plays; pre-2024 lazer builds' scores processed; fixes (an osu! lookup that didn't answer isn't
   remembered as an unsubmitted map, two requests storing the same new map, one set import at a time, Last.fm,
   over-long staff log text).
+- `0.7.1` (2026-11-01): password checks no longer hold a thread (one Redis batch), a Redis timeout no
+  longer fails a login or score, bcrypt held to half the cores; StackExchange.Redis 3, ppy rulesets
+  2026.1026.0, security updates to the packages and infrastructure.
 
 ## 0.6.0 – 1.0.0: small fixes, scaling, a generic core
 - [ ] Small fixes from production.

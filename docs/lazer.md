@@ -11,7 +11,7 @@ Done (2026-09-27):
   - For an existing server, turn it on once: zero the grade counts in `osu_user_stats*`
     (TomYum wrote them before; the processor recounts them), then run
     `docker compose run --rm score-processor queue pump-all` in osu-web.
-  - TomYum's pp library matches the processor's (ppy rulesets 2026.730.0). Scores from before the
+  - TomYum's pp library matches the processor's (ppy rulesets 2026.1026.0). Scores from before the
     upgrade keep their old in-game pp until recalculated (`tools/RecalcPp`); the website already
     has the new values.
 

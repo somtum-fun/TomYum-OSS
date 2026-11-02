@@ -5,7 +5,7 @@
 # wait for TomYum's import before they're processed (TomYumRelaxWait.cs). See docs/lazer.md.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build-env
 ARG PROCESSOR_REPO=https://github.com/ppy/osu-queue-score-statistics
-ARG PROCESSOR_REF=7558b004f33cb79196b63682daa9862cb9c23faa
+ARG PROCESSOR_REF=c0a0c3a4da67281c3ed549fbef3505ff77d64d99
 RUN git clone "$PROCESSOR_REPO" /src && git -C /src checkout "$PROCESSOR_REF"
 WORKDIR /src/osu.Server.Queues.ScoreStatisticsProcessor
 COPY TomYumRankedMods.cs Helpers/TomYumRankedMods.cs
@@ -35,6 +35,8 @@ RUN grep -q 'userStats.rank_score_index = await getUserRankScoreIndex(userStats,
     && sed -i 's/userStats.rank_score_index = await getUserRankScoreIndex(userStats, connection, transaction, dbInfo);/userStats.rank_score_index = await global::osu.Server.Queues.ScoreStatisticsProcessor.Helpers.TomYumRankIndex.GetAsync(userStats, dbInfo.UserStatsTable, connection, transaction);/' Processors/UserTotalPerformanceProcessor.cs
 # ppy.osu.Game brings MessagePack 3.1.7: 3.1.9 fixes a denial of service (CVE-2026-92707), 3.1.10 a ReDoS.
 RUN dotnet add package MessagePack --version 3.1.12
+# MySqlConnector 2.6.1 fixes a password leak in zero-configuration TLS (GHSA-473q-m89c-ghf8); AutoMapper as in TomYum.
+RUN dotnet add package MySqlConnector --version 2.6.2 && dotnet add package AutoMapper --version 16.2.0
 RUN dotnet publish -c Release -o /out && rm -rf /out/runtimes /out/osu.Game.Resources.dll
 
 FROM mcr.microsoft.com/dotnet/runtime:10.0

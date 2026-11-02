@@ -9,6 +9,7 @@ using Dapper;
 using MySqlConnector;
 using osu.Game.Rulesets;
 using osu.Game.Rulesets.Scoring;
+using osu.Game.Scoring;
 using osu.Server.Queues.ScoreStatisticsProcessor.Models;
 
 namespace osu.Server.Queues.ScoreStatisticsProcessor.Helpers
