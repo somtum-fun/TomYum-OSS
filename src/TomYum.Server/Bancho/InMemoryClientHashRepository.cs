@@ -48,6 +48,21 @@ public sealed class InMemoryClientHashRepository : IClientHashRepository
         return Task.FromResult(users);
     }
 
+    public Task<IReadOnlyList<ClientHash>> FindMatchingAsync(int userId, ClientHashQuery query, int limit = 500, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        IReadOnlyList<ClientHash> rows = _hashes.Values
+            .Where(h => h.UserId != userId
+                && ((query.Adapters != null && h.Adapters == query.Adapters)
+                    || (query.UninstallId != null && h.UninstallId == query.UninstallId)
+                    || (query.DiskSerial != null && h.DiskSerial == query.DiskSerial)))
+            .OrderByDescending(h => h.LatestTime)
+            .Take(Math.Clamp(limit, 1, 2000))
+            .ToList();
+        return Task.FromResult(rows);
+    }
+
     public Task<IReadOnlyList<ClientHash>> ListAsync(int userId, CancellationToken cancellationToken = default)
     {
         IReadOnlyList<ClientHash> hashes = _hashes.Values.Where(h => h.UserId == userId).OrderByDescending(h => h.LatestTime).ToList();

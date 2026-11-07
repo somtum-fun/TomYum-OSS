@@ -6,7 +6,8 @@ namespace TomYum.Domain.Repositories;
 /// <param name="Adapters">Adapter hash to match, or null to skip it.</param>
 /// <param name="UninstallId">Uninstall-id hash to match, or null to skip it.</param>
 /// <param name="DiskSerial">Disk-serial hash to match, or null to skip it.</param>
-public sealed record ClientHashQuery(string? Adapters, string? UninstallId, string? DiskSerial)
+/// <param name="IsWine">The login came from Wine (only its uninstall id is looked up).</param>
+public sealed record ClientHashQuery(string? Adapters, string? UninstallId, string? DiskSerial, bool IsWine = false)
 {
     public bool IsEmpty => Adapters is null && UninstallId is null && DiskSerial is null;
 }
@@ -19,6 +20,9 @@ public interface IClientHashRepository
 
     /// <summary>Other accounts that logged in with any of the query's hashes, most recent first.</summary>
     Task<IReadOnlyList<int>> FindOtherUsersAsync(int userId, ClientHashQuery query, int limit = 50, CancellationToken cancellationToken = default);
+
+    /// <summary>Other accounts' combinations that share any of the query's hashes, most recent first.</summary>
+    Task<IReadOnlyList<ClientHash>> FindMatchingAsync(int userId, ClientHashQuery query, int limit = 500, CancellationToken cancellationToken = default);
 
     /// <summary>Every hash combination the account has used, most recent first.</summary>
     Task<IReadOnlyList<ClientHash>> ListAsync(int userId, CancellationToken cancellationToken = default);

@@ -25,12 +25,16 @@ public sealed class BanEvasionTests
     public void Match_UsesAllHashes_ButOnlyTheUninstallIdUnderWine()
     {
         Assert.Equal(new ClientHashQuery(AdaptersA, UninstallA, DiskA), ClientHashMatch.For("1c.1b.0d", AdaptersA, UninstallA, DiskA));
-        Assert.Equal(new ClientHashQuery(null, UninstallA, null), ClientHashMatch.For("runningunderwine", AdaptersA, UninstallA, DiskA));
+        Assert.Equal(new ClientHashQuery(null, UninstallA, null, IsWine: true), ClientHashMatch.For("runningunderwine", AdaptersA, UninstallA, DiskA));
+        // Wine's usual disk serial gives it away even with a real-looking adapter list.
+        Assert.Equal(new ClientHashQuery(null, UninstallA, null, IsWine: true), ClientHashMatch.For("1c.1b.0d", AdaptersA, UninstallA, ClientHashMatch.WineDisk));
     }
 
     [Theory]
     [InlineData(Md5Zero)]                               // a disk without a serial
     [InlineData("d41d8cd98f00b204e9800998ecf8427e")]    // md5("")
+    [InlineData(ClientHashMatch.WineAdapters)]
+    [InlineData(ClientHashMatch.WineDisk)]
     [InlineData("")]
     [InlineData("not-a-hash")]
     [InlineData("1234")]
@@ -49,7 +53,8 @@ public sealed class BanEvasionTests
         await RestrictAsync(users, cheater);
         var fresh = await AddUserAsync(users, "Fresh");
 
-        var outcome = await LogInAsync(handler, "Fresh", Other, Other, DiskA);
+        // A reinstalled osu!: new uninstall id, same adapters and disk.
+        var outcome = await LogInAsync(handler, "Fresh", AdaptersA, Other, DiskA);
 
         Assert.Null(outcome.Token);
         Assert.Null(registry.GetByUserId(fresh.Id));
@@ -146,7 +151,9 @@ public sealed class BanEvasionTests
     [InlineData("runningunderwine", AdaptersA, Other, DiskA, true)]  // Wine: adapters and disk don't count
     [InlineData("runningunderwine", Other, UninstallA, Other, false)]
     [InlineData("1c.1b", Other, Other, Md5Zero, true)]              // md5("0") disk: everyone has it
-    [InlineData("1c.1b", AdaptersA, Other, Other, false)]
+    [InlineData("1c.1b", AdaptersA, Other, Other, true)]             // one hash: let in (staff told)
+    [InlineData("1c.1b", AdaptersA, Other, DiskA, false)]            // two: refused
+    [InlineData("1c.1b", Other, UninstallA, DiskA, false)]
     public async Task Guards(string adaptersStr, string adapters, string uninstall, string disk, bool getsIn)
     {
         var (handler, _, users, _) = NewLogin();
@@ -159,6 +166,110 @@ public sealed class BanEvasionTests
         var outcome = await LogInAsync(handler, "Fresh", adapters, uninstall, disk, adaptersStr);
 
         Assert.Equal(getsIn, outcome.Token is not null);
+    }
+
+    [Fact]
+    public async Task WeakMatch_GetsIn_Unverified_StaffToldOnce_AndAStrongMatchLaterIsRefused()
+    {
+        var staffLog = new RecordingStaffLog();
+        var (handler, registry, users, hashes) = NewLogin(staffLog);
+        var cheater = await AddUserAsync(users, "Cheater");
+        await LogInAsync(handler, "Cheater", AdaptersA, UninstallA, DiskA);
+        await RestrictAsync(users, cheater);
+        var fresh = await AddUserAsync(users, "Fresh");
+
+        var first = await LogInAsync(handler, "Fresh", Other, Other, DiskA);
+
+        Assert.NotNull(first.Token);
+        Assert.False(await hashes.IsVerifiedAsync(fresh.Id));
+        var alert = Assert.Single(staffLog.Entries);
+        Assert.Equal(BanchoLoginHandler.SharedMachineAction, alert.Action);
+        Assert.Contains("may be an alt of restricted Cheater", alert.Summary, StringComparison.Ordinal);
+
+        registry.Remove(first.Token!);
+        Assert.NotNull((await LogInAsync(handler, "Fresh", Other, Other, DiskA)).Token);
+        Assert.Single(staffLog.Entries);
+        registry.Remove((await LogInAsync(handler, "Fresh", Other, Other, DiskA)).Token!);
+
+        Assert.Null((await LogInAsync(handler, "Fresh", AdaptersA, Other, DiskA)).Token);
+    }
+
+    [Fact]
+    public async Task CommonDiskSerial_SeenOnManyDifferentMachines_DoesNotCount()
+    {
+        var (handler, registry, users, _) = NewLogin();
+        for (var i = 0; i < ClientHashMatch.CommonMachines; i++)
+        {
+            await AddUserAsync(users, $"Player{i}");
+            var adapters = new string((char)('a' + i), 32);
+            registry.Remove((await LogInAsync(handler, $"Player{i}", adapters, new string((char)('a' + i), 31) + "0", DiskA)).Token!);
+        }
+        await RestrictAsync(users, (await users.GetByUsernameAsync("Player0"))!);
+        await AddUserAsync(users, "Fresh");
+
+        // The disk serial alone would be weak anyway; with the adapters too it would be strong,
+        // but the disk serial is too common to count, so only the adapters match.
+        var outcome = await LogInAsync(handler, "Fresh", new string('a', 32), Other, DiskA);
+
+        Assert.NotNull(outcome.Token);
+    }
+
+    [Fact]
+    public async Task ManyAltsOnOneMachine_DoNotMakeItsHashesCommon()
+    {
+        var (handler, registry, users, _) = NewLogin();
+        for (var i = 0; i < ClientHashMatch.CommonMachines + 2; i++)
+        {
+            await AddUserAsync(users, $"Alt{i}");
+            registry.Remove((await LogInAsync(handler, $"Alt{i}", AdaptersA, new string((char)('a' + i), 32), DiskA)).Token!);
+        }
+        await RestrictAsync(users, (await users.GetByUsernameAsync("Alt0"))!);
+        await AddUserAsync(users, "Fresh");
+
+        Assert.Null((await LogInAsync(handler, "Fresh", AdaptersA, Other, DiskA)).Token);
+    }
+
+    [Fact]
+    public async Task Wine_SameUninstallId_RefusedOnlyInTheSameFolder()
+    {
+        var (handler, _, users, _) = NewLogin();
+        var cheater = await AddUserAsync(users, "Cheater");
+        await LogInAsync(handler, "Cheater", ClientHashMatch.WineAdapters, UninstallA, DiskA, "runningunderwine");
+        await RestrictAsync(users, cheater);
+        await AddUserAsync(users, "OtherFolder");
+        await AddUserAsync(users, "SameFolder");
+
+        Assert.NotNull((await LogInAsync(handler, "OtherFolder", ClientHashMatch.WineAdapters, UninstallA, DiskA, "runningunderwine", Other)).Token);
+        Assert.Null((await LogInAsync(handler, "SameFolder", ClientHashMatch.WineAdapters, UninstallA, DiskA, "runningunderwine")).Token);
+    }
+
+    [Fact]
+    public async Task WindowsLogin_DoesNotMatchAWinePlayersDiskSerial()
+    {
+        var (handler, _, users, _) = NewLogin();
+        var cheater = await AddUserAsync(users, "Cheater");
+        await LogInAsync(handler, "Cheater", ClientHashMatch.WineAdapters, UninstallA, DiskA, "runningunderwine");
+        await RestrictAsync(users, cheater);
+        var fresh = await AddUserAsync(users, "Fresh");
+
+        Assert.NotNull((await LogInAsync(handler, "Fresh", AdaptersA, Other, DiskA)).Token);
+    }
+
+    [Fact]
+    public async Task HardwareBan_OneHashInCommon_LetsInAndTellsStaff()
+    {
+        var staffLog = new RecordingStaffLog();
+        var bans = new BannedAccounts();
+        var (handler, _, users, _) = NewLogin(staffLog, bans);
+        var cheater = await AddUserAsync(users, "Cheater");
+        await LogInAsync(handler, "Cheater", AdaptersA, UninstallA, DiskA);
+        bans.Banned.Add(cheater.Id);
+        await RestrictAsync(users, cheater);
+        await AddUserAsync(users, "Fresh");
+
+        Assert.NotNull((await LogInAsync(handler, "Fresh", Other, Other, DiskA)).Token);
+        Assert.Contains(staffLog.Entries, e => e.Action == BanchoLoginHandler.SharedMachineAction);
+        Assert.DoesNotContain(staffLog.Entries, e => e.Action == BanchoLoginHandler.BannedMachineAction);
     }
 
     [Fact]
@@ -194,7 +305,7 @@ public sealed class BanEvasionTests
         await LogInAsync(handler, "Cheater", AdaptersA, UninstallA, DiskA);
         await RestrictAsync(users, cheater);
         await AddUserAsync(users, "Fresh");
-        Assert.Null((await LogInAsync(handler, "Fresh", AdaptersA, Other, Other)).Token);
+        Assert.Null((await LogInAsync(handler, "Fresh", AdaptersA, Other, DiskA)).Token);
         var gmt = await AddUserAsync(users, "Gmt", UserPrivileges.Normal | UserPrivileges.Moderator);
         var staffLog = new RecordingStaffLog();
         var services = new ServiceCollection()
@@ -258,7 +369,7 @@ public sealed class BanEvasionTests
 
         var oldAccount = await LogInAsync(handler, "VerifiedAlt", AdaptersA, UninstallA, DiskA);
         await LogInAsync(handler, "VerifiedAlt", AdaptersA, UninstallA, DiskA);
-        var newAccount = await LogInAsync(handler, "Fresh", Other, Other, DiskA);
+        var newAccount = await LogInAsync(handler, "Fresh", Other, UninstallA, DiskA);
 
         Assert.Equal(-3, UserIdPacket(oldAccount.Body));
         Assert.Equal(-3, UserIdPacket(newAccount.Body));
@@ -316,9 +427,9 @@ public sealed class BanEvasionTests
     }
 
     private static Task<BanchoLoginHandler.LoginOutcome> LogInAsync(
-        BanchoLoginHandler handler, string username, string adapters, string uninstall, string disk, string adaptersStr = "1c.1b.0d")
+        BanchoLoginHandler handler, string username, string adapters, string uninstall, string disk, string adaptersStr = "1c.1b.0d", string path = PathA)
     {
-        var body = $"{username}\n{new BcryptPasswordHasher().ComputeMd5Hex("password")}\nb20231228.1|0|0|{PathA}:{adaptersStr}:{adapters}:{uninstall}:{disk}:|0\n";
+        var body = $"{username}\n{new BcryptPasswordHasher().ComputeMd5Hex("password")}\nb20231228.1|0|0|{path}:{adaptersStr}:{adapters}:{uninstall}:{disk}:|0\n";
         return handler.HandleAsync(body, "TH", CancellationToken.None);
     }
 

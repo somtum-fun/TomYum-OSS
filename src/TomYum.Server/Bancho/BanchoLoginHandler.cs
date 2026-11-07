@@ -645,10 +645,21 @@ public sealed class BanchoLoginHandler
         var query = ClientHashMatch.For(hashes.AdaptersStr, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5);
         if (query.IsEmpty)
             return null;
-        var others = await _clientHashes.FindOtherUsersAsync(user.Id, query, limit: 500, cancellationToken: cancellationToken).ConfigureAwait(false);
-        if (await _bans.FirstBannedAsync(others, cancellationToken).ConfigureAwait(false) is not { } owner)
-            return null;
-        return await _bans.IsWhitelistedAsync(user.Id, cancellationToken).ConfigureAwait(false) ? null : owner;
+        var rows = await _clientHashes.FindMatchingAsync(user.Id, query, cancellationToken: cancellationToken).ConfigureAwait(false);
+        var matches = ClientHashMatch.Judge(query, hashes.OsuPathMd5, rows);
+        var strong = matches.Where(m => m.Strength == ClientHashMatchStrength.Strong).Select(m => m.UserId).ToList();
+        if (await _bans.FirstBannedAsync(strong, cancellationToken).ConfigureAwait(false) is { } owner)
+            return await _bans.IsWhitelistedAsync(user.Id, cancellationToken).ConfigureAwait(false) ? null : owner;
+
+        // One hash in common with a banned account: let in, staff are told.
+        var weak = matches.Where(m => m.Strength == ClientHashMatchStrength.Weak).Select(m => m.UserId).ToList();
+        if (await _bans.FirstBannedAsync(weak, cancellationToken).ConfigureAwait(false) is { } maybe
+            && !await _bans.IsWhitelistedAsync(user.Id, cancellationToken).ConfigureAwait(false)
+            && await _users.GetByIdAsync(maybe, cancellationToken).ConfigureAwait(false) is { } bannedUser)
+        {
+            await AlertSharedMachineAsync(user, bannedUser, DateTime.UtcNow, weak: true, cancellationToken).ConfigureAwait(false);
+        }
+        return null;
     }
 
     /// <summary>Tells staff (once per pair) that an account was refused for sharing a banned account's machine.</summary>
@@ -672,9 +683,10 @@ public sealed class BanchoLoginHandler
 
     /// <summary>
     /// Records the login's hashes and looks for restricted accounts on the same machine (staff and
-    /// BanchoBot are never checked). An unverified account is refused when there's one, else it's
-    /// verified (staff can verify one by hand with <c>!verify</c>). A verified account gets in, but
-    /// staff are told once per restricted account it shares the machine with.
+    /// BanchoBot are never checked). An unverified account is refused when one shares two hashes with
+    /// it (<see cref="ClientHashMatchStrength.Strong"/>); with only one, it gets in but stays unverified
+    /// and staff are told. Otherwise it's verified (staff can verify one by hand with <c>!verify</c>).
+    /// A verified account gets in, but staff are told once per restricted account it shares the machine with.
     /// </summary>
     private async Task<bool> IsEvadingAsync(User user, ClientHashes hashes, CancellationToken cancellationToken)
     {
@@ -686,18 +698,22 @@ public sealed class BanchoLoginHandler
 
         var verified = await _clientHashes!.IsVerifiedAsync(user.Id, cancellationToken).ConfigureAwait(false);
         var query = ClientHashMatch.For(hashes.AdaptersStr, hashes.AdaptersMd5, hashes.UninstallMd5, hashes.DiskSignatureMd5);
-        var others = query.IsEmpty
+        var matches = query.IsEmpty
             ? []
-            : await _clientHashes.FindOtherUsersAsync(user.Id, query, cancellationToken: cancellationToken).ConfigureAwait(false);
-        foreach (var otherId in others)
+            : ClientHashMatch.Judge(query, hashes.OsuPathMd5,
+                await _clientHashes.FindMatchingAsync(user.Id, query, cancellationToken: cancellationToken).ConfigureAwait(false));
+        var maybeAlt = false;
+        foreach (var match in matches)
         {
-            var other = await _users.GetByIdAsync(otherId, cancellationToken).ConfigureAwait(false);
+            var other = await _users.GetByIdAsync(match.UserId, cancellationToken).ConfigureAwait(false);
             if (other is not { IsRestricted: true })
                 continue;
-            if (verified)
+            if (verified || match.Strength == ClientHashMatchStrength.Weak)
             {
                 if (!user.IsRestricted)
-                    await AlertSharedMachineAsync(user, other, now, cancellationToken).ConfigureAwait(false);
+                    await AlertSharedMachineAsync(user, other, now, weak: !verified, cancellationToken).ConfigureAwait(false);
+                // A weak match lets them in, but they stay unverified: a stronger one later still refuses them.
+                maybeAlt |= !verified;
                 continue;
             }
 
@@ -716,13 +732,21 @@ public sealed class BanchoLoginHandler
             return true;
         }
 
-        if (!verified)
+        if (!verified && !maybeAlt)
             await _clientHashes.VerifyAsync(user.Id, 0, now, cancellationToken).ConfigureAwait(false);
         return false;
     }
 
-    /// <summary>Tells staff (once per pair) that a verified account shares a machine with a restricted one.</summary>
-    private async Task AlertSharedMachineAsync(User user, User restricted, DateTime now, CancellationToken cancellationToken)
+    /// <summary>
+    /// Tells staff (once per pair) that an account shares a machine with a restricted or banned one: a
+    /// verified account, or (<paramref name="weak"/>) one let in because only one hash matched.
+    /// </summary>
+    /// <param name="user">The account that logged in.</param>
+    /// <param name="restricted">The restricted or banned account it shares hardware with.</param>
+    /// <param name="now">When (UTC).</param>
+    /// <param name="weak">Only one hash matched, so the login wasn't refused.</param>
+    /// <param name="cancellationToken">Cancels the write.</param>
+    private async Task AlertSharedMachineAsync(User user, User restricted, DateTime now, bool weak, CancellationToken cancellationToken)
     {
         if (_staffLog is null)
             return;
@@ -731,14 +755,16 @@ public sealed class BanchoLoginHandler
         if (earlier.Any(e => e.Result == pair))
             return;
 
-        _logger.LogWarning("{Username} (id {UserId}) logged in from the same machine as restricted {Other} (id {OtherId}).",
-            user.Username, user.Id, restricted.Username, restricted.Id);
+        _logger.LogWarning("{Username} (id {UserId}) logged in sharing hardware with restricted {Other} (id {OtherId}); weak match: {Weak}.",
+            user.Username, user.Id, restricted.Username, restricted.Id, weak);
         await _staffLog.AddAsync(new StaffLogEntry
         {
             CreatedAt = now,
             Action = SharedMachineAction,
             TargetId = user.Id,
-            Summary = $"{user.Username} (id {user.Id.ToString(CultureInfo.InvariantCulture)}) logged in from the same machine as restricted {restricted.Username} (id {pair}). They got in before that account was restricted, or were verified by hand; nothing was done to them.",
+            Summary = weak
+                ? $"{user.Username} (id {user.Id.ToString(CultureInfo.InvariantCulture)}) may be an alt of restricted {restricted.Username} (id {pair}): one hardware hash in common, which can be chance. They were let in but stay unverified; check with !alts."
+                : $"{user.Username} (id {user.Id.ToString(CultureInfo.InvariantCulture)}) logged in from the same machine as restricted {restricted.Username} (id {pair}). They got in before that account was restricted, or were verified by hand; nothing was done to them.",
             Result = pair,
         }, cancellationToken).ConfigureAwait(false);
     }

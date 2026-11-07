@@ -46,6 +46,26 @@ public sealed class ClientHashRepository : IClientHashRepository
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<ClientHash>> FindMatchingAsync(int userId, ClientHashQuery query, int limit = 500, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+        if (query.IsEmpty)
+            return [];
+
+        var adapters = query.Adapters;
+        var uninstall = query.UninstallId;
+        var disk = query.DiskSerial;
+        return await _db.ClientHashes.AsNoTracking()
+            .Where(h => h.UserId != userId
+                && ((adapters != null && h.Adapters == adapters)
+                    || (uninstall != null && h.UninstallId == uninstall)
+                    || (disk != null && h.DiskSerial == disk)))
+            .OrderByDescending(h => h.LatestTime)
+            .Take(Math.Clamp(limit, 1, 2000))
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task<IReadOnlyList<ClientHash>> ListAsync(int userId, CancellationToken cancellationToken = default) =>
         await _db.ClientHashes.AsNoTracking()
             .Where(h => h.UserId == userId)
