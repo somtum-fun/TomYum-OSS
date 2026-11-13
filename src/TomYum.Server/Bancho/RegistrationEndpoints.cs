@@ -8,6 +8,12 @@ namespace TomYum.Server.Bancho;
 /// <c>user[user_email]</c>, <c>user[password]</c>, and a <c>check</c> flag; it validates on
 /// every keystroke (<c>check != 0</c>) and creates on final submit (<c>check == 0</c>).
 /// See <c>memories/protocols/bancho-stable.md</c> §3.
+/// <para>
+/// Lazer posts its sign-up to the same path with the same <c>osu!</c> User-Agent, and its sign-up
+/// request carries no <c>X-Api-Version</c> header, so the proxy can't always tell the two apart.
+/// A form without stable's <c>check</c> flag is lazer's: it is passed on unchanged to osu-web
+/// (<c>OsuWeb:InteropUrl</c>), whose JSON reply lazer understands.
+/// </para>
 /// </summary>
 public static class RegistrationEndpoints
 {
@@ -35,7 +41,15 @@ public static class RegistrationEndpoints
             return Results.Text("Missing required params", "text/plain", statusCode: 400);
         }
 
+        // Buffered so lazer's request can be passed on to osu-web byte for byte after reading it.
+        context.Request.EnableBuffering();
         var form = await context.Request.ReadFormAsync(cancellationToken).ConfigureAwait(false);
+        if (!form.ContainsKey("check") &&
+            context.RequestServices.GetService<OsuWebInteropOptions>() is { InteropUrl: { Length: > 0 } osuWebUrl })
+        {
+            return await ForwardToOsuWebAsync(context, osuWebUrl, logger, cancellationToken).ConfigureAwait(false);
+        }
+
         var username = form["user[username]"].ToString();
         var email = form["user[user_email]"].ToString();
         var password = form["user[password]"].ToString();
@@ -108,6 +122,56 @@ public static class RegistrationEndpoints
 
         // The client only proceeds when the body is exactly "ok" (both validate and create).
         return Results.Text("ok", "text/plain");
+    }
+
+    /// <summary>Request headers not copied when passing lazer's sign-up on (the body's and the connection's own).</summary>
+    private static readonly HashSet<string> SkippedHeaders = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Host", "Content-Length", "Content-Type", "Connection", "Keep-Alive", "Transfer-Encoding",
+        "Upgrade", "TE", "Trailer", "Proxy-Connection", "Expect",
+    };
+
+    /// <summary>
+    /// Passes lazer's sign-up on to osu-web's <c>POST /users</c> and relays its reply. The original
+    /// Host and the proxy's forwarding headers (X-Forwarded-For, CF-Connecting-IP) go along, so osu-web
+    /// (which trusts private networks as proxies) sees the player's address for its sign-up rules.
+    /// </summary>
+    private static async Task<IResult> ForwardToOsuWebAsync(
+        HttpContext context,
+        string osuWebUrl,
+        ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        var request = context.Request;
+        request.Body.Position = 0;
+
+        using var forward = new HttpRequestMessage(HttpMethod.Post, $"{osuWebUrl.TrimEnd('/')}/users")
+        {
+            Content = new StreamContent(request.Body),
+        };
+        if (request.ContentType is { } contentType)
+            forward.Content.Headers.TryAddWithoutValidation("Content-Type", contentType);
+        foreach (var (name, values) in request.Headers)
+        {
+            if (!SkippedHeaders.Contains(name))
+                forward.Headers.TryAddWithoutValidation(name, (IEnumerable<string?>)values);
+        }
+
+        forward.Headers.Host = request.Host.Value;
+
+        try
+        {
+            var http = context.RequestServices.GetRequiredService<IHttpClientFactory>().CreateClient(nameof(RegistrationEndpoints));
+            using var response = await http.SendAsync(forward, cancellationToken).ConfigureAwait(false);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            var type = response.Content.Headers.ContentType?.ToString() ?? "application/json";
+            return Results.Content(body, type, statusCode: (int)response.StatusCode);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "Passing lazer's sign-up on to osu-web failed");
+            return Results.Json(new { error = "Sign-up is unavailable right now, please try again later." }, statusCode: 502);
+        }
     }
 
     /// <summary>bancho.py's shape: <c>{"form_error": {"user": {"&lt;field&gt;": ["&lt;joined messages&gt;"]}}}</c>, HTTP 400.</summary>
