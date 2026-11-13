@@ -20,9 +20,17 @@ public sealed class RestrictionNotices
 {
     private const string KeyPrefix = "tomyum:restriction-notice:";
 
-    /// <summary>What BanchoBot tells a player who was restricted (osu!'s own wording).</summary>
-    public const string RestrictedText =
-        "Your account is currently in restricted mode. Please visit the osu! website for more information.";
+    /// <summary>
+    /// What BanchoBot tells a player who was restricted: osu!'s wording, with our website named instead of
+    /// osu!'s (<c>https://osu.somtum.fun</c> → "the somtum.fun website").
+    /// </summary>
+    public static string RestrictedText(string site)
+    {
+        var host = Uri.TryCreate(site, UriKind.Absolute, out var uri) ? uri.Host : site;
+        if (host.StartsWith("osu.", StringComparison.OrdinalIgnoreCase))
+            host = host[4..];
+        return $"Your account is currently in restricted mode. Please visit the {host} website for more information.";
+    }
 
     private readonly IServiceScopeFactory _scopes;
     private readonly PlayerRegistry _players;
@@ -69,7 +77,7 @@ public sealed class RestrictionNotices
                 state = string.Create(CultureInfo.InvariantCulture, $"r:{latest?.BanId ?? 0}");
                 if (told == state)
                     return;
-                text = RestrictedText;
+                text = RestrictedText(_site);
             }
             else
             {
