@@ -26,9 +26,9 @@ It works with tomyum-spectator's `TomYumStableSpectate.cs` through Redis:
 Needs Redis, `IHostSpectating` and `IHostPlayerView` (no database). Config (`plugins:tomyum.stable-spectate:*`):
 `intervalSeconds` (2).
 
-Known gaps: lazer's spectator leaderboard shows 0 / 0.00% for the stable player (it reads lazer's own scoring
-numbers, which stable doesn't have; the HUD's combo and accuracy are right); a play joined midway starts from the
-first frame received.
+The score shown in lazer: accuracy and combo come from stable's score frames; lazer's own (standardised) score is
+an estimate, since stable sends hit counts and not each hit's combo. A play joined midway starts from the first
+frame received.
 
 Tests: `tests/TomYum.Server.Tests/StableSpectatePluginTests.cs` (compiles the folder as the server does; frame
 bundles, today's and old builds').
