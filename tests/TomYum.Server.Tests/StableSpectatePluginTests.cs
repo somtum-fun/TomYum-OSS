@@ -28,7 +28,7 @@ public class StableSpectatePluginTests
             await plugin.InitializeAsync(new Context(logger, events));
             var warning = Assert.Single(logger.Warnings);
             Assert.Contains("Redis", warning, StringComparison.Ordinal);
-            Assert.Contains("Plugins:Trusted", warning, StringComparison.Ordinal);
+            Assert.Contains("IHostSpectating", warning, StringComparison.Ordinal);
             Assert.Equal(0, events.Subscriptions);
             await plugin.ShutdownAsync();
         }

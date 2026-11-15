@@ -1,10 +1,11 @@
-// Stable spectate plugin (experimental): osu!lazer players watch osu!(stable) players who allow it.
+// Stable spectate plugin (experimental): TumThai (osu!lazer) players see and watch osu!(stable) players.
 //
-// The website option tomyum_stable_lazer_spectate (Settings > Options, off by default) lets a stable player be
-// watched from lazer. This plugin and tomyum-spectator (TomYumStableSpectate.cs) share three Redis keys:
-//   tomyum:stable-spectate:players  (this plugin, every couple of seconds) the opted-in stable players online,
-//                                   with what they're playing; the spectator server shows them in lazer's
-//                                   online list (an "osu!(stable)" activity, so lazer offers Spectate).
+// TumThai's setting "Show osu!(stable) players" (off by default) asks the spectator server for them; as on stable,
+// anyone online can be seen and spectated. This plugin and tomyum-spectator (TomYumStableSpectate.cs) share
+// three Redis keys:
+//   tomyum:stable-spectate:players  (this plugin, every couple of seconds) the stable players online, with what
+//                                   they're playing; the spectator server shows them to those TumThai clients
+//                                   (an "osu!(stable)" activity, so lazer offers Spectate).
 //   tomyum:stable-spectate:watched  (spectator server) the stable players someone on lazer is watching: the
 //                                   server's bot spectates them so their client streams its frames.
 //   tomyum:stable-spectate:frames   (this plugin, pub/sub) their frame bundles, read into frames and scores,
@@ -15,10 +16,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Data.Common;
 using System.Linq;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -28,12 +27,12 @@ using TomYum.Plugins.Abstractions;
 
 namespace TomYum.Plugins.StableSpectate;
 
-/// <summary>osu!lazer viewers for opted-in osu!(stable) players (experimental).</summary>
+/// <summary>osu!lazer viewers for osu!(stable) players (experimental).</summary>
 #pragma warning disable CA1001 // _cts is disposed in ShutdownAsync, the end of a plugin's life
 public sealed class StableSpectatePlugin : IPlugin
 #pragma warning restore CA1001
 {
-    /// <summary>The opted-in stable players online (JSON object: user id → player), written by this plugin.</summary>
+    /// <summary>The stable players online (JSON object: user id → player), written by this plugin.</summary>
     public const string PlayersKey = "tomyum:stable-spectate:players";
 
     /// <summary>The stable players lazer is watching (JSON array of user ids), written by the spectator server.</summary>
@@ -42,27 +41,17 @@ public sealed class StableSpectatePlugin : IPlugin
     /// <summary>The pub/sub channel frame bundles go out on.</summary>
     public const string FramesChannel = "tomyum:stable-spectate:frames";
 
-    /// <summary>The website option a player turns on to be watched.</summary>
-    public const string Option = "tomyum_stable_lazer_spectate";
-
     private const byte Playing = 2;
     private const byte Multiplaying = 12;
 
-    private static readonly Regex DatabaseName = new("^[A-Za-z0-9_]{1,64}$", RegexOptions.CultureInvariant);
-
     private readonly List<IDisposable> _registrations = new();
     private readonly ConcurrentDictionary<long, byte> _attachedByUs = new();
-    private volatile HashSet<long> _optedIn = new();
     private volatile HashSet<long> _watched = new();
     private IPluginLogger? _logger;
     private IHostPlayerView? _players;
     private IHostSpectating? _spectating;
-    private IPluginDataAccess? _data;
     private IConnectionMultiplexer? _redis;
-    private string _database = "osu";
     private TimeSpan _interval = TimeSpan.FromSeconds(2);
-    private TimeSpan _optInInterval = TimeSpan.FromSeconds(15);
-    private DateTimeOffset _optInReadAt = DateTimeOffset.MinValue;
     private bool _failing;
     private CancellationTokenSource? _cts;
     private Task? _loop;
@@ -73,7 +62,7 @@ public sealed class StableSpectatePlugin : IPlugin
         Name: "Stable spectate (experimental)",
         Version: "0.1.0",
         Authors: "Phapoom Saksri",
-        Description: "osu!lazer players watch osu!(stable) players who turned it on (website option), through tomyum-spectator.");
+        Description: "TumThai (osu!lazer) players see and watch osu!(stable) players (TumThai's \"Show osu!(stable) players\"), through tomyum-spectator.");
 
     /// <inheritdoc/>
     public Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)
@@ -82,11 +71,8 @@ public sealed class StableSpectatePlugin : IPlugin
         _logger = context.Logger;
         _players = context.GetHostService<IHostPlayerView>();
         _spectating = context.GetHostService<IHostSpectating>();
-        _data = context.Data;
         _redis = context.GetHostService<IServiceProvider>()?.GetService(typeof(IConnectionMultiplexer)) as IConnectionMultiplexer;
         _interval = TimeSpan.FromSeconds(Math.Clamp(context.Config.Get("intervalSeconds", 2), 1, 60));
-        _optInInterval = TimeSpan.FromSeconds(Math.Clamp(context.Config.Get("optInSeconds", 15), 2, 3600));
-        _database = (context.Config.Get("osuWebDatabase", "osu") ?? string.Empty).Trim();
 
         var missing = new List<string>();
         if (_players is null)
@@ -95,10 +81,6 @@ public sealed class StableSpectatePlugin : IPlugin
             missing.Add("spectating (IHostSpectating)");
         if (_redis is null)
             missing.Add("Redis");
-        if (_data is null)
-            missing.Add($"the website's database (add \"{Manifest.Id}\" to Plugins:Trusted)");
-        if (!DatabaseName.IsMatch(_database))
-            missing.Add($"a plain osuWebDatabase name (got '{_database}')");
         if (missing.Count > 0)
         {
             _logger.Warn($"{Manifest.Id}: off, no {string.Join(", ", missing)}.");
@@ -156,7 +138,7 @@ public sealed class StableSpectatePlugin : IPlugin
     internal Task OnFrameAsync(SpectateFrameEvent e, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(e);
-        if (_redis is null || !_watched.Contains(e.HostUserId) || !_optedIn.Contains(e.HostUserId))
+        if (_redis is null || !_watched.Contains(e.HostUserId))
             return Task.CompletedTask;
         if (StableFrames.Read(e.RawFrame.Span) is not { } bundle)
             return Task.CompletedTask;
@@ -197,14 +179,9 @@ public sealed class StableSpectatePlugin : IPlugin
 
     private async Task TickAsync(CancellationToken cancellationToken)
     {
-        if (DateTimeOffset.UtcNow - _optInReadAt >= _optInInterval)
-        {
-            _optedIn = await ReadOptedInAsync(cancellationToken).ConfigureAwait(false);
-            _optInReadAt = DateTimeOffset.UtcNow;
-        }
-
         var db = _redis!.GetDatabase();
-        var online = _players!.OnlinePlayers.Where(p => _optedIn.Contains(p.UserId)).ToList();
+        var bot = _spectating!.BotName;
+        var online = _players!.OnlinePlayers.Where(p => p.UserId > 0 && !string.Equals(p.Username, bot, StringComparison.OrdinalIgnoreCase)).ToList();
         var snapshot = online.ToDictionary(
             p => p.UserId.ToString(System.Globalization.CultureInfo.InvariantCulture),
             p => new PlayerEntry(p.Username, p.Action, IsPlaying(p.Action), p.ActionInfo, p.BeatmapId, p.GameMode % 4, p.Mods));
@@ -244,32 +221,9 @@ public sealed class StableSpectatePlugin : IPlugin
         }
     }
 
-    private async Task<HashSet<long>> ReadOptedInAsync(CancellationToken cancellationToken)
-    {
-        var ids = new HashSet<long>();
-        var connection = await _data!.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
-        await using (connection.ConfigureAwait(false))
-        {
-            using var command = connection.CreateCommand();
-#pragma warning disable CA2100 // the database name is checked against DatabaseName
-            command.CommandText =
-                $"SELECT user_id FROM `{_database}`.user_profile_customizations " +
-                $"WHERE JSON_UNQUOTE(JSON_EXTRACT(options, '$.{Option}')) IN ('true', '1')";
-#pragma warning restore CA2100
-            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-            await using (reader.ConfigureAwait(false))
-            {
-                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-                    ids.Add(Convert.ToInt64(reader.GetValue(0), System.Globalization.CultureInfo.InvariantCulture));
-            }
-        }
-
-        return ids;
-    }
-
     private static bool IsPlaying(byte action) => action is Playing or Multiplaying;
 
-    /// <summary>One opted-in player in <see cref="PlayersKey"/>.</summary>
+    /// <summary>One player in <see cref="PlayersKey"/>.</summary>
     internal sealed record PlayerEntry(
         string Username, byte Action, bool Playing, string Info, long BeatmapId, int Mode, uint Mods);
 
