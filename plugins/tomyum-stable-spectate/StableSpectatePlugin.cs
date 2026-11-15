@@ -1,0 +1,279 @@
+// Stable spectate plugin (experimental): osu!lazer players watch osu!(stable) players who allow it.
+//
+// The website option tomyum_stable_lazer_spectate (Settings > Options, off by default) lets a stable player be
+// watched from lazer. This plugin and tomyum-spectator (TomYumStableSpectate.cs) share three Redis keys:
+//   tomyum:stable-spectate:players  (this plugin, every couple of seconds) the opted-in stable players online,
+//                                   with what they're playing; the spectator server shows them in lazer's
+//                                   online list (an "osu!(stable)" activity, so lazer offers Spectate).
+//   tomyum:stable-spectate:watched  (spectator server) the stable players someone on lazer is watching: the
+//                                   server's bot spectates them so their client streams its frames.
+//   tomyum:stable-spectate:frames   (this plugin, pub/sub) their frame bundles, read into frames and scores,
+//                                   which the spectator server passes to lazer as lazer frames.
+// The bot is detached only from players this plugin attached it to, and never during a play (osu!dan also
+// spectates with it: dan detaches when an attempt ends). Human docs: README.md next to this file.
+
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Data.Common;
+using System.Linq;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Threading.Tasks;
+
+using StackExchange.Redis;
+
+using TomYum.Plugins.Abstractions;
+
+namespace TomYum.Plugins.StableSpectate;
+
+/// <summary>osu!lazer viewers for opted-in osu!(stable) players (experimental).</summary>
+#pragma warning disable CA1001 // _cts is disposed in ShutdownAsync, the end of a plugin's life
+public sealed class StableSpectatePlugin : IPlugin
+#pragma warning restore CA1001
+{
+    /// <summary>The opted-in stable players online (JSON object: user id → player), written by this plugin.</summary>
+    public const string PlayersKey = "tomyum:stable-spectate:players";
+
+    /// <summary>The stable players lazer is watching (JSON array of user ids), written by the spectator server.</summary>
+    public const string WatchedKey = "tomyum:stable-spectate:watched";
+
+    /// <summary>The pub/sub channel frame bundles go out on.</summary>
+    public const string FramesChannel = "tomyum:stable-spectate:frames";
+
+    /// <summary>The website option a player turns on to be watched.</summary>
+    public const string Option = "tomyum_stable_lazer_spectate";
+
+    private const byte Playing = 2;
+    private const byte Multiplaying = 12;
+
+    private static readonly Regex DatabaseName = new("^[A-Za-z0-9_]{1,64}$", RegexOptions.CultureInvariant);
+
+    private readonly List<IDisposable> _registrations = new();
+    private readonly ConcurrentDictionary<long, byte> _attachedByUs = new();
+    private volatile HashSet<long> _optedIn = new();
+    private volatile HashSet<long> _watched = new();
+    private IPluginLogger? _logger;
+    private IHostPlayerView? _players;
+    private IHostSpectating? _spectating;
+    private IPluginDataAccess? _data;
+    private IConnectionMultiplexer? _redis;
+    private string _database = "osu";
+    private TimeSpan _interval = TimeSpan.FromSeconds(2);
+    private TimeSpan _optInInterval = TimeSpan.FromSeconds(15);
+    private DateTimeOffset _optInReadAt = DateTimeOffset.MinValue;
+    private bool _failing;
+    private CancellationTokenSource? _cts;
+    private Task? _loop;
+
+    /// <inheritdoc/>
+    public PluginManifest Manifest { get; } = new(
+        Id: "tomyum.stable-spectate",
+        Name: "Stable spectate (experimental)",
+        Version: "0.1.0",
+        Authors: "Phapoom Saksri",
+        Description: "osu!lazer players watch osu!(stable) players who turned it on (website option), through tomyum-spectator.");
+
+    /// <inheritdoc/>
+    public Task InitializeAsync(IPluginContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        _logger = context.Logger;
+        _players = context.GetHostService<IHostPlayerView>();
+        _spectating = context.GetHostService<IHostSpectating>();
+        _data = context.Data;
+        _redis = context.GetHostService<IServiceProvider>()?.GetService(typeof(IConnectionMultiplexer)) as IConnectionMultiplexer;
+        _interval = TimeSpan.FromSeconds(Math.Clamp(context.Config.Get("intervalSeconds", 2), 1, 60));
+        _optInInterval = TimeSpan.FromSeconds(Math.Clamp(context.Config.Get("optInSeconds", 15), 2, 3600));
+        _database = (context.Config.Get("osuWebDatabase", "osu") ?? string.Empty).Trim();
+
+        var missing = new List<string>();
+        if (_players is null)
+            missing.Add("the online players (IHostPlayerView)");
+        if (_spectating is null)
+            missing.Add("spectating (IHostSpectating)");
+        if (_redis is null)
+            missing.Add("Redis");
+        if (_data is null)
+            missing.Add($"the website's database (add \"{Manifest.Id}\" to Plugins:Trusted)");
+        if (!DatabaseName.IsMatch(_database))
+            missing.Add($"a plain osuWebDatabase name (got '{_database}')");
+        if (missing.Count > 0)
+        {
+            _logger.Warn($"{Manifest.Id}: off, no {string.Join(", ", missing)}.");
+            return Task.CompletedTask;
+        }
+
+        _registrations.Add(context.Events.Subscribe<SpectateFrameEvent>(OnFrameAsync));
+        _cts = new CancellationTokenSource();
+        _loop = Task.Run(() => LoopAsync(_cts.Token), CancellationToken.None);
+        _logger.Info($"{Manifest.Id}: on (experimental).");
+        return Task.CompletedTask;
+    }
+
+    /// <inheritdoc/>
+    public async Task ShutdownAsync(CancellationToken cancellationToken = default)
+    {
+        foreach (var r in _registrations)
+            r.Dispose();
+        _registrations.Clear();
+
+        if (_cts is not null)
+        {
+            await _cts.CancelAsync().ConfigureAwait(false);
+            if (_loop is not null)
+            {
+                try
+                {
+                    await _loop.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                }
+            }
+            _cts.Dispose();
+            _cts = null;
+        }
+
+        foreach (var userId in _attachedByUs.Keys)
+            _spectating?.DetachBot(userId);
+        _attachedByUs.Clear();
+
+        if (_redis is not null)
+        {
+            try
+            {
+                await _redis.GetDatabase().KeyDeleteAsync(PlayersKey).ConfigureAwait(false);
+            }
+            catch (RedisException)
+            {
+            }
+        }
+    }
+
+    /// <summary>A frame bundle from a spectated player: passed on when lazer watches them.</summary>
+    internal Task OnFrameAsync(SpectateFrameEvent e, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(e);
+        if (_redis is null || !_watched.Contains(e.HostUserId) || !_optedIn.Contains(e.HostUserId))
+            return Task.CompletedTask;
+        if (StableFrames.Read(e.RawFrame.Span) is not { } bundle)
+            return Task.CompletedTask;
+
+        var player = _players?.FindByUserId(e.HostUserId);
+        var message = JsonSerializer.Serialize(new FramesMessage(
+            UserId: e.HostUserId,
+            BeatmapId: player?.BeatmapId ?? 0,
+            Mode: (player?.GameMode ?? 0) % 4,
+            Mods: player?.Mods ?? 0,
+            Action: bundle.Action,
+            Frames: bundle.Frames.Select(f => new float[] { f.Time, f.X, f.Y, f.Buttons }).ToArray(),
+            Score: bundle.Score));
+        return _redis.GetSubscriber().PublishAsync(RedisChannel.Literal(FramesChannel), message, CommandFlags.FireAndForget);
+    }
+
+    private async Task LoopAsync(CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            try
+            {
+                await TickAsync(cancellationToken).ConfigureAwait(false);
+                if (_failing)
+                    _logger?.Info($"{Manifest.Id}: working again.");
+                _failing = false;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                if (!_failing)
+                    _logger?.Warn($"{Manifest.Id}: {ex.GetType().Name}: {ex.Message} (trying again)");
+                _failing = true;
+            }
+
+            await Task.Delay(_interval, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task TickAsync(CancellationToken cancellationToken)
+    {
+        if (DateTimeOffset.UtcNow - _optInReadAt >= _optInInterval)
+        {
+            _optedIn = await ReadOptedInAsync(cancellationToken).ConfigureAwait(false);
+            _optInReadAt = DateTimeOffset.UtcNow;
+        }
+
+        var db = _redis!.GetDatabase();
+        var online = _players!.OnlinePlayers.Where(p => _optedIn.Contains(p.UserId)).ToList();
+        var snapshot = online.ToDictionary(
+            p => p.UserId.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            p => new PlayerEntry(p.Username, p.Action, IsPlaying(p.Action), p.ActionInfo, p.BeatmapId, p.GameMode % 4, p.Mods));
+        await db.StringSetAsync(PlayersKey, JsonSerializer.Serialize(snapshot), TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+
+        var watchedJson = await db.StringGetAsync(WatchedKey).ConfigureAwait(false);
+        var watched = watchedJson.IsNullOrEmpty
+            ? new HashSet<long>()
+            : (JsonSerializer.Deserialize<long[]>(watchedJson.ToString()) ?? Array.Empty<long>()).ToHashSet();
+        watched.IntersectWith(online.Select(p => p.UserId));
+        _watched = watched;
+
+        foreach (var userId in watched)
+        {
+            // Watched by someone on lazer: the bot spectates them (again, if osu!dan detached it).
+            if (!_spectating!.IsBotWatching(userId) && _spectating.AttachBot(userId))
+                _attachedByUs[userId] = 0;
+        }
+
+        foreach (var userId in _attachedByUs.Keys)
+        {
+            if (watched.Contains(userId))
+                continue;
+            var player = _players.FindByUserId(userId);
+            if (player is null)
+            {
+                _attachedByUs.TryRemove(userId, out _);
+                continue;
+            }
+
+            // Not during a play: an osu!dan attempt may be using the bot too.
+            if (!IsPlaying(player.Action))
+            {
+                _spectating!.DetachBot(userId);
+                _attachedByUs.TryRemove(userId, out _);
+            }
+        }
+    }
+
+    private async Task<HashSet<long>> ReadOptedInAsync(CancellationToken cancellationToken)
+    {
+        var ids = new HashSet<long>();
+        var connection = await _data!.OpenConnectionAsync(cancellationToken).ConfigureAwait(false);
+        await using (connection.ConfigureAwait(false))
+        {
+            using var command = connection.CreateCommand();
+#pragma warning disable CA2100 // the database name is checked against DatabaseName
+            command.CommandText =
+                $"SELECT user_id FROM `{_database}`.user_profile_customizations " +
+                $"WHERE JSON_UNQUOTE(JSON_EXTRACT(options, '$.{Option}')) IN ('true', '1')";
+#pragma warning restore CA2100
+            var reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await using (reader.ConfigureAwait(false))
+            {
+                while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+                    ids.Add(Convert.ToInt64(reader.GetValue(0), System.Globalization.CultureInfo.InvariantCulture));
+            }
+        }
+
+        return ids;
+    }
+
+    private static bool IsPlaying(byte action) => action is Playing or Multiplaying;
+
+    /// <summary>One opted-in player in <see cref="PlayersKey"/>.</summary>
+    internal sealed record PlayerEntry(
+        string Username, byte Action, bool Playing, string Info, long BeatmapId, int Mode, uint Mods);
+
+    /// <summary>One message on <see cref="FramesChannel"/>.</summary>
+    internal sealed record FramesMessage(
+        long UserId, long BeatmapId, int Mode, uint Mods, byte Action, float[][] Frames, StableScore? Score);
+}

@@ -1,0 +1,8 @@
+{
+  "id": "tomyum.stable-spectate",
+  "name": "Stable spectate (experimental)",
+  "version": "0.1.0",
+  "authors": "Phapoom Saksri",
+  "description": "osu!lazer players watch osu!(stable) players who turned it on (website option tomyum_stable_lazer_spectate), through tomyum-spectator: the opted-in players online, the server's bot spectating the watched ones, their frames on Redis.",
+  "entryPoint": "StableSpectatePlugin"
+}
