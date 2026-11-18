@@ -19,7 +19,8 @@ Redis (the stack's, through `docker compose exec redis redis-cli`):
 
 Settings (environment): TOMYUM_DIR (the TomYum checkout; default the one this script is in), COMPOSE_DIR
 (default TOMYUM_DIR/deploy/production), RUN_AS (default the user owning the checkout; builds and commits
-run as them), CHECK_HOURS (6), CONTAINER_CLI (docker; "podman" on a podman host).
+run as them), CHECK_HOURS (6), CONTAINER_CLI (docker; "podman" on a podman host), REDIS_CONTAINER (a container to
+run redis-cli in, when the server's Redis isn't the compose stack's own `redis` service: dev's is osu-web's).
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ RUN_AS = os.environ.get("RUN_AS") or __import__("pwd").getpwuid(TOMYUM_DIR.stat(
 CHECK_HOURS = float(os.environ.get("CHECK_HOURS", "6"))
 # The container command: docker, or podman (which has `podman compose` and the same run options).
 CONTAINER_CLI = os.environ.get("CONTAINER_CLI", "docker").split()
+REDIS_CONTAINER = os.environ.get("REDIS_CONTAINER") or None
 
 PERFORMANCE_CSPROJ = TOMYUM_DIR / "src" / "TomYum.Performance" / "TomYum.Performance.csproj"
 PROCESSOR_DOCKERFILE = TOMYUM_DIR / "deploy" / "score-processor" / "Dockerfile"
@@ -86,6 +88,8 @@ def compose(*args: str, timeout: int = 3600) -> str:
 
 
 def redis(*args: str) -> str:
+    if REDIS_CONTAINER is not None:
+        return run([*CONTAINER_CLI, "exec", REDIS_CONTAINER, "redis-cli", "--raw", *args], timeout=60).strip()
     return compose("exec", "-T", "redis", "redis-cli", "--raw", *args, timeout=60).strip()
 
 
