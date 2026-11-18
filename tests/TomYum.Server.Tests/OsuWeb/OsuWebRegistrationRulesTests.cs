@@ -19,13 +19,14 @@ public class OsuWebRegistrationRulesTests
         var handler = new JsonHandler(HttpStatusCode.OK, """{"ok":true}""");
         var interop = NewInterop(handler);
 
-        var blocked = await interop.CheckRegistrationAsync("203.0.113.7", "New Player", "TH", quick: false);
+        var blocked = await interop.CheckRegistrationAsync("203.0.113.7", "New Player", "player@mail.test", "TH", quick: false);
 
         Assert.Null(blocked);
         Assert.StartsWith("/_lio/tomyum/registration-check?timestamp=", handler.Request!.RequestUri!.PathAndQuery, StringComparison.Ordinal);
         Assert.Contains("\"ip\":\"203.0.113.7\"", handler.Body, StringComparison.Ordinal);
         Assert.Contains("\"check\":false", handler.Body, StringComparison.Ordinal);
         Assert.Contains("\"source\":\"stable\"", handler.Body, StringComparison.Ordinal);
+        Assert.Contains("\"email\":\"player@mail.test\"", handler.Body, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -34,7 +35,7 @@ public class OsuWebRegistrationRulesTests
         var interop = NewInterop(new JsonHandler(HttpStatusCode.OK,
             """{"ok":false,"code":"blocked_proxy","message":"You can't make an account through a VPN, proxy or hosting network."}"""));
 
-        var blocked = await interop.CheckRegistrationAsync("203.0.113.7", "New Player", null, quick: true);
+        var blocked = await interop.CheckRegistrationAsync("203.0.113.7", "New Player", null, null, quick: true);
 
         Assert.Equal("You can't make an account through a VPN, proxy or hosting network.", blocked);
     }
@@ -44,7 +45,7 @@ public class OsuWebRegistrationRulesTests
     {
         var interop = NewInterop(new JsonHandler(HttpStatusCode.NotFound, "{}"));
 
-        Assert.Null(await interop.CheckRegistrationAsync("203.0.113.7", "New Player", null, quick: false));
+        Assert.Null(await interop.CheckRegistrationAsync("203.0.113.7", "New Player", null, null, quick: false));
     }
 
     [Fact]
@@ -52,7 +53,7 @@ public class OsuWebRegistrationRulesTests
     {
         var interop = NewInterop(new JsonHandler(HttpStatusCode.InternalServerError, "{}"));
 
-        await Assert.ThrowsAsync<HttpRequestException>(() => interop.CheckRegistrationAsync("203.0.113.7", "New Player", null, quick: false));
+        await Assert.ThrowsAsync<HttpRequestException>(() => interop.CheckRegistrationAsync("203.0.113.7", "New Player", null, null, quick: false));
     }
 
     [Fact]
@@ -72,7 +73,7 @@ public class OsuWebRegistrationRulesTests
     {
         var sync = new NoOsuWebSync();
 
-        Assert.Null(await sync.CheckRegistrationAsync("203.0.113.7", "New Player", null, quick: false));
+        Assert.Null(await sync.CheckRegistrationAsync("203.0.113.7", "New Player", null, null, quick: false));
         await sync.RegistrationCreatedAsync(12, "New Player", "203.0.113.7", null);
     }
 

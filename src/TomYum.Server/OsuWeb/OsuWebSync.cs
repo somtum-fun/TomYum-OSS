@@ -170,7 +170,7 @@ public sealed class OsuWebSync : IOsuWebSync
     /// <summary>What a player is told when the website's sign-up rules can't be asked.</summary>
     public const string RegistrationUnavailable = "Registration is unavailable right now. Please try again in a few minutes.";
 
-    public async Task<string?> CheckRegistrationAsync(string? ip, string username, string? country, bool quick, CancellationToken cancellationToken = default)
+    public async Task<string?> CheckRegistrationAsync(string? ip, string username, string? email, string? country, bool quick, CancellationToken cancellationToken = default)
     {
         // Without InterOp there are no website rules to ask (docs/osu-web.md).
         if (!_interop.IsConfigured)
@@ -178,7 +178,7 @@ public sealed class OsuWebSync : IOsuWebSync
 
         try
         {
-            return await _interop.CheckRegistrationAsync(ip ?? string.Empty, username, country, quick, cancellationToken).ConfigureAwait(false);
+            return await _interop.CheckRegistrationAsync(ip ?? string.Empty, username, email, country, quick, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
         {

@@ -210,16 +210,18 @@ public sealed class OsuWebInterop
     /// <summary>
     /// Asks the website's sign-up rules (the fork's <c>/_lio/tomyum/registration-check</c>: IP bans, one
     /// account per network a day, no VPN, proxy or hosting network) whether stable's in-game sign-up from
-    /// <paramref name="ip"/> may go ahead. Returns null when it may, else the message for the player.
+    /// <paramref name="ip"/> with <paramref name="email"/> may go ahead (the email's domain: no disposable or
+    /// made-up ones). Returns null when it may, else the message for the player.
     /// <paramref name="quick"/> is the keystroke check (the cheap rules only). A stock osu-web without the
     /// endpoint (404) allows it; other failures throw.
     /// </summary>
-    public async Task<string?> CheckRegistrationAsync(string ip, string username, string? country, bool quick, CancellationToken cancellationToken = default)
+    public async Task<string?> CheckRegistrationAsync(string ip, string username, string? email, string? country, bool quick, CancellationToken cancellationToken = default)
     {
         using var response = await PostJsonAsync("/_lio/tomyum/registration-check", new
         {
             ip,
             username,
+            email,
             country,
             source = "stable",
             check = quick,

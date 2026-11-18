@@ -71,7 +71,7 @@ public static class RegistrationEndpoints
                          ?? "xx";
         var country = countryIso.ToLowerInvariant();
 
-        // bancho.py's field rules first, then the website's sign-up rules (IP bans, one account per
+        // bancho.py's field rules first, then the website's sign-up rules (IP bans, a real email address, one account per
         // network a day, no VPN, proxy or hosting network; osu-web's TomYumRegistrationGuard, the same
         // rules lazer's sign-up goes through), then the account.
         var result = await registration
@@ -81,7 +81,7 @@ public static class RegistrationEndpoints
             return FormErrors(result.Errors);
 
         var blocked = await osuWebSync
-            .CheckRegistrationAsync(ip, username, countryIso, quick: !create, cancellationToken)
+            .CheckRegistrationAsync(ip, username, email, countryIso, quick: !create, cancellationToken)
             .ConfigureAwait(false);
         if (blocked is not null)
         {
