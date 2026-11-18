@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Pla-ra: star rating and pp for the custom lazer rulesets the server ranks (docs/plara.md). Only osu.Game is used, so
+    the same source builds into TumThai's osu.Game (osu-tumthai/osu.Game/Rulesets/Plara, a copy of this folder) and the
+    numbers a player sees in the game are the server's.
+  -->
+  <ItemGroup>
+    <PackageReference Include="ppy.osu.Game" Version="2026.1026.0" />
+  </ItemGroup>
+
+</Project>

@@ -9,7 +9,7 @@
 #   NGINX_PORT=8180 bin/docker_dev.sh -d
 #   # in this repo:
 #   docker compose -f deploy/docker/docker-compose.yml -f deploy/docker/docker-compose.osu-web.yml \
-#     up -d server pp-sidecar
+#     up -d server pp-sidecar plara
 #
 # Accounts are shared: TomYum reads/writes osu-web's phpbb_users (TOMYUM_DATABASE__OSUWEBNAME).
 # Beatmaps, scores and stats are mirrored to osu-web; TomYum's own `tomyum` database on the same
@@ -38,6 +38,12 @@ services:
       # ppy's score processor runs in osu-web's compose (score-processor): pp on the website
       # combines stable and lazer scores (docs/lazer.md). Set to false if it isn't running.
       TOMYUM_OSUWEB__SCOREPROCESSOR: ${OSU_WEB_SCORE_PROCESSOR:-true}
+    networks:
+      - default
+      - osu-web
+
+  # osu-web asks it for custom rulesets' pp (http://plara:9100).
+  plara:
     networks:
       - default
       - osu-web

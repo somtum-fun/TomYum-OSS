@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <!--
+    Pla-ra sidecar: star rating and pp for custom lazer rulesets' scores (docs/plara.md). osu-web asks it for every
+    custom ruleset play. It runs the rulesets' own (third-party) code, so it's a process of its own: a ruleset that
+    hangs or crashes takes this down, not the game server.
+  -->
+  <ItemGroup>
+    <!-- SignalR.Common comes with the ASP.NET Core runtime here (Directory.Build.props pins it for the rest). -->
+    <PackageReference Remove="Microsoft.AspNetCore.SignalR.Common" />
+    <!-- osu!fps and FPSosu are built on osu!'s ruleset. -->
+    <PackageReference Include="ppy.osu.Game.Rulesets.Osu" Version="2026.1026.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Somtum.Plara/Somtum.Plara.csproj" />
+  </ItemGroup>
+
+</Project>

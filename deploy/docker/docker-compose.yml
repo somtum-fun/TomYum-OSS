@@ -74,6 +74,25 @@ services:
       timeout: 5s
       retries: 5
 
+  # Pla-ra sidecar: stars and pp for custom lazer rulesets' scores (docs/plara.md). osu-web asks it for every
+  # custom ruleset play (TOMYUM_PLARA_URL). It runs the rulesets' own code, so it's apart from the server.
+  plara:
+    build:
+      context: ../..
+      dockerfile: deploy/docker/Dockerfile
+      args:
+        PROJECT: services/TomYum.Plara/TomYum.Plara.csproj
+    entrypoint: ["dotnet", "TomYum.Plara.dll"]
+    restart: unless-stopped
+    environment:
+      PORT: "9100"
+      # The server's .osu cache: uploaded custom maps' .osu files are only there.
+      OSU_CACHE_DIR: /server-data/osu-cache
+      PLARA_RULESET_DIR: /app/data/plara-rulesets
+    volumes:
+      - server-data:/server-data
+      - plara-data:/app/data
+
   # --- Independently-deployable services (placeholders; uncomment as they come online) ---
   # spectator:
   #   build: { context: .., dockerfile: deploy/docker/Dockerfile, args: { PROJECT: services/TomYum.Spectator/TomYum.Spectator.csproj } }
@@ -91,3 +110,4 @@ volumes:
   redis-data:
   osu-cache:
   server-data:
+  plara-data:
