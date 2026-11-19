@@ -46,6 +46,25 @@ public sealed record PpResponse(double? Pp, double? Stars, int Version, string? 
 
 public sealed record StarsResponse(double? Stars, int Version, string? Reason = null);
 
+/// <summary>What a pass would be worth (the website's pp calculator): a map, mods, misses, and some accuracies.</summary>
+public sealed record PpCalcRequest(string Assembly, string DownloadUrl, string Sha256, int BeatmapId, JsonElement? Mods, double[]? Accuracies, int Misses)
+    : RulesetRef(Assembly, DownloadUrl, Sha256);
+
+/// <param name="Accuracy">The accuracy, at most what the misses leave.</param>
+/// <param name="Pp">Null when the mods (or the ruleset) give no pp.</param>
+public sealed record PpCalcResult(double Accuracy, double? Pp);
+
+/// <param name="Stars">The map's stars with the mods (null when it couldn't be rated).</param>
+/// <param name="Objects">The map's judged notes with the mods.</param>
+/// <param name="Results">Each accuracy's pp.</param>
+/// <param name="Mods">The mods that give pp in this ruleset, with what each multiplies it by (for the calculator's buttons).</param>
+/// <param name="Version">Pla-ra's version (PlaraProfiles.VERSION) the numbers are from.</param>
+/// <param name="Reason">Why there's no pp, when there isn't.</param>
+/// <param name="Retry">True when it failed for a reason that may pass: ask again later.</param>
+public sealed record PpCalcResponse(
+    double? Stars, int? Objects, IReadOnlyList<PpCalcResult> Results, IReadOnlyDictionary<string, double> Mods, int Version,
+    string? Reason = null, bool Retry = false);
+
 /// <summary>
 /// Loads pinned ruleset DLLs (checked against their SHA-256) into the default load context (osu! looks rulesets up
 /// with Type.GetType, which a load context of their own breaks), and rates maps and plays with Pla-ra.
@@ -127,6 +146,45 @@ public sealed class PlaraService : IDisposable
         catch (PlaraException ex)
         {
             return new PpResponse(null, null, PlaraProfiles.VERSION, ex.Message, ex.Retry);
+        }
+    }
+
+    public async Task<PpCalcResponse> PpCalcAsync(PpCalcRequest request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        IReadOnlyDictionary<string, double> givingPp = new Dictionary<string, double>();
+        try
+        {
+            var ruleset = await RulesetAsync(request, cancellationToken).ConfigureAwait(false);
+            var profile = PlaraCalculators.ProfileFor(ruleset)
+                ?? throw new PlaraException($"Pla-ra has no profile for {ruleset.GetType().Assembly.GetName().Name}.");
+            if (profile.GivesPp)
+                givingPp = profile.ModMultipliers;
+            var apiMods = ParseMods(request.Mods);
+            var rated = await RateAsync(ruleset, request.Sha256, request.BeatmapId, apiMods, cancellationToken).ConfigureAwait(false);
+
+            // A miss can't be hit, so the misses cap the accuracy (as a share of the notes, which is what most rulesets'
+            // accuracy comes close to). Each accuracy once, at most 10.
+            int misses = Math.Clamp(request.Misses, 0, rated.Objects);
+            double most = rated.Objects > 0 ? (rated.Objects - misses) / (double)rated.Objects : 1;
+            var accuracies = (request.Accuracies ?? [0.95, 0.97, 0.98, 0.99, 1])
+                .Where(double.IsFinite)
+                .Select(a => Math.Round(Math.Min(Math.Clamp(a, 0, 1), most), 6))
+                .Distinct()
+                .Order()
+                .Take(10);
+            string[] acronyms = apiMods.Select(m => m.Acronym).ToArray();
+
+            var results = accuracies
+                .Select(a => new PpCalcResult(a, PlaraPerformanceCalculator.Calculate(profile, rated.Stars, rated.Objects, a, misses, acronyms) is { } pp ? Math.Round(pp, 3) : null))
+                .ToList();
+            string? reason = results.Any(r => r.Pp == null) ? (profile.GivesPp ? "A mod gives no pp." : "This ruleset gives no pp.") : null;
+
+            return new PpCalcResponse(rated.Stars, rated.Objects, results, givingPp, PlaraProfiles.VERSION, reason);
+        }
+        catch (PlaraException ex)
+        {
+            return new PpCalcResponse(null, null, [], givingPp, PlaraProfiles.VERSION, ex.Message, ex.Retry);
         }
     }
 

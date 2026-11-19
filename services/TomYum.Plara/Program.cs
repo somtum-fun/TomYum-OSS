@@ -1,7 +1,8 @@
 using System.Text.Json;
 using TomYum.Plara;
 
-// Pla-ra sidecar (docs/plara.md): POST /pp (a play's pp and stars), POST /stars (a map's stars), GET /version (what it
+// Pla-ra sidecar (docs/plara.md): POST /pp (a play's pp and stars), POST /stars (a map's stars), POST /pp-calc (what a pass would be worth,
+// for the website's pp calculator), GET /version (what it
 // runs: Pla-ra's version, osu!'s and the rulesets it rates), GET /health.
 var builder = WebApplication.CreateBuilder(args);
 
@@ -35,5 +36,6 @@ app.MapGet("/version", () => new
 });
 app.MapPost("/pp", (PpRequest request, PlaraService plara, CancellationToken ct) => plara.PpAsync(request, ct));
 app.MapPost("/stars", (StarsRequest request, PlaraService plara, CancellationToken ct) => plara.StarsAsync(request, ct));
+app.MapPost("/pp-calc", (PpCalcRequest request, PlaraService plara, CancellationToken ct) => plara.PpCalcAsync(request, ct));
 
 app.Run();

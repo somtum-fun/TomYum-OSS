@@ -18,7 +18,7 @@ Pla-ra works out that pp, for every ruleset, the same way on the server and in T
 |---|---|---|
 | Library | `src/Somtum.Plara/` | Profiles, the difficulty model, the pp formula. Only uses osu.Game. |
 | TumThai copy | `osu-tumthai/osu.Game/Rulesets/Plara/`, `osu-tumthai-next/osu.Game/Rulesets/Plara/` | **The same three files**: in-game stars, the pp counter, results pp. Copy them over after any change. |
-| Sidecar | `services/TomYum.Plara/` (compose service `plara`, port 9100) | `POST /pp`, `POST /stars`, `GET /version`, `GET /health`. Runs the pinned ruleset DLLs. |
+| Sidecar | `services/TomYum.Plara/` (compose service `plara`, port 9100) | `POST /pp`, `POST /stars`, `POST /pp-calc` (the beatmap page's pp calculator: a map, mods, misses and some accuracies; it answers each one's pp and the mods that give pp), `GET /version`, `GET /health`. Runs the pinned ruleset DLLs. |
 | Website | osu-web `TomYumPlara`, job `TomYumCustomRulesetPp`, `TomYumCustomRulesetScores` | Asks the sidecar for each ranked pass's pp, stores `scores.pp`, ranks by it (or by score, per ruleset). |
 | Admin panel | Admin → pp libraries (Pla-ra row), Custom rulesets ("ranked by") | What the sidecar runs, plays with and without pp, Recalculate (missing / all plays), pp or score per ruleset. |
 | Tests | `tests/TomYum.Plara.Tests/` | Formula, mods, profiles. |
