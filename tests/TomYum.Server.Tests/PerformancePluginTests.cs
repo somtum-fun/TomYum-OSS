@@ -54,6 +54,19 @@ public class PerformancePluginTests
         Assert.Equal(42.5, await calc.CalculateAsync(Req(0, 128)));
     }
 
+    [Theory]
+    [InlineData(128 | 64 | 16, 1.01, 128 | 16)]        // RX HR DT at 1.01x: paid without DT
+    [InlineData(128 | 64 | 512, 1.2, 128)]             // RX NC at 1.2x: paid without NC/DT
+    [InlineData(128 | 64, 1.5, 128 | 64)]              // DT at its usual speed stays
+    [InlineData(128 | 64, 2.0, 128 | 64)]              // above 1.5x stays at 1.5x (never more)
+    [InlineData(128 | 64, null, 128 | 64)]             // no speed set: the mod's usual 1.5x
+    [InlineData(128 | 256, 0.6, 128 | 256)]            // HT untouched (0.75x already pays less)
+    [InlineData(128, 1.01, 128)]                       // a speed without DT/NC changes nothing
+    public void Http_backend_pays_custom_dt_speed_below_1_5_as_no_rate_mod(int mods, double? speed, int expected)
+    {
+        Assert.Equal(expected, HttpPerformanceCalculator.SidecarMods(Req(0, mods) with { SpeedChange = speed }));
+    }
+
     [Fact]
     public async Task Http_backend_uses_fallback_on_failure()
     {

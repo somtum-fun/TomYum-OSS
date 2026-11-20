@@ -45,7 +45,7 @@ public sealed class HttpPerformanceCalculator : IPerformanceCalculator
         var payload = new PpSidecarRequest(
             request.BeatmapId,
             request.RulesetId,   // vanilla ruleset 0-3; the sidecar reads Relax/Autopilot from Mods
-            request.Mods,
+            SidecarMods(request),
             request.Count300, request.Count100, request.Count50,
             request.CountGeki, request.CountKatu, request.CountMiss,
             request.MaxCombo, request.Passed, request.Lazer, request.LargeTickHits, request.SliderEndHits);
@@ -76,6 +76,22 @@ public sealed class HttpPerformanceCalculator : IPerformanceCalculator
             _log.LogWarning(ex, "pp sidecar '{Backend}' ({Url}) failed and has no fallback; recording 0 pp.", _backendName, _url);
             return 0.0;
         }
+    }
+
+    private const int DoubleTime = 1 << 6;
+    private const int Nightcore = 1 << 9;
+
+    /// <summary>
+    /// The mods the sidecar sees. It only knows the legacy bits, where DT/NC means 1.5x; a lazer play can set
+    /// its own speed (DT at 1.01x), which would be paid as 1.5x. Until the sidecar takes a clock rate, DT/NC
+    /// below 1.5x is paid as no rate mod at all, so it can never be paid more than it was played.
+    /// </summary>
+    public static int SidecarMods(PerformanceRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.SpeedChange is { } speed && speed < 1.5 && (request.Mods & (DoubleTime | Nightcore)) != 0)
+            return request.Mods & ~(DoubleTime | Nightcore);
+        return request.Mods;
     }
 }
 
