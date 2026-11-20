@@ -208,4 +208,76 @@ public class BotSpectatingTests
         Assert.Null(LegacyFrames.ReadAction(Bundle(ReplayActions.Pause).AsSpan(0, 10))); // cut before the action
         Assert.Null(LegacyFrames.ReadAction([]));
     }
+
+    [Fact]
+    public async Task A_lazer_watcher_is_shown_and_the_quiet_bot_isnt()
+    {
+        var (registry, _) = Registry();
+        var host = AddPlayer(registry, 10, "Host");
+        var watcher = AddPlayer(registry, 20, "Watcher"); // their osu!stable session gives the name
+        var spectating = new HostSpectating(registry);
+
+        Assert.True(await spectating.ShowWatcherAsync(host.UserId, watcher.UserId));
+        Assert.True(spectating.AttachBotQuietly(host.UserId));
+
+        var ids = PacketIds(host.DequeueAll());
+        Assert.Contains((ushort)ServerPacketId.UserPresence, ids);
+        Assert.Single(ids, id => id == (ushort)ServerPacketId.SpectatorJoined); // the watcher only, not BanchoBot
+        Assert.True(spectating.IsBotWatching(host.UserId));
+        Assert.Equal([20L], spectating.ShownWatchers(host.UserId));
+        Assert.Empty(watcher.DequeueAll());
+
+        // Shown already: nothing again.
+        Assert.True(await spectating.ShowWatcherAsync(host.UserId, watcher.UserId));
+        Assert.Empty(host.DequeueAll());
+    }
+
+    [Fact]
+    public async Task Hiding_the_last_watcher_shows_the_quiet_bot()
+    {
+        var (registry, _) = Registry();
+        var host = AddPlayer(registry, 10, "Host");
+        AddPlayer(registry, 20, "Watcher");
+        var spectating = new HostSpectating(registry);
+        await spectating.ShowWatcherAsync(host.UserId, 20);
+        spectating.AttachBotQuietly(host.UserId);
+        host.DequeueAll();
+
+        Assert.True(spectating.HideWatcher(host.UserId, 20));
+
+        var ids = PacketIds(host.DequeueAll());
+        Assert.Contains((ushort)ServerPacketId.SpectatorLeft, ids);
+        Assert.Contains((ushort)ServerPacketId.SpectatorJoined, ids); // BanchoBot, so the client keeps streaming
+        Assert.Empty(spectating.ShownWatchers(host.UserId));
+        Assert.False(spectating.HideWatcher(host.UserId, 20));
+    }
+
+    [Fact]
+    public void A_quiet_bot_leaves_quietly_and_shows_when_attached_for_real()
+    {
+        var (registry, _) = Registry();
+        var host = AddPlayer(registry, 10, "Host");
+        var spectating = new HostSpectating(registry);
+
+        Assert.True(spectating.AttachBotQuietly(host.UserId));
+        Assert.Empty(host.DequeueAll());
+        Assert.True(spectating.DetachBot(host.UserId));
+        Assert.Empty(host.DequeueAll());
+
+        spectating.AttachBotQuietly(host.UserId);
+        spectating.AttachBot(host.UserId); // osu!dan: it must be seen
+        Assert.True(Has(host, ServerPacketId.SpectatorJoined));
+    }
+
+    [Fact]
+    public async Task Nobody_is_shown_for_an_unknown_account_or_the_player_themself()
+    {
+        var (registry, _) = Registry();
+        var host = AddPlayer(registry, 10, "Host");
+        var spectating = new HostSpectating(registry);
+
+        Assert.False(await spectating.ShowWatcherAsync(host.UserId, 999)); // not online, no account lookup here
+        Assert.False(await spectating.ShowWatcherAsync(host.UserId, host.UserId));
+        Assert.Empty(host.DequeueAll());
+    }
 }

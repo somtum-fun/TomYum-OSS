@@ -109,7 +109,16 @@ internal static class SpectatorManager
     public static bool AttachBot(OnlinePlayer host, PlayerRegistry registry)
     {
         if (host.Spectators.Contains(BanchoBot.UserId))
+        {
+            // Watching quietly with nobody shown in its place: the client has no spectator, so it's told now.
+            if (host.GetState<bool>(QuietBotKey) && ShownWatchers(host).Length == 0)
+            {
+                host.SetState(QuietBotKey, false);
+                host.Enqueue(SpectatorJoined(BanchoBot.UserId));
+            }
+
             return false;
+        }
 
         var isFirstSpectator = host.SpectatorCount == 0;
         var fellowJoined = FellowSpectatorJoined(BanchoBot.UserId);
@@ -124,12 +133,98 @@ internal static class SpectatorManager
         return true;
     }
 
+    /// <summary>
+    /// <see cref="AttachBot"/> without telling anyone: the link is recorded (frames reach plugins) but the host's client
+    /// isn't told BanchoBot joined. For a plugin that shows who really watches (<see cref="ShowWatcher"/>) instead.
+    /// </summary>
+    /// <returns>True when it was added, false when it was already watching.</returns>
+    public static bool AttachBotQuietly(OnlinePlayer host)
+    {
+        if (!host.AddSpectator(BanchoBot.UserId))
+            return false;
+        host.SetState(QuietBotKey, true);
+        return true;
+    }
+
+    /// <summary>The session state key set while BanchoBot watches <see cref="AttachBotQuietly">quietly</see>.</summary>
+    internal const string QuietBotKey = "tomyum.spectate.quiet-bot";
+
+    /// <summary>The session state key holding the watchers <see cref="ShowWatcher"/> shows the host.</summary>
+    internal const string ShownWatchersKey = "tomyum.spectate.shown-watchers";
+
+    /// <summary>
+    /// Shows <paramref name="host"/> that <paramref name="watcher"/> (an account watching from osu!lazer) spectates them:
+    /// their presence (so the client can name them), then SPECTATOR_JOINED. Nothing is linked: frames come through
+    /// BanchoBot, and nothing is queued for the watcher.
+    /// </summary>
+    /// <returns>True when shown now, false when they already were.</returns>
+    public static bool ShowWatcher(OnlinePlayer host, BanchoPresence watcher)
+    {
+        var shown = host.GetState<HashSet<int>>(ShownWatchersKey) ?? [];
+        lock (shown)
+        {
+            if (!shown.Add(watcher.UserId))
+                return false;
+        }
+
+        host.SetState(ShownWatchersKey, shown);
+        var writer = new BanchoPacketWriter(128);
+        LoginResponseBuilder.WritePresence(writer, watcher);
+        host.Enqueue(writer.ToArray());
+        host.Enqueue(SpectatorJoined(watcher.UserId));
+        return true;
+    }
+
+    /// <summary>
+    /// <paramref name="host"/> stops seeing <paramref name="watcherUserId"/> (<see cref="ShowWatcher"/>'s reverse). When it
+    /// was the last one and BanchoBot watches quietly, the host is told BanchoBot joined, so their client keeps streaming.
+    /// </summary>
+    /// <returns>True when they were shown.</returns>
+    public static bool HideWatcher(OnlinePlayer host, int watcherUserId)
+    {
+        if (host.GetState<HashSet<int>>(ShownWatchersKey) is not { } shown)
+            return false;
+
+        bool last;
+        lock (shown)
+        {
+            if (!shown.Remove(watcherUserId))
+                return false;
+            last = shown.Count == 0;
+        }
+
+        host.Enqueue(SpectatorLeft(watcherUserId));
+        if (last && host.GetState<bool>(QuietBotKey) && host.Spectators.Contains(BanchoBot.UserId))
+        {
+            host.SetState(QuietBotKey, false);
+            host.Enqueue(SpectatorJoined(BanchoBot.UserId));
+        }
+
+        return true;
+    }
+
+    /// <summary>The watchers <see cref="ShowWatcher"/> shows <paramref name="host"/> now.</summary>
+    public static int[] ShownWatchers(OnlinePlayer host)
+    {
+        if (host.GetState<HashSet<int>>(ShownWatchersKey) is not { } shown)
+            return [];
+        lock (shown)
+            return [.. shown];
+    }
+
     /// <summary>BanchoBot stops watching <paramref name="host"/> (<see cref="AttachBot"/>'s reverse).</summary>
     /// <returns>True when it was watching.</returns>
     public static bool DetachBot(OnlinePlayer host, PlayerRegistry registry)
     {
         if (!host.RemoveSpectator(BanchoBot.UserId))
             return false;
+
+        if (host.GetState<bool>(QuietBotKey))
+        {
+            // It was never shown: nothing to take back.
+            host.SetState(QuietBotKey, false);
+            return true;
+        }
 
         var fellowLeft = FellowSpectatorLeft(BanchoBot.UserId);
         foreach (var remainingId in host.Spectators)

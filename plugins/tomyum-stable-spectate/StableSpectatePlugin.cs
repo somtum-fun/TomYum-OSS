@@ -10,6 +10,9 @@
 //                                   server's bot spectates them so their client streams its frames.
 //   tomyum:stable-spectate:frames   (this plugin, pub/sub) their frame bundles, read into frames and scores,
 //                                   which the spectator server passes to lazer as lazer frames.
+//   tomyum:stable-spectate:watchers (spectator server) who on lazer watches each of them: the player sees those
+//                                   accounts as spectators, and the bot watches quietly (it shows only when
+//                                   nobody can be shown, so the client still streams).
 // The bot is detached only from players this plugin attached it to, and never during a play (osu!dan also
 // spectates with it: dan detaches when an attempt ends). Human docs: README.md next to this file.
 
@@ -37,6 +40,9 @@ public sealed class StableSpectatePlugin : IPlugin
 
     /// <summary>The stable players lazer is watching (JSON array of user ids), written by the spectator server.</summary>
     public const string WatchedKey = "tomyum:stable-spectate:watched";
+
+    /// <summary>Who on lazer watches each stable player (JSON object: user id → watcher ids), written by the spectator server.</summary>
+    public const string WatchersKey = "tomyum:stable-spectate:watchers";
 
     /// <summary>The pub/sub channel frame bundles go out on.</summary>
     public const string FramesChannel = "tomyum:stable-spectate:frames";
@@ -194,11 +200,36 @@ public sealed class StableSpectatePlugin : IPlugin
         watched.IntersectWith(online.Select(p => p.UserId));
         _watched = watched;
 
+        var watchersJson = await db.StringGetAsync(WatchersKey).ConfigureAwait(false);
+        var watchers = watchersJson.IsNullOrEmpty
+            ? new Dictionary<string, long[]>()
+            : JsonSerializer.Deserialize<Dictionary<string, long[]>>(watchersJson.ToString()) ?? new Dictionary<string, long[]>();
+
         foreach (var userId in watched)
         {
-            // Watched by someone on lazer: the bot spectates them (again, if osu!dan detached it).
-            if (!_spectating!.IsBotWatching(userId) && _spectating.AttachBot(userId))
+            // The player sees who watches them from lazer (a spectator server without the watchers key: nobody).
+            var want = watchers.TryGetValue(userId.ToString(System.Globalization.CultureInfo.InvariantCulture), out var ids)
+                ? ids.Where(id => id > 0 && id != userId).ToHashSet()
+                : new HashSet<long>();
+            foreach (var id in _spectating!.ShownWatchers(userId).Where(id => !want.Contains(id)).ToList())
+                _spectating.HideWatcher(userId, id);
+            var shown = false;
+            foreach (var id in want)
+                shown |= await _spectating.ShowWatcherAsync(userId, id, cancellationToken).ConfigureAwait(false);
+
+            // Watched by someone on lazer: the bot spectates them (again, if osu!dan detached it), quietly when someone
+            // is shown in its place.
+            if (!_spectating.IsBotWatching(userId) && (shown ? _spectating.AttachBotQuietly(userId) : _spectating.AttachBot(userId)))
                 _attachedByUs[userId] = 0;
+            else if (!shown)
+                _spectating.AttachBot(userId); // watching quietly with nobody shown any more: the player is told
+        }
+
+        // Nobody on lazer watches them any more: nobody shown.
+        foreach (var player in online.Where(p => !watched.Contains(p.UserId)))
+        {
+            foreach (var id in _spectating!.ShownWatchers(player.UserId).ToList())
+                _spectating.HideWatcher(player.UserId, id);
         }
 
         foreach (var userId in _attachedByUs.Keys)
