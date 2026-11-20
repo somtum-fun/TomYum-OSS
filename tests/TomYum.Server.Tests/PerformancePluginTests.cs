@@ -62,9 +62,50 @@ public class PerformancePluginTests
     [InlineData(128 | 64, null, 128 | 64)]             // no speed set: the mod's usual 1.5x
     [InlineData(128 | 256, 0.6, 128 | 256)]            // HT untouched (0.75x already pays less)
     [InlineData(128, 1.01, 128)]                       // a speed without DT/NC changes nothing
-    public void Http_backend_pays_custom_dt_speed_below_1_5_as_no_rate_mod(int mods, double? speed, int expected)
+    public void Http_backend_stopgap_pays_custom_dt_speed_below_1_5_as_no_rate_mod(int mods, double? speed, int expected)
     {
         Assert.Equal(expected, HttpPerformanceCalculator.SidecarMods(Req(0, mods) with { SpeedChange = speed }));
+    }
+
+    [Theory]
+    [InlineData(128 | 64 | 16, 1.01, 1.01)]           // RX HR DT at 1.01x
+    [InlineData(128 | 64 | 512, 1.2, 1.2)]             // NC at 1.2x
+    [InlineData(128 | 64, 2.0, 2.0)]                   // DT at 2x
+    [InlineData(128 | 64, 1.5, null)]                  // DT at its usual speed: nothing to send
+    [InlineData(128 | 64, null, null)]                 // no speed set
+    [InlineData(128 | 256, 0.6, 0.6)]                  // HT at 0.6x
+    [InlineData(128 | 256, 0.75, null)]                // HT at its usual speed
+    [InlineData(128, 1.01, null)]                      // a speed without a rate mod
+    public void Http_backend_sends_a_rate_mods_own_speed(int mods, double? speed, double? expected)
+    {
+        Assert.Equal(expected, HttpPerformanceCalculator.CustomRate(Req(0, mods) with { SpeedChange = speed }));
+    }
+
+    [Fact]
+    public async Task Http_backend_pays_a_custom_speed_at_that_speed()
+    {
+        var handler = new RecordingHandler(_ => """{"pp":300.0,"clockRate":1.01}""");
+        var calc = new HttpPerformanceCalculator(new HttpClient(handler), "http://sidecar/pp", TimeSpan.FromSeconds(5), "rust",
+            fallback: null, NullLogger<HttpPerformanceCalculator>.Instance);
+
+        Assert.Equal(300.0, await calc.CalculateAsync(Req(0, 128 | 64) with { SpeedChange = 1.01 }));
+        var sent = Assert.Single(handler.Bodies);
+        Assert.Contains("\"mods\":192", sent, StringComparison.Ordinal);
+        Assert.Contains("\"clockRate\":1.01", sent, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Http_backend_falls_back_to_no_rate_mod_on_a_sidecar_without_clock_rate()
+    {
+        // An older sidecar ignores clockRate (pays DT as 1.5x) and doesn't echo it: ask again without DT.
+        var handler = new RecordingHandler(body => body.Contains("\"mods\":192", StringComparison.Ordinal) ? """{"pp":900.0}""" : """{"pp":290.0}""");
+        var calc = new HttpPerformanceCalculator(new HttpClient(handler), "http://sidecar/pp", TimeSpan.FromSeconds(5), "rust",
+            fallback: null, NullLogger<HttpPerformanceCalculator>.Instance);
+
+        Assert.Equal(290.0, await calc.CalculateAsync(Req(0, 128 | 64) with { SpeedChange = 1.01 }));
+        Assert.Equal(2, handler.Bodies.Count);
+        Assert.Contains("\"mods\":128", handler.Bodies[1], StringComparison.Ordinal);
+        Assert.Contains("\"clockRate\":null", handler.Bodies[1], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -140,6 +181,18 @@ public class PerformancePluginTests
     {
         public Task<double> CalculateAsync(PerformanceRequest request, CancellationToken cancellationToken = default)
             => Task.FromResult(0.0);
+    }
+
+    private sealed class RecordingHandler(Func<string, string> respond) : HttpMessageHandler
+    {
+        public List<string> Bodies { get; } = [];
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            var body = await request.Content!.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            Bodies.Add(body);
+            return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(respond(body), Encoding.UTF8, "application/json") };
+        }
     }
 
     private sealed class StubHandler(HttpStatusCode status, string body) : HttpMessageHandler

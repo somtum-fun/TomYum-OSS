@@ -9,7 +9,8 @@
 //! read from the `mods` legacy bitmask. As akatsuki-pp-py (what Akatsuki itself runs) does it, osu!
 //! Relax goes to Akatsuki's own relax algorithm (`osu_2019`), and everything else (Autopilot
 //! included) to the main calculator. `lazer` says whether the play was made on lazer (stable when
-//! missing). `GET /version` names the akatsuki-pp-rs build, for the admin panel.
+//! missing). `clockRate` is a lazer rate mod's own speed (DT at 1.2x, HT at 0.6x); without it a rate
+//! mod runs at its usual speed. `GET /version` names the akatsuki-pp-rs build, for the admin panel.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -18,10 +19,11 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use akatsuki_pp::osu_2019::OsuPP;
-use akatsuki_pp::{Beatmap, Difficulty, Performance};
+use akatsuki_pp::{Beatmap, Difficulty, GameMods, Performance};
 use akatsuki_pp::model::mode::GameMode;
 use axum::http::StatusCode;
 use axum::{extract::State, routing::post, Json, Router};
+use rosu_mods::{GameMod, GameMode as ModsMode, GameModsIntermode};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -50,6 +52,9 @@ struct PpRequest {
     large_tick_hits: Option<u32>,
     #[serde(default)]
     slider_end_hits: Option<u32>,
+    // A lazer rate mod's own speed (DT/NC at 1.01x-2x, HT/DC at 0.5x-0.99x); none: the mod's usual.
+    #[serde(default)]
+    clock_rate: Option<f64>,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,6 +62,10 @@ struct PpRequest {
 struct PpResponse {
     pp: f64,
     star_rating: f64,
+    // The speed a rate mod was paid at, when the request's clockRate was applied (so TomYum can tell this
+    // sidecar takes clockRate apart from an older one that ignores it).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    clock_rate: Option<f64>,
 }
 
 #[derive(Clone)]
@@ -134,8 +143,42 @@ async fn calc(
     }
 }
 
+const DOUBLE_TIME: u32 = 1 << 6;
+const HALF_TIME: u32 = 1 << 8;
+const NIGHTCORE: u32 = 1 << 9;
+
+/// The speed a play's rate mod ran at, when it isn't the mod's usual one (DT/NC 1.5x, HT/DC 0.75x).
+/// Kept within the range lazer lets a player set, so a made-up speed can't pay more than lazer allows.
+fn custom_rate(mods: u32, clock_rate: Option<f64>) -> Option<f64> {
+    let rate = clock_rate.filter(|r| r.is_finite())?;
+    let (rate, usual) = if mods & (DOUBLE_TIME | NIGHTCORE) != 0 {
+        (rate.clamp(1.01, 2.0), 1.5)
+    } else if mods & HALF_TIME != 0 {
+        (rate.clamp(0.5, 0.99), 0.75)
+    } else {
+        return None; // no rate mod: nothing to apply a speed to
+    };
+    ((rate - usual).abs() > 1e-9).then_some(rate)
+}
+
+/// The legacy mods as lazer mods with the rate mod at `rate`: osu_2019 takes its clock rate from the mods.
+fn mods_at_rate(mods: u32, rate: f64) -> GameMods {
+    let mut lazer = GameModsIntermode::from_bits(mods).with_mode(ModsMode::Osu);
+    for m in lazer.iter_mut() {
+        match m {
+            GameMod::DoubleTimeOsu(m) => m.speed_change = Some(rate),
+            GameMod::NightcoreOsu(m) => m.speed_change = Some(rate),
+            GameMod::HalfTimeOsu(m) => m.speed_change = Some(rate),
+            GameMod::DaycoreOsu(m) => m.speed_change = Some(rate),
+            _ => {}
+        }
+    }
+    lazer.into()
+}
+
 async fn compute(state: &AppState, req: &PpRequest) -> Result<PpResponse, String> {
     let bytes = fetch_osu(state, req.beatmap_id).await?;
+    let rate = custom_rate(req.mods, req.clock_rate);
 
     let mut map = Beatmap::from_bytes(&bytes).map_err(|e| e.to_string())?;
     let target = game_mode(req.mode);
@@ -154,8 +197,12 @@ async fn compute(state: &AppState, req: &PpRequest) -> Result<PpResponse, String
         let (n100, n50) = (req.n100.min(objects), req.n50.min(objects));
         let n_miss = req.n_miss.min(objects);
         let n300 = req.n300.min(objects.saturating_sub(n100 + n50 + n_miss));
+        let mods = match rate {
+            Some(rate) => mods_at_rate(req.mods, rate),
+            None => req.mods.into(),
+        };
         let mut calc = OsuPP::from_map(&map)
-            .mods(req.mods)
+            .mods(mods)
             .combo(req.max_combo)
             .n300(n300)
             .n100(n100)
@@ -165,10 +212,14 @@ async fn compute(state: &AppState, req: &PpRequest) -> Result<PpResponse, String
             calc = calc.passed_objects((n300 + n100 + n50 + n_miss).min(objects));
         }
         let perf = calc.calculate();
-        return Ok(PpResponse { pp: perf.pp, star_rating: perf.difficulty.stars });
+        return Ok(PpResponse { pp: perf.pp, star_rating: perf.difficulty.stars, clock_rate: rate });
     }
 
-    let diff = Difficulty::new().mods(req.mods).lazer(req.lazer).calculate(&map);
+    let mut diff = Difficulty::new().mods(req.mods).lazer(req.lazer);
+    if let Some(rate) = rate {
+        diff = diff.clock_rate(rate);
+    }
+    let diff = diff.calculate(&map);
     let stars = diff.stars();
 
     let mut perf = Performance::new(diff).lazer(req.lazer);
@@ -194,7 +245,7 @@ async fn compute(state: &AppState, req: &PpRequest) -> Result<PpResponse, String
         .misses(req.n_miss)
         .calculate();
 
-    Ok(PpResponse { pp: perf.pp(), star_rating: stars })
+    Ok(PpResponse { pp: perf.pp(), star_rating: stars, clock_rate: rate })
 }
 
 async fn health() -> &'static str {
@@ -243,4 +294,32 @@ async fn main() {
 
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
     axum::serve(listener, app).await.expect("serve");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const RX: u32 = 1 << 7;
+    const HR: u32 = 1 << 4;
+
+    #[test]
+    fn custom_rate_only_for_a_rate_mod_off_its_usual_speed() {
+        assert_eq!(custom_rate(RX | HR | DOUBLE_TIME, Some(1.01)), Some(1.01));
+        assert_eq!(custom_rate(RX | DOUBLE_TIME | NIGHTCORE, Some(1.2)), Some(1.2));
+        assert_eq!(custom_rate(RX | DOUBLE_TIME, Some(1.5)), None); // usual DT
+        assert_eq!(custom_rate(RX | DOUBLE_TIME, None), None);
+        assert_eq!(custom_rate(RX | HALF_TIME, Some(0.6)), Some(0.6));
+        assert_eq!(custom_rate(RX | HALF_TIME, Some(0.75)), None); // usual HT
+        assert_eq!(custom_rate(RX | HR, Some(1.2)), None); // no rate mod
+        assert_eq!(custom_rate(RX | DOUBLE_TIME, Some(f64::NAN)), None);
+    }
+
+    #[test]
+    fn custom_rate_stays_within_what_lazer_allows() {
+        assert_eq!(custom_rate(DOUBLE_TIME, Some(10.0)), Some(2.0));
+        assert_eq!(custom_rate(DOUBLE_TIME, Some(0.5)), Some(1.01));
+        assert_eq!(custom_rate(HALF_TIME, Some(0.1)), Some(0.5));
+        assert_eq!(custom_rate(HALF_TIME, Some(1.4)), Some(0.99));
+    }
 }

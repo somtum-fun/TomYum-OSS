@@ -1027,6 +1027,7 @@ dependencies = [
  "akatsuki-pp",
  "axum",
  "reqwest",
+ "rosu-mods",
  "serde",
  "serde_json",
  "tokio",

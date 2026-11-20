@@ -45,22 +45,22 @@ public sealed class HttpPerformanceCalculator : IPerformanceCalculator
         var payload = new PpSidecarRequest(
             request.BeatmapId,
             request.RulesetId,   // vanilla ruleset 0-3; the sidecar reads Relax/Autopilot from Mods
-            SidecarMods(request),
+            request.Mods,
             request.Count300, request.Count100, request.Count50,
             request.CountGeki, request.CountKatu, request.CountMiss,
-            request.MaxCombo, request.Passed, request.Lazer, request.LargeTickHits, request.SliderEndHits);
+            request.MaxCombo, request.Passed, request.Lazer, request.LargeTickHits, request.SliderEndHits,
+            CustomRate(request));
 
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(_timeout);
 
-            using var resp = await _http.PostAsJsonAsync(_url, payload, Json, cts.Token).ConfigureAwait(false);
-            resp.EnsureSuccessStatusCode();
-            var body = await resp.Content.ReadFromJsonAsync<PpSidecarResponse>(Json, cts.Token).ConfigureAwait(false);
-
-            if (body is null || double.IsNaN(body.Pp) || double.IsInfinity(body.Pp))
-                throw new InvalidOperationException("sidecar returned no/invalid pp");
+            var body = await PostAsync(payload, cts.Token).ConfigureAwait(false);
+            // A sidecar that doesn't say it applied the speed predates clockRate and paid the rate mod at its
+            // usual speed: ask again with the legacy-bits stopgap, so a custom speed is never paid as 1.5x.
+            if (payload.ClockRate is not null && body.ClockRate is null)
+                body = await PostAsync(payload with { Mods = SidecarMods(request), ClockRate = null }, cts.Token).ConfigureAwait(false);
 
             return body.Pp;
         }
@@ -78,13 +78,40 @@ public sealed class HttpPerformanceCalculator : IPerformanceCalculator
         }
     }
 
+    private async Task<PpSidecarResponse> PostAsync(PpSidecarRequest payload, CancellationToken cancellationToken)
+    {
+        using var resp = await _http.PostAsJsonAsync(_url, payload, Json, cancellationToken).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<PpSidecarResponse>(Json, cancellationToken).ConfigureAwait(false);
+
+        if (body is null || double.IsNaN(body.Pp) || double.IsInfinity(body.Pp))
+            throw new InvalidOperationException("sidecar returned no/invalid pp");
+        return body;
+    }
+
     private const int DoubleTime = 1 << 6;
+    private const int HalfTime = 1 << 8;
     private const int Nightcore = 1 << 9;
 
     /// <summary>
-    /// The mods the sidecar sees. It only knows the legacy bits, where DT/NC means 1.5x; a lazer play can set
-    /// its own speed (DT at 1.01x), which would be paid as 1.5x. Until the sidecar takes a clock rate, DT/NC
-    /// below 1.5x is paid as no rate mod at all, so it can never be paid more than it was played.
+    /// The speed a lazer play's rate mod ran at when it isn't the mod's usual one (DT/NC 1.5x, HT/DC 0.75x), for
+    /// the sidecar's clockRate; null when there's no rate mod or it ran at its usual speed.
+    /// </summary>
+    public static double? CustomRate(PerformanceRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.SpeedChange is not { } speed || !double.IsFinite(speed))
+            return null;
+        double usual = (request.Mods & (DoubleTime | Nightcore)) != 0 ? 1.5
+            : (request.Mods & HalfTime) != 0 ? 0.75
+            : double.NaN;
+        return double.IsNaN(usual) || Math.Abs(speed - usual) < 1e-9 ? null : speed;
+    }
+
+    /// <summary>
+    /// The stopgap for a sidecar without clockRate, which only knows the legacy bits, where DT/NC means 1.5x: a
+    /// lazer play can set its own speed (DT at 1.01x), which would be paid as 1.5x. DT/NC below 1.5x is paid as no
+    /// rate mod at all, so it can never be paid more than it was played.
     /// </summary>
     public static int SidecarMods(PerformanceRequest request)
     {
@@ -99,6 +126,7 @@ public sealed class HttpPerformanceCalculator : IPerformanceCalculator
 /// The request a pp sidecar receives. <c>Mode</c> is the vanilla ruleset (0=osu!,1=taiko,2=catch,
 /// 3=mania); Relax/Autopilot are conveyed via <c>Mods</c> (osu! legacy bitmask) so the sidecar
 /// applies whatever relax/autopilot algorithm it implements. Hit counts follow osu! conventions.
+/// <c>ClockRate</c> is a lazer rate mod's own speed (none: the mod's usual).
 /// </summary>
 public sealed record PpSidecarRequest(
     [property: JsonPropertyName("beatmapId")] int BeatmapId,
@@ -114,9 +142,14 @@ public sealed record PpSidecarRequest(
     [property: JsonPropertyName("passed")] bool Passed,
     [property: JsonPropertyName("lazer")] bool Lazer,
     [property: JsonPropertyName("largeTickHits")] int? LargeTickHits,
-    [property: JsonPropertyName("sliderEndHits")] int? SliderEndHits);
+    [property: JsonPropertyName("sliderEndHits")] int? SliderEndHits,
+    [property: JsonPropertyName("clockRate")] double? ClockRate = null);
 
-/// <summary>The response a pp sidecar returns. <c>StarRating</c> is optional.</summary>
+/// <summary>
+/// The response a pp sidecar returns. <c>StarRating</c> is optional. <c>ClockRate</c> is the speed it paid a
+/// rate mod at, when the request's <c>clockRate</c> was applied (a sidecar without it leaves it out).
+/// </summary>
 public sealed record PpSidecarResponse(
     [property: JsonPropertyName("pp")] double Pp,
-    [property: JsonPropertyName("starRating")] double? StarRating = null);
+    [property: JsonPropertyName("starRating")] double? StarRating = null,
+    [property: JsonPropertyName("clockRate")] double? ClockRate = null);
