@@ -180,7 +180,7 @@ internal static class SpectatorManager
     /// was the last one and BanchoBot watches quietly, the host is told BanchoBot joined, so their client keeps streaming.
     /// </summary>
     /// <returns>True when they were shown.</returns>
-    public static bool HideWatcher(OnlinePlayer host, int watcherUserId)
+    public static bool HideWatcher(OnlinePlayer host, int watcherUserId, PlayerRegistry registry)
     {
         if (host.GetState<HashSet<int>>(ShownWatchersKey) is not { } shown)
             return false;
@@ -194,6 +194,9 @@ internal static class SpectatorManager
         }
 
         host.Enqueue(SpectatorLeft(watcherUserId));
+        // Shown only so the client could name them: out of its online list again (unless they're on osu!stable).
+        if (registry.GetByUserId(watcherUserId) is null)
+            host.Enqueue(new BanchoPacketWriter(16).WriteInt32Packet(ServerPacketId.UserLogout, watcherUserId).ToArray());
         if (last && host.GetState<bool>(QuietBotKey) && host.Spectators.Contains(BanchoBot.UserId))
         {
             host.SetState(QuietBotKey, false);

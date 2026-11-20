@@ -280,4 +280,37 @@ public class BotSpectatingTests
         Assert.False(await spectating.ShowWatcherAsync(host.UserId, host.UserId));
         Assert.Empty(host.DequeueAll());
     }
+
+    [Fact]
+    public async Task Spectating_someone_not_on_stable_is_refused_with_a_notice()
+    {
+        var (registry, _) = Registry();
+        var player = AddPlayer(registry, 10, "Player");
+        AddPlayer(registry, 20, "Host");
+        var spectating = new HostSpectating(registry);
+        await spectating.ShowWatcherAsync(20, 10); // 10 is on stable here, so it's the other way round below
+        player.DequeueAll();
+
+        // 503: only on lazer (shown to someone as watching), not online in osu!stable.
+        await new StartSpectatingHandler().HandleAsync(Context(player, registry, BitConverter.GetBytes(503)));
+
+        Assert.Null(player.SpectatingUserId);
+        Assert.True(Has(player, ServerPacketId.Notification));
+    }
+
+    [Fact]
+    public async Task A_hidden_lazer_watcher_leaves_the_online_list()
+    {
+        var (registry, _) = Registry();
+        var host = AddPlayer(registry, 10, "Host");
+        var spectating = new HostSpectating(registry);
+        await spectating.ShowWatcherAsync(host.UserId, 20); // not online and no account lookup: not shown
+        Assert.Empty(spectating.ShownWatchers(host.UserId));
+
+        AddPlayer(registry, 30, "OnStableToo");
+        await spectating.ShowWatcherAsync(host.UserId, 30);
+        host.DequeueAll();
+        spectating.HideWatcher(host.UserId, 30);
+        Assert.DoesNotContain((ushort)ServerPacketId.UserLogout, PacketIds(host.DequeueAll())); // still online in stable
+    }
 }

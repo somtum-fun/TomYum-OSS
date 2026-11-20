@@ -46,7 +46,7 @@ internal sealed class HostSpectating : IHostSpectating
     }
 
     public bool HideWatcher(long hostUserId, long watcherUserId) =>
-        Find(hostUserId) is { } host && watcherUserId is > 0 and <= int.MaxValue && SpectatorManager.HideWatcher(host, (int)watcherUserId);
+        Find(hostUserId) is { } host && watcherUserId is > 0 and <= int.MaxValue && SpectatorManager.HideWatcher(host, (int)watcherUserId, _players);
 
     public IReadOnlyCollection<long> ShownWatchers(long hostUserId) =>
         Find(hostUserId) is { } host ? SpectatorManager.ShownWatchers(host).Select(id => (long)id).ToArray() : [];

@@ -22,8 +22,16 @@ public sealed class StartSpectatingHandler : IClientPacketHandler
         var spectator = context.Player;
 
         var host = context.Registry.GetByUserId(targetId);
-        if (host is null || host.UserId == spectator.UserId)
-            return Task.CompletedTask; // unknown host, or trying to spectate self
+        if (targetId == spectator.UserId)
+            return Task.CompletedTask; // trying to spectate self
+        if (host is null)
+        {
+            // Someone not on osu!stable (a TumThai player that tomyum.stable-spectate showed as watching) can't be
+            // spectated from here.
+            spectator.Enqueue(new BanchoPacketWriter(128).WriteStringPacket(ServerPacketId.Notification,
+                "That player isn't on osu!(stable), so they can't be spectated.").ToArray());
+            return Task.CompletedTask;
+        }
 
         // A restricted player is invisible to everyone else; only staff may still watch them.
         const BanchoPrivileges Staff = BanchoPrivileges.Moderator | BanchoPrivileges.Developer | BanchoPrivileges.Owner;
