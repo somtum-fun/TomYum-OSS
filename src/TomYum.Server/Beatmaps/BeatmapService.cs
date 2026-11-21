@@ -154,6 +154,67 @@ public sealed class BeatmapService : IDisposable
         return resolved;
     }
 
+    private readonly ConcurrentDictionary<string, Task> _warming = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// <see cref="GetByMd5Async(string, CancellationToken)"/> for a read that only needs the map's id, set and status
+    /// (a leaderboard): a map not cached yet is taken from TomYum's own table at once, when it's there, and the osu!
+    /// lookup runs in the background to cache the full map for later. Saves the osu! API's (or the mirror's) round
+    /// trip, hundreds of milliseconds, on the first leaderboard of every map. Anything that stores the map (a score
+    /// submission, an import) keeps using <see cref="GetByMd5Async(string, CancellationToken)"/>: the stored row has no
+    /// API status or metadata for the website.
+    /// </summary>
+    public async Task<Beatmap?> GetByMd5ForReadAsync(string md5, CancellationToken cancellationToken = default)
+    {
+        if (!IsMd5(md5))
+            return null;
+        md5 = md5.ToLowerInvariant();
+        if (_byMd5.TryGetValue(md5, out Cached? cached) && cached is not null)
+            return cached.Beatmap;
+
+        if (await GetStoredAsync(md5, cancellationToken).ConfigureAwait(false) is { } stored)
+        {
+            WarmInBackground(md5);
+            return ApplyOverride(stored);
+        }
+        return await GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
+    }
+
+    // The full lookup for md5, once at a time, off the request.
+    private void WarmInBackground(string md5)
+    {
+        if (_warming.ContainsKey(md5))
+            return;
+        var task = new Task<Task>(async () =>
+        {
+            try
+            {
+                await GetByMd5Async(md5, CancellationToken.None).ConfigureAwait(false);
+            }
+#pragma warning disable CA1031 // a background warm-up failing only means the next request asks again
+            catch (Exception)
+#pragma warning restore CA1031
+            {
+            }
+            finally
+            {
+                _warming.TryRemove(md5, out _);
+            }
+        });
+        if (_warming.TryAdd(md5, task))
+            task.Start(TaskScheduler.Default);
+    }
+
+    private async Task<Beatmap?> GetStoredAsync(string md5, CancellationToken cancellationToken)
+    {
+        if (_scopes is null)
+            return null;
+        await using var scope = _scopes.CreateAsyncScope();
+        if (scope.ServiceProvider.GetService<IBeatmapRepository>() is not { } repository)
+            return null;
+        return await repository.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>
     /// Takes custom maps just stored (an upload) instead of what was cached for their checksums, so a
     /// client that asked before the upload sees them now.

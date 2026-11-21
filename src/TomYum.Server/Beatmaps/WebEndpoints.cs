@@ -78,7 +78,7 @@ public static class WebEndpoints
             return Results.Text(early ? EarlyStatus(RankedStatus.NotSubmitted, version) : NotSubmitted, "text/plain");
         }
 
-        var beatmap = await beatmaps.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
+        var beatmap = await beatmaps.GetByMd5ForReadAsync(md5, cancellationToken).ConfigureAwait(false);
         if (beatmap is null)
         {
             // An unknown hash may be an old version of a known map: then the client offers an update.
