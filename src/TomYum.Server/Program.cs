@@ -222,6 +222,12 @@ builder.Services.AddScoped<PresenceStats>();
 builder.Services.AddScoped<BanchoLoginHandler>();
 builder.Services.AddScoped<RegistrationService>();
 builder.Services.AddTomYumCaching(builder.Configuration);
+// One TomYum on its own keeps its state in memory; several, or the website next to it, share it through Redis.
+if (!TomYum.Caching.CachingServiceCollectionExtensions.IsRedisConfigured(builder.Configuration) && databaseOptions.UseOsuWebAccounts)
+{
+    throw new InvalidOperationException(
+        "The website's accounts (Database:OsuWebName) need the website's Redis: set Redis:Configuration (TOMYUM_REDIS__CONFIGURATION, e.g. redis:6379).");
+}
 
 // --- Beatmap status (osu! v1 API) ---
 // Bind the Osu options (key from config/OSU_API_KEY env) and a typed HttpClient pointed at
