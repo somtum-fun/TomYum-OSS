@@ -81,6 +81,20 @@ public class BeatmapReadFirstTests
     }
 
     [Fact]
+    public async Task AStoredPendingMap_WaitsForTheApi_ItMayHaveBeenRanked()
+    {
+        var api = new SlowApi();
+        var pending = Map("stored");
+        pending.Status = RankedStatus.Pending;
+        using var service = Service(api, pending);
+
+        var lookup = service.GetByMd5ForReadAsync(Md5);
+        Assert.False(lookup.IsCompleted);
+        api.Answer.SetResult(Map("from api"));
+        Assert.Equal(RankedStatus.Ranked, (await lookup)!.Status);
+    }
+
+    [Fact]
     public async Task UnstoredMap_WaitsForTheApi()
     {
         var api = new SlowApi();

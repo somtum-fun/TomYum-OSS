@@ -156,6 +156,9 @@ public sealed class BeatmapService : IDisposable
 
     private readonly ConcurrentDictionary<string, Task> _warming = new(StringComparer.Ordinal);
 
+    // Checksums whose background lookup just failed (osu! not answering): not asked again for a minute.
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _warmFailed = new(StringComparer.Ordinal);
+
     /// <summary>
     /// <see cref="GetByMd5Async(string, CancellationToken)"/> for a read that only needs the map's id, set and status
     /// (a leaderboard): a map not cached yet is taken from TomYum's own table at once, when it's there, and the osu!
@@ -172,7 +175,10 @@ public sealed class BeatmapService : IDisposable
         if (_byMd5.TryGetValue(md5, out Cached? cached) && cached is not null)
             return cached.Beatmap;
 
-        if (await GetStoredAsync(md5, cancellationToken).ConfigureAwait(false) is { } stored)
+        // Only a status that won't change under us (ranked, approved, loved, or held by staff): a pending map may have
+        // been ranked since it was stored, so that one waits for the full lookup.
+        if (await GetStoredAsync(md5, cancellationToken).ConfigureAwait(false) is { } stored
+            && (stored.StatusFrozen || stored.Status is RankedStatus.Ranked or RankedStatus.Approved or RankedStatus.Loved))
         {
             WarmInBackground(md5);
             return ApplyOverride(stored);
@@ -183,13 +189,19 @@ public sealed class BeatmapService : IDisposable
     // The full lookup for md5, once at a time, off the request.
     private void WarmInBackground(string md5)
     {
-        if (_warming.ContainsKey(md5))
+        if (_warming.ContainsKey(md5)
+            || (_warmFailed.TryGetValue(md5, out var failedAt) && DateTimeOffset.UtcNow - failedAt < TimeSpan.FromMinutes(1)))
             return;
         var task = new Task<Task>(async () =>
         {
             try
             {
                 await GetByMd5Async(md5, CancellationToken.None).ConfigureAwait(false);
+                // Not cached: osu! didn't answer (a miss would have been cached).
+                if (_byMd5.TryGetValue(md5, out Cached? _))
+                    _warmFailed.TryRemove(md5, out _);
+                else
+                    _warmFailed[md5] = DateTimeOffset.UtcNow;
             }
 #pragma warning disable CA1031 // a background warm-up failing only means the next request asks again
             catch (Exception)
