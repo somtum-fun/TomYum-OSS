@@ -88,13 +88,32 @@ public sealed class DatabaseOptions
         }.ConnectionString;
 
     /// <summary>
-    /// Returns the effective connection string: <see cref="ConnectionString"/> when supplied,
-    /// otherwise one composed from the discrete fields.
+    /// Most connections TomYum keeps to each database (its own, the website's, multiplayer's: one pool each). MySQL
+    /// refuses connections past its <c>max_connections</c> (151 by default) for everyone, the website included, so
+    /// a burst (everyone logging in again after a restart) waits briefly for a pooled connection instead.
+    /// MySqlConnector's own default is 100 per database. Ignored when <see cref="ConnectionString"/> sets it.
     /// </summary>
-    public string BuildConnectionString() =>
-        string.IsNullOrWhiteSpace(ConnectionString)
-            ? string.Create(
-                CultureInfo.InvariantCulture,
-                $"Server={Host};Port={Port};Database={Name};User={User};Password={Password};")
-            : ConnectionString;
+    public int MaxPoolSize { get; set; } = 32;
+
+    /// <summary>Seconds an unused pooled connection is kept open (MySqlConnector's default is 180).</summary>
+    public int PoolIdleSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// Returns the effective connection string: <see cref="ConnectionString"/> when supplied,
+    /// otherwise one composed from the discrete fields; with the pool limits unless it sets them itself.
+    /// </summary>
+    public string BuildConnectionString()
+    {
+        var builder = new MySqlConnector.MySqlConnectionStringBuilder(
+            string.IsNullOrWhiteSpace(ConnectionString)
+                ? string.Create(
+                    CultureInfo.InvariantCulture,
+                    $"Server={Host};Port={Port};Database={Name};User={User};Password={Password};")
+                : ConnectionString);
+        if (!builder.ContainsKey("Maximum Pool Size") && MaxPoolSize > 0)
+            builder.MaximumPoolSize = (uint)MaxPoolSize;
+        if (!builder.ContainsKey("Connection Idle Timeout") && PoolIdleSeconds > 0)
+            builder.ConnectionIdleTimeout = (uint)PoolIdleSeconds;
+        return builder.ConnectionString;
+    }
 }
