@@ -283,6 +283,8 @@ services:
   db:
     image: mysql:8.4
     restart: unless-stopped
+    # TomYum, osu-web and the queue processors share it; MySQL's default (151) runs out when everyone logs in at once.
+    command: ["--max-connections=${DB_MAX_CONNECTIONS:-500}"]
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
       DB_PASSWORD: ${DB_PASSWORD}
