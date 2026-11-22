@@ -16,13 +16,17 @@ public sealed class PlayerRegistry
     private readonly ConcurrentDictionary<int, OnlinePlayer> _byUserId = new();
 
     /// <summary>Number of players currently online on this node.</summary>
-    public int Count => _byToken.Values.Count(p => !p.IsTournamentClient);
+    public int Count => _byUserId.Count;
 
     /// <summary>
     /// A snapshot of all online players (safe to enumerate while others mutate). Tournament client
     /// windows aren't players of their own and aren't in it.
     /// </summary>
-    public IReadOnlyCollection<OnlinePlayer> All => _byToken.Values.Where(p => !p.IsTournamentClient).ToArray();
+    public IReadOnlyCollection<OnlinePlayer> All => _byUserId.Values.ToArray();
+
+    // Each player's own session by name (case-insensitive; a session's name never changes), so a lookup by name
+    // (PMs, IRC, osu!direct and leaderboard requests) doesn't scan every session.
+    private readonly ConcurrentDictionary<string, OnlinePlayer> _byName = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>A snapshot of every session, tournament client windows included.</summary>
     public IReadOnlyCollection<OnlinePlayer> AllSessions => _byToken.Values.ToArray();
@@ -87,12 +91,14 @@ public sealed class PlayerRegistry
         if (_byUserId.TryRemove(presence.UserId, out var existing))
         {
             _byToken.TryRemove(existing.Token, out _);
+            _byName.TryRemove(new KeyValuePair<string, OnlinePlayer>(existing.Presence.Username, existing));
         }
 
         var token = NewToken();
         var player = new OnlinePlayer(token, presence);
         _byToken[token] = player;
         _byUserId[presence.UserId] = player;
+        _byName[presence.Username] = player;
         return player;
     }
 
@@ -105,13 +111,8 @@ public sealed class PlayerRegistry
         _byUserId.TryGetValue(userId, out var player) ? player : null;
 
     /// <summary>Looks up an online player by username (case-insensitive), or <c>null</c> when not found.</summary>
-    public OnlinePlayer? GetByUsername(string username)
-    {
-        foreach (var p in _byToken.Values)
-            if (!p.IsTournamentClient && string.Equals(p.Presence.Username, username, StringComparison.OrdinalIgnoreCase))
-                return p;
-        return null;
-    }
+    public OnlinePlayer? GetByUsername(string username) =>
+        username is not null && _byName.TryGetValue(username, out var player) ? player : null;
 
     /// <summary>Removes a session (logout or reap). Idempotent.</summary>
     public void Remove(string token)
@@ -131,7 +132,8 @@ public sealed class PlayerRegistry
                 }
             }
             // Only the session found by user id: a tournament window leaving isn't the player leaving.
-            _byUserId.TryRemove(new KeyValuePair<int, OnlinePlayer>(player.UserId, player));
+            if (_byUserId.TryRemove(new KeyValuePair<int, OnlinePlayer>(player.UserId, player)))
+                _byName.TryRemove(new KeyValuePair<string, OnlinePlayer>(player.Presence.Username, player));
         }
     }
 
