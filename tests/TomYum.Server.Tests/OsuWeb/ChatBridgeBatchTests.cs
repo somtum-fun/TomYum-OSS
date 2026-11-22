@@ -13,7 +13,7 @@ namespace TomYum.Server.Tests.OsuWeb;
 /// <summary>Game chat goes to the website in batches (<c>/_lio/tomyum/chat-messages</c>), one by one on an older website.</summary>
 public sealed class ChatBridgeBatchTests
 {
-    private sealed class Website(bool hasBatch) : HttpMessageHandler
+    private sealed class Website(bool hasBatch, bool batchFails = false) : HttpMessageHandler
     {
         public List<(string Path, JsonElement Body)> Requests { get; } = [];
 
@@ -22,17 +22,18 @@ public sealed class ChatBridgeBatchTests
             var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken)).RootElement.Clone();
             lock (Requests)
                 Requests.Add((request.RequestUri!.AbsolutePath, body));
-            return request.RequestUri.AbsolutePath.EndsWith("chat-messages", StringComparison.Ordinal) && !hasBatch
-                ? new HttpResponseMessage(HttpStatusCode.NotFound)
+            var batch = request.RequestUri.AbsolutePath.EndsWith("chat-messages", StringComparison.Ordinal);
+            return batch && !hasBatch ? new HttpResponseMessage(HttpStatusCode.NotFound)
+                : batch && batchFails ? new HttpResponseMessage(HttpStatusCode.InternalServerError)
                 : new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent("{}") };
         }
     }
 
-    private static async Task<(OsuWebChatBridge Bridge, Website Site, int FriendId)> NewAsync(bool hasBatch)
+    private static async Task<(OsuWebChatBridge Bridge, Website Site, int FriendId)> NewAsync(bool hasBatch, bool batchFails = false)
     {
         var users = new InMemoryUserRepository();
         var friend = await users.AddAsync(new User { Username = "Friend", SafeName = "friend", Email = "f@example.com", PasswordBcrypt = "x", Country = "th" });
-        var site = new Website(hasBatch);
+        var site = new Website(hasBatch, batchFails);
         var services = new ServiceCollection()
             .AddSingleton<IUserRepository>(users)
             .AddSingleton(new OsuWebInterop(new HttpClient(site), new OsuWebInteropOptions { InteropUrl = "http://web/", InteropSecret = "s" }))
@@ -67,6 +68,15 @@ public sealed class ChatBridgeBatchTests
         Assert.Equal(["/_lio/tomyum/chat-messages", "/_lio/tomyum/chat-message", "/_lio/tomyum/chat-message", "/_lio/tomyum/chat-message", "/_lio/tomyum/chat-message"],
             site.Requests.Select(r => r.Path));
         Assert.Equal(["a", "b", "c", "d"], site.Requests.Skip(1).Select(r => r.Body.GetProperty("message").GetString()));
+    }
+
+    [Fact]
+    public async Task AFailedBatch_IsSentAgainOneByOne()
+    {
+        var (bridge, site, _) = await NewAsync(hasBatch: true, batchFails: true);
+        await bridge.SendBatchToWebsiteAsync([new(5, "#osu", null, "a"), new(5, "#osu", null, "b")], CancellationToken.None);
+
+        Assert.Equal(["/_lio/tomyum/chat-messages", "/_lio/tomyum/chat-message", "/_lio/tomyum/chat-message"], site.Requests.Select(r => r.Path));
     }
 
     [Fact]

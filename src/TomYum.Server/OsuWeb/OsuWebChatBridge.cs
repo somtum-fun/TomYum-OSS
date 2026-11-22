@@ -282,14 +282,15 @@ public sealed class OsuWebChatBridge : BackgroundService
             _logger.LogWarning("Website chat fell behind: {Count} message(s) from the game weren't copied to the website in the last minute.", since);
     }
 
-    // One request for the whole batch; an older website without the batch endpoint gets them one by one.
-    private bool _noBatchEndpoint;
+    // One request for the whole batch. A website without the batch endpoint gets them one by one, asked again every
+    // 10 minutes (it may have been mid-deploy).
+    private DateTimeOffset _noBatchEndpointUntil = DateTimeOffset.MinValue;
 
     internal async Task SendBatchToWebsiteAsync(IReadOnlyList<Outbound> batch, CancellationToken cancellationToken)
     {
         if (batch.Count == 0)
             return;
-        if (_noBatchEndpoint || batch.Count == 1)
+        if (DateTimeOffset.UtcNow < _noBatchEndpointUntil || batch.Count == 1)
         {
             foreach (var message in batch)
                 await SendToWebsiteAsync(message, cancellationToken).ConfigureAwait(false);
@@ -320,15 +321,23 @@ public sealed class OsuWebChatBridge : BackgroundService
             }
             if (lines.Count > 0 && !await interop.SendChatMessagesAsync(lines, cancellationToken).ConfigureAwait(false))
             {
-                _noBatchEndpoint = true;
+                _noBatchEndpointUntil = DateTimeOffset.UtcNow.AddMinutes(10);
                 _logger.LogInformation("The website has no batch chat endpoint: sending game chat one message at a time.");
                 foreach (var message in batch)
                     await SendToWebsiteAsync(message, cancellationToken).ConfigureAwait(false);
             }
         }
+        catch (HttpRequestException ex) when (ex.StatusCode is { } status && (int)status >= 500)
+        {
+            // The website answered but failed the batch: one at a time, so one bad line only loses itself.
+            _logger.LogWarning("The website failed a chat batch ({Status}); sending its {Count} message(s) one at a time.", (int)status, batch.Count);
+            foreach (var message in batch)
+                await SendToWebsiteAsync(message, cancellationToken).ConfigureAwait(false);
+        }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // Website chat missing some lines beats failing in-game chat.
+            // Unreachable or timed out: sending each again would only wait 100 times. Website chat missing some lines
+            // beats failing in-game chat.
             _logger.LogWarning(ex, "Couldn't copy {Count} chat message(s) to the website.", batch.Count);
         }
     }
