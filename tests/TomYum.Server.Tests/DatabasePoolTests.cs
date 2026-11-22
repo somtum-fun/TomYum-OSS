@@ -12,12 +12,12 @@ public class DatabasePoolTests
     {
         var options = new DatabaseOptions { Host = "db", Name = "tomyum", User = "u", Password = "p" };
         var built = new MySqlConnectionStringBuilder(options.BuildConnectionString());
-        Assert.Equal(32u, built.MaximumPoolSize);
+        Assert.Equal(48u, built.MaximumPoolSize);
         Assert.Equal(60u, built.ConnectionIdleTimeout);
         Assert.Equal("db", built.Server);
 
         var osuWeb = new MySqlConnectionStringBuilder(new DatabaseOptions { Host = "db", OsuWebName = "osu" }.BuildOsuWebConnectionString());
-        Assert.Equal(32u, osuWeb.MaximumPoolSize);
+        Assert.Equal(48u, osuWeb.MaximumPoolSize);
         Assert.Equal("osu", osuWeb.Database);
     }
 

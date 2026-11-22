@@ -6,13 +6,14 @@ internal sealed class RedisScoreQueue(IConnectionMultiplexer redis) : IScoreQueu
 {
     private const string StreamKey = "score-statistics";
 
-    /// <summary>About how many scores the stream keeps (trimmed by Redis as it goes).</summary>
-    public const int MaxLength = 10_000;
+    /// <summary>About how many scores the stream keeps (trimmed by Redis as it goes; ~100 bytes each).</summary>
+    public const int MaxLength = 100_000;
 
     public async Task EnqueueAsync(long scoreId, CancellationToken ct = default)
     {
         var db = redis.GetDatabase();
-        // Nothing in TomYum reads this stream; keep only the latest scores so it can't grow forever.
+        // Read by services/TomYum.ScoreQueue (consumer group tomyum-score-stats) when it runs; when it doesn't, nothing
+        // trims the stream. Capped well above any backlog that service would have.
         await db.StreamAddAsync(StreamKey, [new NameValueEntry("score-id", scoreId)], maxLength: MaxLength, useApproximateMaxLength: true).ConfigureAwait(false);
     }
 }

@@ -33,7 +33,7 @@ public static class CachingServiceCollectionExtensions
     }
 }
 
-/// <summary>Without Redis: nothing reads the score stream, so there's nothing to queue.</summary>
+/// <summary>Without Redis there's no score stream (its reader, services/TomYum.ScoreQueue, needs Redis too).</summary>
 internal sealed class NoScoreQueue : IScoreQueue
 {
     public Task EnqueueAsync(long scoreId, CancellationToken ct = default) => Task.CompletedTask;

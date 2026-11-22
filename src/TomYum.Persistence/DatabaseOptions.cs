@@ -90,10 +90,11 @@ public sealed class DatabaseOptions
     /// <summary>
     /// Most connections TomYum keeps to each database (its own, the website's, multiplayer's: one pool each). MySQL
     /// refuses connections past its <c>max_connections</c> (151 by default) for everyone, the website included, so
-    /// a burst (everyone logging in again after a restart) waits briefly for a pooled connection instead.
+    /// a burst (everyone logging in again after a restart) waits briefly for a pooled connection instead. Three pools of
+    /// 48 stay under MySQL's default limit.
     /// MySqlConnector's own default is 100 per database. Ignored when <see cref="ConnectionString"/> sets it.
     /// </summary>
-    public int MaxPoolSize { get; set; } = 32;
+    public int MaxPoolSize { get; set; } = 48;
 
     /// <summary>Seconds an unused pooled connection is kept open (MySqlConnector's default is 180).</summary>
     public int PoolIdleSeconds { get; set; } = 60;
