@@ -359,19 +359,33 @@ public static class ScoreSubmissionEndpoint
         }
 
         // First play of a set this run: store its other difficulties too, so the website shows the
-        // whole set (with CS/AR/OD/HP etc.). Best-effort like the upsert above.
-        try
+        // whole set (with CS/AR/OD/HP etc.). Best-effort like the upsert above, and off the request: the score
+        // doesn't need them, and asking the mirror (paced) must not hold up the reply.
+        var setScopes = context.RequestServices.GetRequiredService<IServiceScopeFactory>();
+        var playedMapId = beatmap.Id;
+        var playedSetId = beatmap.SetId;
+        _ = Task.Run(async () =>
         {
-            foreach (var difficulty in await beatmaps.FetchSetOnceAsync(beatmap.SetId, cancellationToken).ConfigureAwait(false))
+            try
             {
-                if (difficulty.Id != beatmap.Id)
-                    await beatmapRepo.UpsertAsync(difficulty, cancellationToken).ConfigureAwait(false);
+                var difficulties = await beatmaps.FetchSetOnceAsync(playedSetId, CancellationToken.None).ConfigureAwait(false);
+                if (difficulties.Count == 0)
+                    return;
+                await using var setScope = setScopes.CreateAsyncScope();
+                var setRepo = setScope.ServiceProvider.GetRequiredService<IBeatmapRepository>();
+                foreach (var difficulty in difficulties)
+                {
+                    if (difficulty.Id != playedMapId)
+                        await setRepo.UpsertAsync(difficulty, CancellationToken.None).ConfigureAwait(false);
+                }
             }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Importing beatmap set {SetId} failed; submission continues", beatmap.SetId);
-        }
+#pragma warning disable CA1031 // best effort: a failed import is only logged
+            catch (Exception ex)
+#pragma warning restore CA1031
+            {
+                logger.LogWarning(ex, "Importing beatmap set {SetId} failed; submission continues", playedSetId);
+            }
+        }, CancellationToken.None);
 
         // The same score twice (a resend, or a replayed request) counts once. One that isn't stored after
         // all (a fault here, or a plugin's no) can be sent again.

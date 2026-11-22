@@ -118,4 +118,43 @@ public class BeatmapReadFirstTests
 
         Assert.Equal(1, api.Calls);
     }
+
+    private sealed class SilentApi(bool fails) : IOsuApiClient
+    {
+        public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default)
+        {
+            if (fails)
+                OsuApiFailures.Report(); // as OsuApiClient does on a timeout or an error
+            return Task.FromResult<Beatmap?>(null);
+        }
+
+        public Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public Task<IReadOnlyList<Beatmap>> GetSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public bool SupportsSince => false;
+    }
+
+    private static BeatmapService Service(IOsuApiClient api, Beatmap? stored) =>
+        new(api, new ServiceCollection().AddScoped<IBeatmapRepository>(_ => new Stored(stored)).BuildServiceProvider()
+            .GetRequiredService<IServiceScopeFactory>());
+
+    [Fact]
+    public async Task StoredMap_IsTaken_WhenOsuDoesNotAnswer_AndNotCached()
+    {
+        using var service = Service(new SilentApi(fails: true), Map("stored"));
+
+        Assert.Equal("stored", (await service.GetByMd5Async(Md5))?.Version);
+        Assert.Equal(0, service.CachedCount); // the next lookup asks osu! again
+    }
+
+    [Fact]
+    public async Task StoredMap_IsNotTaken_WhenOsuSaysThereIsNoSuchMap()
+    {
+        using var service = Service(new SilentApi(fails: false), Map("stored"));
+
+        Assert.Null(await service.GetByMd5Async(Md5));
+    }
 }
