@@ -32,6 +32,9 @@ public sealed class PlayerRegistry
 
     private readonly Lock _tournamentGate = new();
 
+    // Each account's tournament client windows (most have none), so a lookup by user never scans every session.
+    private readonly ConcurrentDictionary<int, ConcurrentDictionary<string, OnlinePlayer>> _tournamentByUserId = new();
+
     /// <summary>
     /// Adds a tournament client window for <paramref name="presence"/>'s account: its own token, next
     /// to (not instead of) the player's own session, which stays the one found by user id. Null when
@@ -42,18 +45,35 @@ public sealed class PlayerRegistry
         ArgumentNullException.ThrowIfNull(presence);
         lock (_tournamentGate)
         {
-            if (_byToken.Values.Count(p => p.IsTournamentClient && p.UserId == presence.UserId) >= MaxTournamentClients)
+            var windows = _tournamentByUserId.GetOrAdd(presence.UserId, _ => new ConcurrentDictionary<string, OnlinePlayer>(StringComparer.Ordinal));
+            if (windows.Count >= MaxTournamentClients)
                 return null;
             var token = NewToken();
             var player = new OnlinePlayer(token, presence) { IsTournamentClient = true };
             _byToken[token] = player;
+            windows[token] = player;
             return player;
         }
     }
 
     /// <summary>The sessions of <paramref name="userId"/> (the game, tournament windows) spectating <paramref name="hostUserId"/>.</summary>
-    public IEnumerable<OnlinePlayer> SpectatingSessions(int userId, int hostUserId) =>
-        _byToken.Values.Where(p => p.UserId == userId && p.SpectatingUserId == hostUserId).ToArray();
+    /// <remarks>
+    /// Called once per spectator for every frame bundle, #spectator line and join, so it looks the user up instead of
+    /// scanning every session (with 1,000 watching one player, the scan was ~10⁹ steps a second and stalled the server).
+    /// </remarks>
+    public IEnumerable<OnlinePlayer> SpectatingSessions(int userId, int hostUserId)
+    {
+        var main = _byUserId.TryGetValue(userId, out var player) && player.SpectatingUserId == hostUserId ? player : null;
+        if (!_tournamentByUserId.TryGetValue(userId, out var windows) || windows.IsEmpty)
+            return main is null ? [] : [main];
+        var sessions = new List<OnlinePlayer>(windows.Count + 1);
+        if (main is not null)
+            sessions.Add(main);
+        foreach (var window in windows.Values)
+            if (window.SpectatingUserId == hostUserId)
+                sessions.Add(window);
+        return sessions;
+    }
 
     /// <summary>
     /// Registers <paramref name="presence"/> as a new online session, minting a fresh
@@ -98,6 +118,18 @@ public sealed class PlayerRegistry
     {
         if (_byToken.TryRemove(token, out var player))
         {
+            if (player.IsTournamentClient)
+            {
+                lock (_tournamentGate)
+                {
+                    if (_tournamentByUserId.TryGetValue(player.UserId, out var windows))
+                    {
+                        windows.TryRemove(token, out _);
+                        if (windows.IsEmpty)
+                            _tournamentByUserId.TryRemove(player.UserId, out _);
+                    }
+                }
+            }
             // Only the session found by user id: a tournament window leaving isn't the player leaving.
             _byUserId.TryRemove(new KeyValuePair<int, OnlinePlayer>(player.UserId, player));
         }
