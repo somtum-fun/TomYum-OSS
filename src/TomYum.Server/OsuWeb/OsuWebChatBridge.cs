@@ -40,8 +40,14 @@ public sealed class OsuWebChatBridge : BackgroundService
     /// <summary>osu!stable's /me framing.</summary>
     private const string ActionPrefix = "\u0001ACTION ";
 
-    private readonly Channel<Outbound> _outbound = Channel.CreateBounded<Outbound>(
-        new BoundedChannelOptions(5_000) { FullMode = BoundedChannelFullMode.DropOldest });
+    private readonly Channel<Outbound> _outbound;
+
+    /// <summary>The most messages sent to the website in one request.</summary>
+    public const int BatchSize = 100;
+
+    // Messages the queue had to drop (the website fell behind), reported once a minute.
+    private long _dropped;
+    private long _droppedReported;
     private readonly IServiceScopeFactory _scopes;
     private readonly PlayerRegistry _players;
     private readonly ChannelRegistry _channels;
@@ -59,6 +65,9 @@ public sealed class OsuWebChatBridge : BackgroundService
         IConnectionMultiplexer? redis = null,
         NowPlayingStore? nowPlaying = null)
     {
+        _outbound = Channel.CreateBounded<Outbound>(
+            new BoundedChannelOptions(5_000) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true },
+            _ => Interlocked.Increment(ref _dropped));
         _scopes = scopes;
         _players = players;
         _channels = channels;
@@ -169,8 +178,21 @@ public sealed class OsuWebChatBridge : BackgroundService
                 .ConfigureAwait(false);
         }
 
-        await foreach (var message in _outbound.Reader.ReadAllAsync(stoppingToken).ConfigureAwait(false))
-            await SendToWebsiteAsync(message, stoppingToken).ConfigureAwait(false);
+        // Whatever is waiting goes in one request (up to BatchSize), so a busy channel doesn't fall behind.
+        var batch = new List<Outbound>(BatchSize);
+        var lastDropReport = DateTimeOffset.UtcNow;
+        while (await _outbound.Reader.WaitToReadAsync(stoppingToken).ConfigureAwait(false))
+        {
+            while (batch.Count < BatchSize && _outbound.Reader.TryRead(out var message))
+                batch.Add(message);
+            await SendBatchToWebsiteAsync(batch, stoppingToken).ConfigureAwait(false);
+            batch.Clear();
+            if (DateTimeOffset.UtcNow - lastDropReport >= TimeSpan.FromMinutes(1))
+            {
+                lastDropReport = DateTimeOffset.UtcNow;
+                ReportDrops();
+            }
+        }
     }
 
     private void OnWebsiteMessage(RedisValue value)
@@ -249,6 +271,68 @@ public sealed class OsuWebChatBridge : BackgroundService
         }
     }
 
+    /// <summary>Messages the queue dropped because the website fell behind (since startup).</summary>
+    public long Dropped => Interlocked.Read(ref _dropped);
+
+    private void ReportDrops()
+    {
+        var dropped = Interlocked.Read(ref _dropped);
+        var since = dropped - Interlocked.Exchange(ref _droppedReported, dropped);
+        if (since > 0)
+            _logger.LogWarning("Website chat fell behind: {Count} message(s) from the game weren't copied to the website in the last minute.", since);
+    }
+
+    // One request for the whole batch; an older website without the batch endpoint gets them one by one.
+    private bool _noBatchEndpoint;
+
+    internal async Task SendBatchToWebsiteAsync(IReadOnlyList<Outbound> batch, CancellationToken cancellationToken)
+    {
+        if (batch.Count == 0)
+            return;
+        if (_noBatchEndpoint || batch.Count == 1)
+        {
+            foreach (var message in batch)
+                await SendToWebsiteAsync(message, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            var interop = scope.ServiceProvider.GetRequiredService<OsuWebInterop>();
+            if (!interop.IsConfigured)
+                return;
+            var users = scope.ServiceProvider.GetRequiredService<IUserRepository>();
+            var lines = new List<OsuWebInterop.ChatLine>(batch.Count);
+            var targets = new Dictionary<string, int?>(StringComparer.Ordinal);
+            foreach (var message in batch)
+            {
+                int? targetId = null;
+                if (message.TargetName is { } targetName)
+                {
+                    var safe = User.MakeSafeName(targetName);
+                    if (!targets.TryGetValue(safe, out targetId))
+                        targets[safe] = targetId = (await users.GetBySafeNameAsync(safe, cancellationToken).ConfigureAwait(false))?.Id;
+                    if (targetId is null || targetId == message.SenderId)
+                        continue;
+                }
+                var (text, isAction) = SplitAction(message.Text);
+                lines.Add(new OsuWebInterop.ChatLine(message.SenderId, message.Channel, targetId, text, isAction));
+            }
+            if (lines.Count > 0 && !await interop.SendChatMessagesAsync(lines, cancellationToken).ConfigureAwait(false))
+            {
+                _noBatchEndpoint = true;
+                _logger.LogInformation("The website has no batch chat endpoint: sending game chat one message at a time.");
+                foreach (var message in batch)
+                    await SendToWebsiteAsync(message, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // Website chat missing some lines beats failing in-game chat.
+            _logger.LogWarning(ex, "Couldn't copy {Count} chat message(s) to the website.", batch.Count);
+        }
+    }
+
     private async Task SendToWebsiteAsync(Outbound message, CancellationToken cancellationToken)
     {
         try
@@ -320,5 +404,5 @@ public sealed class OsuWebChatBridge : BackgroundService
         return writer.ToArray();
     }
 
-    private sealed record Outbound(int SenderId, string? Channel, string? TargetName, string Text);
+    internal sealed record Outbound(int SenderId, string? Channel, string? TargetName, string Text);
 }

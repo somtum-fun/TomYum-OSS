@@ -170,6 +170,27 @@ public sealed class OsuWebInterop
         return true;
     }
 
+    /// <summary>A message for <see cref="SendChatMessagesAsync"/>: to a public <paramref name="Channel"/>, or a PM to <paramref name="TargetId"/>.</summary>
+    public sealed record ChatLine(int SenderId, string? Channel, int? TargetId, string Message, bool IsAction);
+
+    /// <summary>
+    /// Posts several in-game messages in one request (the fork's <c>/_lio/tomyum/chat-messages</c>), in order.
+    /// False when the website doesn't have that endpoint (send them one by one with <see cref="SendChatMessageAsync"/>).
+    /// A message the website refuses (blocked, unknown channel) doesn't fail the others.
+    /// </summary>
+    public async Task<bool> SendChatMessagesAsync(IReadOnlyList<ChatLine> lines, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+        using var response = await PostJsonAsync("/_lio/tomyum/chat-messages", new
+        {
+            messages = lines.Select(l => new { sender_id = l.SenderId, channel = l.Channel, target_id = l.TargetId, message = l.Message, is_action = l.IsAction }).ToList(),
+        }, cancellationToken).ConfigureAwait(false);
+        if (response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.MethodNotAllowed)
+            return false;
+        response.EnsureSuccessStatusCode();
+        return true;
+    }
+
     /// <summary>
     /// Gives a set on the website its osu! description (BBCode; the site keeps it as the set's
     /// description post), nominators (osu! users, shown with links to their osu! profiles) and
