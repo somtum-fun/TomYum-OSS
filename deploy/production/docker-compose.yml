@@ -27,8 +27,9 @@ x-osu-web: &osu-web
     REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     NOTIFICATION_REDIS_HOST: redis
     NOTIFICATION_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-    ES_HOST: http://elasticsearch:9200
-    ES_SOLO_SCORES_HOST: http://elasticsearch:9200
+    # With ES_PASSWORD (.env), the elastic user's name and password in the address.
+    ES_HOST: http://${ES_PASSWORD:+elastic:${ES_PASSWORD}@}elasticsearch:9200
+    ES_SOLO_SCORES_HOST: http://${ES_PASSWORD:+elastic:${ES_PASSWORD}@}elasticsearch:9200
     BEATMAPS_DIFFICULTY_CACHE_SERVER_URL: http://beatmap-difficulty-lookup-cache:8080
     SHARED_INTEROP_SECRET: ${SHARED_INTEROP_SECRET}
     TOMYUM_ADMIN_URL: http://server:8080
@@ -229,7 +230,7 @@ services:
     command: ["queue", "watch"]
     environment:
       DB_CONNECTION_STRING: Server=db;Database=osu;Uid=osuweb;Pwd=${DB_PASSWORD};
-      ES_HOST: http://elasticsearch:9200
+      ES_HOST: http://${ES_PASSWORD:+elastic:${ES_PASSWORD}@}elasticsearch:9200
       REDIS_HOST: redis${REDIS_PASSWORD:+,password=${REDIS_PASSWORD}}
       SCHEMA: "1"
     depends_on:
@@ -321,12 +322,14 @@ services:
     restart: unless-stopped
     environment:
       discovery.type: single-node
-      xpack.security.enabled: "false"
+      # ES_SECURITY=true and ES_PASSWORD (.env): logins on, the elastic user with that password. Off: as before.
+      xpack.security.enabled: ${ES_SECURITY:-false}
+      ELASTIC_PASSWORD: ${ES_PASSWORD:-}
       ES_JAVA_OPTS: -Xms1g -Xmx1g
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"]
+      test: ["CMD-SHELL", "curl -fsS -u \"elastic:$${ELASTIC_PASSWORD}\" 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s'"]
       start_period: 60s
       interval: 10s
       retries: 30
