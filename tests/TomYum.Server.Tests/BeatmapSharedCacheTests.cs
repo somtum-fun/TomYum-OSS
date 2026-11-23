@@ -2,7 +2,6 @@ using StackExchange.Redis;
 using TomYum.Domain.Entities;
 using TomYum.Domain.Enums;
 using TomYum.Server.Beatmaps;
-using TomYum.Server.Tests.Cluster;
 using Xunit;
 
 namespace TomYum.Server.Tests;

@@ -214,7 +214,7 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddSingleton<LazerTokens>();
     builder.Services.AddHostedService(sp => sp.GetRequiredService<BeatmapImportRunner>());
     // Maps ranked since the last sync, stored whole (Beatmaps:SyncHours, 0 off): lookups need neither osu! nor the mirror.
-    builder.Services.AddLeaderHostedService<TomYum.Server.Admin.BeatmapMetadataSync>();
+    builder.Services.AddHostedService<TomYum.Server.Admin.BeatmapMetadataSync>();
 }
 else
 {
