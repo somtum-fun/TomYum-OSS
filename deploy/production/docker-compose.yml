@@ -1,5 +1,5 @@
 # TomYum + osu-web (the website) + ppy's services on one server, published through a Cloudflare
-# Tunnel. See docs/deploy-production.md. Configure with deploy/production/.env (copy
+# Tunnel. See https://docs.somtum.fun/guide/production. Configure with deploy/production/.env (copy
 # .env.example), tomyum.env and osu-web.env; nothing here needs editing.
 #
 #   cloudflared ─► caddy:80 ─┬─► server:8080        TomYum (bancho, /web/*, osu!direct downloads)

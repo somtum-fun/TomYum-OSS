@@ -16,7 +16,8 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 ## Progress
 
 > Status: **used in production** (osu!stable, osu!lazer and the website on one account system).
-> Version `0.7.1` (`0.5.0` was the first stable release). Docs: [docs.somtum.fun](https://docs.somtum.fun). What's left is in
+> Version `0.9.0`, the last series before `1.0.0` (`0.5.0` was the first stable release). Docs:
+> [docs.somtum.fun](https://docs.somtum.fun). What changed is in [CHANGELOG.md](CHANGELOG.md); what's left, in
 > [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Supported rulesets
@@ -31,13 +32,23 @@ C# / .NET 10, supporting **both** the osu!stable and osu!lazer clients.
 | osu!taiko (Relax) | 5 | `taiko` + RX | ✅ | ✅ | akatsuki-pp-rs |
 | osu!catch (Relax) | 6 | `fruits` + RX | ✅ | ✅ | akatsuki-pp-rs |
 | osu! (Autopilot) | 8 | `osu` + AP | ✅ | ✅ | akatsuki-pp-rs |
+| Custom lazer rulesets | 10+ | their own | – | ✅ | [Pla-ra](docs/plara.md), or ranked by score |
 
 IDs follow bancho.py: Relax is the mode + 4 and Autopilot the mode + 8 (osu!mania has no Relax).
 Relax and Autopilot have their own leaderboards, stats and rankings, ranked by pp, and lazer plays
 with those mods count towards them too. Their pp comes from the `pp-sidecar` (`sidecars/pp-sidecar`).
-Custom lazer rulesets from rulesets.info (sentakki, tau, Rush!, ...) are supported too, ranked by score
-(no pp): staff turn them on and pin a release in the website's admin panel. See
-[custom rulesets](https://docs.somtum.fun/features/custom-rulesets).
+
+### Custom rulesets
+
+Lazer rulesets from [rulesets.info](https://rulesets.info) (sentakki, tau, Rush!, soyokaze, ...) can be played and
+ranked too. Staff turn one on in the website's admin panel and pin a release of it: the website and the servers use
+that release (its DLL checked against its SHA-256). Each gets an id from 10 up, with its own leaderboards, rankings
+and profile stats.
+
+They're ranked by **pp** from [Pla-ra](docs/plara.md), one calculator for every custom ruleset (the ruleset's own
+difficulty and performance calculators where it has working ones, a shared model where it doesn't), the same on the
+server and in the game. Staff can rank a ruleset by **ranked score** instead, per ruleset. Pla-ra is open source:
+[somtum-fun/plara](https://github.com/somtum-fun/plara). More: [custom rulesets](https://docs.somtum.fun/features/custom-rulesets).
 
 ## Core features
 
@@ -52,6 +63,9 @@ Custom lazer rulesets from rulesets.info (sentakki, tau, Rush!, ...) are support
 * Support for non-standard modes: Relax and Autopilot, ScoreV2 in multiplayer
 * Custom beatmaps (uploaded sets, graveyard, guest difficulties) next to the official ones
 * osu!direct, favourites, screenshots, in-game comments, star ratings with mods
+* Beatmap lookups that keep working when osu! or a mirror doesn't answer: maps stored whole, a sync of newly ranked
+  ones, beatmap mirrors set in the admin panel with failover ([docs/beatmaps.md](docs/beatmaps.md))
+* osu!lazer players can spectate osu!stable players (the `tomyum-stable-spectate` plugin, experimental)
 * Beatmap hype and nominations on the website, with BN imports
 * Achievements (medals)
 * Rank snapshots (rank history for every mode)
@@ -72,8 +86,8 @@ Custom lazer rulesets from rulesets.info (sentakki, tau, Rush!, ...) are support
 * A changelog made from the repositories' history on every deploy
 * Email (sign-up verification)
 
-**Not done yet** (see the [roadmap](docs/ROADMAP.md)): custom medals, multi-instance (Redis-backed)
-online state, and object storage.
+**Not done yet** (see the [roadmap](docs/ROADMAP.md)): custom medals, several TomYum instances behind one address,
+and object storage.
 
 ## Building
 
@@ -120,7 +134,7 @@ scripts/dev-server.sh
 ```
 This wraps `dotnet run` with the right environment (`ASPNETCORE_ENVIRONMENT=Development` so the
 config loads, and the DB password injected to match the compose defaults). On a successful start
-the log prints `Database schema ensured (...)`, confirming it is using MySQL rather than the
+the log prints `Database schema up to date (...)`, confirming it is using MySQL rather than the
 in-memory fallback. Pass `DB=off scripts/dev-server.sh` to run without a database.
 
 TomYum routes by subdomain (`c`, `c4`, `cho` for bancho, `osu` for `/web/*.php`). Front it
@@ -149,6 +163,9 @@ and Cloudflare, configuration, updating and backups.
 [old clients](https://docs.somtum.fun/clients/old-clients) · [custom beatmaps](https://docs.somtum.fun/features/custom-beatmaps) ·
 [plugins](https://docs.somtum.fun/operations/plugins) · [configuration](https://docs.somtum.fun/reference/configuration) ·
 [local testing](https://docs.somtum.fun/guide/local-testing) · [roadmap](https://docs.somtum.fun/reference/roadmap)
+
+In this repository: [beatmaps and mirrors](docs/beatmaps.md) · [custom rulesets (Pla-ra)](docs/plara.md) ·
+[third-party packages](docs/third-party-packages.md) · [changelog](CHANGELOG.md).
 
 Configuration samples are under `config/`, and deployment scaffolding (Docker, k8s, k3s, Caddy)
 under `deploy/`.
