@@ -77,12 +77,32 @@ public sealed class BeatmapService : IDisposable
         }
     }
 
+    // A status that won't change under us: ranked, approved, loved (a pending map may be ranked any time).
+    private static bool IsSettled(Beatmap beatmap) => beatmap.Status is RankedStatus.Ranked or RankedStatus.Approved or RankedStatus.Loved;
+
+    // A settled map osu! just gave, kept whole in TomYum's table (best effort), so a later lookup finds it there.
+    private async Task StoreAsync(Beatmap beatmap, CancellationToken cancellationToken)
+    {
+        if (_scopes is null || beatmap.IsCustom || !IsSettled(beatmap) || beatmap.Details is null)
+            return;
+        try
+        {
+            await using var scope = _scopes.CreateAsyncScope();
+            if (scope.ServiceProvider.GetService<IBeatmapRepository>() is { } repository)
+                await repository.UpsertAsync(beatmap, cancellationToken).ConfigureAwait(false);
+        }
+#pragma warning disable CA1031 // best effort: the map is cached in memory and Redis anyway
+        catch (Exception)
+#pragma warning restore CA1031
+        {
+        }
+    }
+
     // A map osu! (or the mirror) just gave, before any staff override, into Redis for the others: one whose status
     // won't change under us (ranked, approved, loved) only.
     private void Share(Beatmap beatmap)
     {
-        if (_shared is null || beatmap.IsCustom || !IsMd5(beatmap.Md5)
-            || beatmap.Status is not (RankedStatus.Ranked or RankedStatus.Approved or RankedStatus.Loved))
+        if (_shared is null || beatmap.IsCustom || !IsMd5(beatmap.Md5) || !IsSettled(beatmap))
             return;
         try
         {
@@ -197,13 +217,25 @@ public sealed class BeatmapService : IDisposable
             return known;
         }
 
+        // Stored whole from osu! (a lookup or an import kept its status and details) and settled: as good as asking.
+        var stored = await GetStoredAsync(md5, cancellationToken).ConfigureAwait(false);
+        if (stored is { Details: not null, OsuApiStatus: not null } && IsSettled(stored))
+        {
+            var known = ApplyOverride(stored);
+            Cache(md5, known);
+            return known;
+        }
+
         var failed = new StrongBox<bool>();
         Beatmap? fromApi;
         using (OsuApiFailures.Watch(failed))
             fromApi = await _api.GetByMd5Async(md5, cancellationToken).ConfigureAwait(false);
         if (fromApi is not null)
+        {
+            // As osu! gave it, before any staff override is applied to it below.
             Share(fromApi);
-        var stored = fromApi is null ? await GetStoredAsync(md5, cancellationToken).ConfigureAwait(false) : null;
+            await StoreAsync(fromApi, cancellationToken).ConfigureAwait(false);
+        }
         var resolved = ApplyOverride(fromApi ?? (stored is { IsCustom: true } ? stored : null));
         // osu! (or the mirror) didn't answer, which isn't osu! not knowing the map: a map this server has stored (it was
         // played here before) is taken as stored, so a score on it isn't refused as one on an unknown map. Not cached:

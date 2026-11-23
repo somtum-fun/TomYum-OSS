@@ -86,6 +86,11 @@ public sealed class BeatmapRepository : IBeatmapRepository
             existing.LastUpdate = beatmap.LastUpdate;
             if (!existing.StatusFrozen)
                 existing.Status = beatmap.Status;
+            // What osu! said, when this copy came from it (a stored copy being written back has none: keep ours).
+            if (beatmap.OsuApiStatus is not null)
+                existing.OsuApiStatus = beatmap.OsuApiStatus;
+            if (beatmap.Details is not null)
+                existing.Details = beatmap.Details;
         }
 
         await _db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);

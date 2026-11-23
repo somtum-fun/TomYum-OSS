@@ -1,4 +1,6 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using TomYum.Domain.Entities;
 
@@ -38,9 +40,19 @@ public sealed class BeatmapConfiguration : IEntityTypeConfiguration<Beatmap>
         // Stored as the internal RankedStatus integer (wire-significant; see the enum).
         builder.Property(b => b.Status).HasConversion<int>().IsRequired();
         builder.Property(b => b.StatusFrozen).IsRequired();
-        // Only carried in memory to osu-web (docs/osu-web.md); no column here.
-        builder.Ignore(b => b.OsuApiStatus);
-        builder.Ignore(b => b.Details);
+        // What osu!'s API said about the map: its own status number and the details (object counts, CS/AR/OD/HP,
+        // dates, ...). Kept so a stored ranked map answers a lookup as fully as osu! does (BeatmapService), and
+        // filled in whenever the map is stored from a lookup or an import; null for maps stored before.
+        builder.Property(b => b.OsuApiStatus);
+        builder.Property(b => b.Details)
+            .HasColumnType("json")
+            .HasConversion(
+                details => details == null ? null : JsonSerializer.Serialize(details, (JsonSerializerOptions?)null),
+                json => json == null ? null : JsonSerializer.Deserialize<TomYum.Domain.Entities.BeatmapDetails>(json, (JsonSerializerOptions?)null),
+                new ValueComparer<TomYum.Domain.Entities.BeatmapDetails?>(
+                    (a, b) => JsonSerializer.Serialize(a, (JsonSerializerOptions?)null) == JsonSerializer.Serialize(b, (JsonSerializerOptions?)null),
+                    d => d == null ? 0 : JsonSerializer.Serialize(d, (JsonSerializerOptions?)null).GetHashCode(StringComparison.Ordinal),
+                    d => d == null ? null : JsonSerializer.Deserialize<TomYum.Domain.Entities.BeatmapDetails>(JsonSerializer.Serialize(d, (JsonSerializerOptions?)null), (JsonSerializerOptions?)null)));
 
         builder.Property(b => b.Mode).IsRequired();
         builder.Property(b => b.StarRating).IsRequired();

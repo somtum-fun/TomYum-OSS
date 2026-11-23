@@ -37,6 +37,9 @@ namespace TomYum.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("varchar(64)");
 
+                    b.Property<string>("Details")
+                        .HasColumnType("json");
+
                     b.Property<DateTimeOffset>("LastUpdate")
                         .HasColumnType("datetime(6)");
 
@@ -49,6 +52,9 @@ namespace TomYum.Persistence.Migrations
                         .HasColumnType("varchar(32)");
 
                     b.Property<int>("Mode")
+                        .HasColumnType("int");
+
+                    b.Property<int?>("OsuApiStatus")
                         .HasColumnType("int");
 
                     b.Property<int>("SetId")

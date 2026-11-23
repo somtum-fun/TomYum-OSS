@@ -157,4 +157,56 @@ public class BeatmapReadFirstTests
 
         Assert.Null(await service.GetByMd5Async(Md5));
     }
+
+    private sealed class CountingApi : IOsuApiClient
+    {
+        public int Calls;
+
+        public Task<Beatmap?> GetByMd5Async(string md5, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult<Beatmap?>(null);
+        }
+
+        public Task<IReadOnlyList<Beatmap>> GetSetAsync(int setId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public Task<IReadOnlyList<Beatmap>> GetSinceAsync(DateTimeOffset since, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<Beatmap>>([]);
+
+        public bool SupportsSince => false;
+    }
+
+    [Fact]
+    public async Task StoredWhole_SettledMap_AnswersWithoutAskingOsu()
+    {
+        var api = new CountingApi();
+        var stored = Map("stored whole");
+        stored.OsuApiStatus = 1;
+        stored.Details = new BeatmapDetails { CountCircles = 300 };
+        using var service = Service(api, stored);
+
+        var found = await service.GetByMd5Async(Md5);
+
+        Assert.Equal("stored whole", found?.Version);
+        Assert.Equal(300, found?.Details?.CountCircles);
+        Assert.Equal(0, api.Calls);
+    }
+
+    [Theory]
+    [InlineData(false, RankedStatus.Ranked)]  // stored before osu!'s details were kept
+    [InlineData(true, RankedStatus.Pending)]  // may be ranked any time
+    public async Task StoredMap_WithoutDetailsOrNotSettled_IsAskedOnline(bool details, RankedStatus status)
+    {
+        var api = new CountingApi();
+        var stored = Map("stored");
+        stored.Status = status;
+        stored.OsuApiStatus = 1;
+        stored.Details = details ? new BeatmapDetails { CountCircles = 300 } : null;
+        using var service = Service(api, stored);
+
+        await service.GetByMd5Async(Md5);
+
+        Assert.Equal(1, api.Calls);
+    }
 }
