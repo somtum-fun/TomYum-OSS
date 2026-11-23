@@ -96,7 +96,10 @@ internal static class SpectatorManager
 
         // When the last spectator leaves, the host leaves its own channel too.
         if (host.SpectatorCount == 0)
+        {
             LeaveSpectatorChannel(host, host);
+            host.SpectatorChannel.Locked = false; // a !lock is for that spectating, not the host's next one
+        }
     }
 
     /// <summary>
@@ -236,7 +239,10 @@ internal static class SpectatorManager
 
         host.Enqueue(SpectatorLeft(BanchoBot.UserId));
         if (host.SpectatorCount == 0)
+        {
             LeaveSpectatorChannel(host, host);
+            host.SpectatorChannel.Locked = false; // a !lock is for that spectating, not the host's next one
+        }
         return true;
     }
 

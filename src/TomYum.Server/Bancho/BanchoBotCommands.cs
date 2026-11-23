@@ -120,6 +120,14 @@ public sealed class BanchoBotCommands
 
     // ---- moderation (ModerationCommands checks the caller: moderators count as staff there) ----
 
+    // !lock/!unlock said in a channel by staff is handled where the message arrives (it needs the channel); here
+    // they're only listed in !help, refused for players and explained for a PM.
+    [ChatCommand("lock", Help = "say it in a channel: only staff can talk there (players' messages are dropped)", Access = CommandAccess.StaffCheckedByCommand)]
+    [ChatCommand("unlock", Help = "say it in a locked channel to open it again", Access = CommandAccess.StaffCheckedByCommand)]
+    private static string Lock(ChatCommandContext context) => ChannelLocks.IsStaff(context.Privileges)
+        ? $"Say !{context.Name} in the channel itself (#osu, #spectator, #multiplayer...)."
+        : "That command is staff-only.";
+
     [ChatCommand("restrict", Usage = "<user> <reason>", Access = CommandAccess.StaffCheckedByCommand)]
     [ChatCommand("ban", Usage = "<user> <reason>", Access = CommandAccess.StaffCheckedByCommand, Hidden = true)]
     [ChatCommand("unrestrict", Usage = "<user> <reason>", Access = CommandAccess.StaffCheckedByCommand)]

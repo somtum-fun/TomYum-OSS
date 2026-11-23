@@ -37,6 +37,15 @@ public sealed class ChatChannel
     /// <summary>Only staff (and the server itself) may post in it, from the game or IRC (e.g. <c>#announce</c>).</summary>
     public bool StaffOnly { get; init; }
 
+    private volatile bool _locked;
+
+    /// <summary>Locked by staff (<see cref="ChannelLocks"/>): only staff can talk; players' messages are dropped silently.</summary>
+    public bool Locked
+    {
+        get => _locked;
+        set => _locked = value;
+    }
+
     /// <summary>Current member count.</summary>
     public int MemberCount => _members.Count;
 

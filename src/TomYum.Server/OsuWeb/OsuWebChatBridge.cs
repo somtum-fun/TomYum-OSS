@@ -89,6 +89,32 @@ public sealed class OsuWebChatBridge : BackgroundService
             _outbound.Writer.TryWrite(new Outbound(senderId, channel, null, part));
     }
 
+    /// <summary>
+    /// Makes the website's copy of <paramref name="channel"/> moderated while it's locked or staff-only (<c>!lock</c>), so
+    /// lazer and website users follow the lock too. In the background; a failure is logged.
+    /// </summary>
+    public void SetWebsiteModerated(ChatChannel channel)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        if (_channels.Get(channel.Name) != channel)
+            return;
+        var entry = (channel.Name, channel.Topic, channel.StaffOnly || channel.Locked);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                using var scope = _scopes.CreateScope();
+                var interop = scope.ServiceProvider.GetRequiredService<OsuWebInterop>();
+                if (interop.IsConfigured)
+                    await interop.EnsureChatChannelsAsync([entry]).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogWarning(ex, "Couldn't change {Channel}'s lock on the website.", channel.Name);
+            }
+        });
+    }
+
     /// <summary>Queues an in-game PM to <paramref name="targetName"/> for website chat.</summary>
     public void ForwardPrivateMessage(int senderId, string targetName, string text)
     {
@@ -236,6 +262,19 @@ public sealed class OsuWebChatBridge : BackgroundService
                 return null;
 
             var privileges = PrivilegeMapper.ToBancho(user.Privileges);
+            if (message.Channel is { } lockName && _channels.Get(lockName) is { } lockChannel
+                && ChannelLocks.IsStaff(privileges) && ChannelLocks.Parse(message.Content) is bool lockIt)
+            {
+                lockChannel.Locked = lockIt;
+                SetWebsiteModerated(lockChannel);
+                var lockReply = ChannelLocks.Reply(lockChannel.Name, lockIt);
+                var lockFramed = Frame(new BanchoMessage(BanchoBot.Name, lockReply, lockChannel.Name, BanchoBot.UserId));
+                foreach (var member in lockChannel.Members)
+                    member.Enqueue(lockFramed);
+                _chatLog.Record(BanchoBot.UserId, BanchoBot.Name, lockChannel.Name, lockReply);
+                ForwardChannelMessage(BanchoBot.UserId, lockChannel.Name, lockReply);
+                return lockReply;
+            }
             var caller = _players.GetByUserId(user.Id)
                 ?? new OnlinePlayer("website", new BanchoPresence { UserId = user.Id, Username = user.Username, Privileges = privileges });
             // A /np sent to BanchoBot gets the map's details; anything else is a command.
@@ -386,7 +425,7 @@ public sealed class OsuWebChatBridge : BackgroundService
 
             // Staff-only channels (#announce) are moderated on the website too: only privileged users can post.
             await interop.EnsureChatChannelsAsync(
-                _channels.All.Select(c => (c.Name, c.Topic, c.StaffOnly)), cancellationToken).ConfigureAwait(false);
+                _channels.All.Select(c => (c.Name, c.Topic, c.StaffOnly || c.Locked)), cancellationToken).ConfigureAwait(false);
             _logger.LogInformation("Website chat linked: {Count} channel(s) available on the site.", _channels.All.Count);
             return true;
         }

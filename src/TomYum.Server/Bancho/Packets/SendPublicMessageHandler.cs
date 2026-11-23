@@ -81,6 +81,13 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             return;
         }
 
+        // A locked channel (!lock): players' messages are dropped without a word, so a flood just stops; staff still talk.
+        var isStaff = ChannelLocks.IsStaff(context.Player.Presence.Privileges);
+        if (channel.Locked && !isStaff)
+        {
+            return;
+        }
+
         // Silenced and restricted players can't talk in channels; tell them why instead of dropping silently.
         var now = DateTimeOffset.UtcNow;
         if (context.Player.IsSilenced(now) || context.Player.IsRestricted)
@@ -120,9 +127,21 @@ public sealed class SendPublicMessageHandler : IClientPacketHandler
             }
         }
 
-        // Let BanchoBot answer a command, posting its reply to the same channel.
-        var reply = await _bot.TryHandleCommandAsync(
-            context.Player, text, context.Player.Presence.Privileges, cancellationToken).ConfigureAwait(false);
+        // !lock / !unlock from staff applies to this channel; from anyone else BanchoBot refuses it below.
+        string? reply;
+        if (isStaff && ChannelLocks.Parse(text) is bool lockIt)
+        {
+            channel.Locked = lockIt;
+            if (context.Channels.Get(channel.Name) == channel)
+                _website?.SetWebsiteModerated(channel);
+            reply = ChannelLocks.Reply(target, lockIt);
+        }
+        else
+        {
+            // Let BanchoBot answer a command, posting its reply to the same channel.
+            reply = await _bot.TryHandleCommandAsync(
+                context.Player, text, context.Player.Presence.Privileges, cancellationToken).ConfigureAwait(false);
+        }
         if (reply is not null)
         {
             var botWriter = new BanchoPacketWriter(128);
