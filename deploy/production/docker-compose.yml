@@ -293,6 +293,7 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
     volumes:
       - mysql-data:/var/lib/mysql
+      - ./app-databases.sh:/docker-entrypoint-initdb.d/app-databases.sh:ro
       - ./mysql-init.sh:/docker-entrypoint-initdb.d/tomyum.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]

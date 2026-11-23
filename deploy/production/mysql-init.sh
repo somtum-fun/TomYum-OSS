@@ -1,16 +1,16 @@
 #!/bin/sh
-# First start of the database only (docker-entrypoint-initdb.d): the databases the website, TomYum
-# and ppy's services need, and the account they share. The website's databases match its `artisan
-# db:create` (config/database.php); TomYum creates `tomyum` itself at startup.
+# First start of the database only (docker-entrypoint-initdb.d): the databases the website and ppy's
+# services need, and the account they share with TomYum. The website's databases match its `artisan
+# db:create` (config/database.php); TomYum creates `tomyum` itself at startup. The account has rights on
+# the app's databases only (app-databases.sh lists them; mysql-narrow-grants.sh narrows an account made
+# before this did).
 set -e
-mysql -uroot -p"$MYSQL_ROOT_PASSWORD" <<SQL
-CREATE DATABASE IF NOT EXISTS osu DEFAULT CHARSET utf8mb4;
-CREATE DATABASE IF NOT EXISTS osu_charts DEFAULT CHARSET utf8mb4;
-CREATE DATABASE IF NOT EXISTS osu_chat DEFAULT CHARSET utf8mb4;
-CREATE DATABASE IF NOT EXISTS osu_mp DEFAULT CHARSET utf8mb4;
-CREATE DATABASE IF NOT EXISTS osu_store DEFAULT CHARSET utf8mb4;
-CREATE DATABASE IF NOT EXISTS osu_updates DEFAULT CHARSET utf8mb4;
-CREATE USER IF NOT EXISTS 'osuweb'@'%' IDENTIFIED BY '${DB_PASSWORD}';
-GRANT ALL PRIVILEGES ON *.* TO 'osuweb'@'%';
-FLUSH PRIVILEGES;
-SQL
+. /docker-entrypoint-initdb.d/app-databases.sh
+{
+  for db in osu osu_charts osu_chat osu_mp osu_store osu_updates; do
+    echo "CREATE DATABASE IF NOT EXISTS \`$db\` DEFAULT CHARSET utf8mb4;"
+  done
+  echo "CREATE USER IF NOT EXISTS 'osuweb'@'%' IDENTIFIED BY '${DB_PASSWORD}';"
+  for db in $APP_DATABASES; do echo "GRANT ALL PRIVILEGES ON \`$db\`.* TO 'osuweb'@'%';"; done
+  echo "FLUSH PRIVILEGES;"
+} | mysql -uroot -p"$MYSQL_ROOT_PASSWORD"
