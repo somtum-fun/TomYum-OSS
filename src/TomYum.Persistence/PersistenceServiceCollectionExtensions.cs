@@ -57,6 +57,7 @@ public static class PersistenceServiceCollectionExtensions
             services.AddScoped<OsuWebClientVerification>();
             services.AddScoped<OsuWebAccountFlags>();
             services.AddScoped<IAccountBans>(sp => sp.GetRequiredService<OsuWebAccountFlags>());
+            services.AddScoped<OsuWebBeatmapMirrors>();
             services.AddScoped<OsuWebSiteSettings>();
             services.AddScoped<OsuWebPpCaps>();
             services.AddScoped<OsuWebLazerRelax>();

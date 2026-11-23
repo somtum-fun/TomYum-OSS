@@ -79,7 +79,7 @@ public sealed class OsuApiBudgetAndMirrorTests
                     _ => (HttpStatusCode.NotFound, "{}"),
                 };
             })) { BaseAddress = new Uri("https://catboy.best/") },
-            new MirrorOptions(), new OsuApiBudget(TimeProvider.System, 1000), NullLogger<BeatmapMirror>.Instance);
+            new MirrorOptions(), Pool(new OsuApiBudget(TimeProvider.System, 1000)), NullLogger<BeatmapMirror>.Instance);
         var osu = new OsuApiClient(
             new HttpClient(new Stub(path =>
             {
@@ -111,7 +111,7 @@ public sealed class OsuApiBudgetAndMirrorTests
                 calls++;
                 return (HttpStatusCode.TooManyRequests, "{}");
             }, retryAt)) { BaseAddress = new Uri("https://catboy.best/") },
-            new MirrorOptions(), pace, NullLogger<BeatmapMirror>.Instance);
+            new MirrorOptions(), Pool(pace), NullLogger<BeatmapMirror>.Instance);
 
         Assert.Null(await mirror.GetByIdAsync(1));
         Assert.True(pace.IsPaused);
@@ -125,7 +125,7 @@ public sealed class OsuApiBudgetAndMirrorTests
                 calls++;
                 return (HttpStatusCode.OK, SetJson);
             })) { BaseAddress = new Uri("https://catboy.best/") },
-            new MirrorOptions(), new OsuApiBudget(TimeProvider.System, 1000), NullLogger<BeatmapMirror>.Instance);
+            new MirrorOptions(), Pool(new OsuApiBudget(TimeProvider.System, 1000)), NullLogger<BeatmapMirror>.Instance);
         using (BeatmapMirror.Bypass())
             Assert.Empty(await fresh.GetSetAsync(2476607));
         Assert.Equal(1, calls);
@@ -151,4 +151,7 @@ public sealed class OsuApiBudgetAndMirrorTests
             return Task.FromResult(response);
         }
     }
+
+    internal static BeatmapMirrorPool Pool(OsuApiBudget pace) =>
+        new(new MirrorOptions(), pace, TimeProvider.System, NullLogger<BeatmapMirrorPool>.Instance);
 }

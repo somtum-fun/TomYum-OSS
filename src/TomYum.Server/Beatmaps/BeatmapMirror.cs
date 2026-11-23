@@ -44,14 +44,14 @@ public sealed class BeatmapMirror
 {
     private readonly HttpClient _http;
     private readonly MirrorOptions _options;
-    private readonly OsuApiBudget _pace;
+    private readonly BeatmapMirrorPool _pool;
     private readonly ILogger<BeatmapMirror> _logger;
 
-    public BeatmapMirror(HttpClient http, MirrorOptions options, [FromKeyedServices(PaceKey)] OsuApiBudget pace, ILogger<BeatmapMirror> logger)
+    public BeatmapMirror(HttpClient http, MirrorOptions options, BeatmapMirrorPool pool, ILogger<BeatmapMirror> logger)
     {
         _http = http;
         _options = options;
-        _pace = pace;
+        _pool = pool;
         _logger = logger;
     }
 
@@ -174,46 +174,58 @@ public sealed class BeatmapMirror
         };
     }
 
+    // The first mirror that answers, by priority (BeatmapMirrorPool): one that refused, said "too many" or failed is
+    // passed over for the next. A 404 is an answer (it doesn't know the map): osu! is asked instead.
     private async Task<JsonDocument?> GetAsync(string path, CancellationToken cancellationToken)
     {
-        if (!_options.Enabled || Bypassed.Value || _pace.IsPaused)
+        if (Bypassed.Value)
             return null;
-        try
+        foreach (var mirror in await _pool.LookupMirrorsAsync(cancellationToken).ConfigureAwait(false))
         {
-            await _pace.WaitAsync(cancellationToken).ConfigureAwait(false);
-            using var response = await _http.GetAsync(path, cancellationToken).ConfigureAwait(false);
-            if (response.StatusCode == HttpStatusCode.NotFound)
-                return null;
-            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            var pace = _pool.PaceFor(mirror);
+            if (pace.IsPaused)
+                continue;
+            try
             {
-                // Each 429 is a warning (20 get the server banned): stop until it says.
-                var until = RetryAt(response) ?? DateTimeOffset.UtcNow.AddMinutes(1);
-                _pace.Pause(until);
-                _logger.LogWarning("Beatmap mirror: too many requests; not asking it again until {Until:u}.", until);
-                return null;
+                await pace.WaitAsync(cancellationToken).ConfigureAwait(false);
+                using var response = await _http.GetAsync(new Uri(mirror.BaseUri, path), cancellationToken).ConfigureAwait(false);
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                    return null;
+                if (response.StatusCode == HttpStatusCode.TooManyRequests)
+                {
+                    // Each 429 is a warning (20 get the server banned at catboy.best): stop until it says.
+                    var until = RetryAt(response) ?? DateTimeOffset.UtcNow.AddMinutes(1);
+                    pace.Pause(until);
+                    _pool.Report(mirror, "429 too many requests", until);
+                    _logger.LogWarning("Beatmap mirror {Mirror}: too many requests; not asking it again until {Until:u}.", mirror.Name, until);
+                    continue;
+                }
+                if (response.StatusCode == HttpStatusCode.Forbidden)
+                {
+                    var until = DateTimeOffset.UtcNow.AddHours(1);
+                    pace.Pause(until);
+                    _pool.Report(mirror, "403 refused", until);
+                    _logger.LogWarning("Beatmap mirror {Mirror}: refused (403) for {Path}; not asking it for an hour.", mirror.Name, path);
+                    continue;
+                }
+                if (!response.IsSuccessStatusCode)
+                {
+                    _pool.Report(mirror, $"{(int)response.StatusCode} for {path}");
+                    _logger.LogInformation("Beatmap mirror {Mirror}: {Status} for {Path}; trying the next.", mirror.Name, (int)response.StatusCode, path);
+                    continue;
+                }
+                return await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false), cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
             }
-            if (response.StatusCode == HttpStatusCode.Forbidden)
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException && !cancellationToken.IsCancellationRequested)
             {
-                _pace.Pause(DateTimeOffset.UtcNow.AddHours(1));
-                _logger.LogWarning("Beatmap mirror: refused (403) for {Path}; not asking it for an hour.", path);
-                return null;
+                _pool.Report(mirror, $"{ex.GetType().Name} for {path}");
+                _logger.LogInformation(ex, "Beatmap mirror {Mirror}: {Path} failed; trying the next.", mirror.Name, path);
             }
-            if (!response.IsSuccessStatusCode)
-            {
-                _logger.LogInformation("Beatmap mirror: {Status} for {Path}; asking osu! instead.", (int)response.StatusCode, path);
-                return null;
-            }
-            return await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false), cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException && !cancellationToken.IsCancellationRequested)
-        {
-            _logger.LogInformation(ex, "Beatmap mirror: {Path} failed; asking osu! instead.", path);
-            return null;
-        }
+        return null;
     }
 
-    /// <summary>A 429's Retry-After: a date (Mino sends one in UTC) or seconds.</summary>
     internal static DateTimeOffset? RetryAt(HttpResponseMessage response)
     {
         ArgumentNullException.ThrowIfNull(response);

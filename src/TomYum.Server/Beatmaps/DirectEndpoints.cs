@@ -339,13 +339,14 @@ public static partial class DirectEndpoints
         CustomBeatmapStore store,
         PlayerRegistry players,
         IHttpClientFactory factory,
+        BeatmapMirrorPool mirrors,
         CancellationToken cancellationToken)
     {
         if (ParseDownloadId(setId) is not { } parsed)
             return Results.NotFound();
         var (id, noVideo) = parsed;
 
-        var result = HandleDownload(id, context.Request, opts, store, noVideo);
+        var result = HandleDownload(id, context.Request, opts, store, noVideo, mirrors.DownloadMirror);
         if (result is not RedirectHttpResult redirect
             || !(CameOverPlainHttp(context.Request)
                  || (context.Request.Query["u"].ToString() is { Length: > 0 } username && players.GetByUsername(username) is { Build.IsLegacy: true })))
@@ -384,7 +385,8 @@ public static partial class DirectEndpoints
         HttpRequest request,
         IOptions<DirectOptions> opts,
         CustomBeatmapStore store,
-        bool noVideo = false)
+        bool noVideo = false,
+        BeatmapMirrorPool.Mirror? mirror = null)
     {
         if (setId >= Beatmap.CustomIdFloor)
         {
@@ -396,9 +398,13 @@ public static partial class DirectEndpoints
         var cfg = opts.Value;
         // Pass through ?novideo if the client sent it; osu-web (as a download mirror) sends nv=1.
         var withoutVideo = noVideo || request.Query.ContainsKey("novideo") || request.Query["nv"] == "1" ? "?novideo" : string.Empty;
-        var url = cfg.MirrorBaseUrl
-            + string.Format(CultureInfo.InvariantCulture, cfg.DownloadPath, setId)
-            + withoutVideo;
+        // The admin panel's download mirror when it set one ({id} the set), else this server's Direct:* settings.
+        var url = mirror is not null
+            ? new Uri(mirror.BaseUri, mirror.DownloadPath.TrimStart('/').Replace("{id}", setId.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)).AbsoluteUri
+              + withoutVideo
+            : cfg.MirrorBaseUrl
+              + string.Format(CultureInfo.InvariantCulture, cfg.DownloadPath, setId)
+              + withoutVideo;
         return Results.Redirect(url, permanent: false);
     }
 

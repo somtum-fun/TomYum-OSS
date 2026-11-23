@@ -247,6 +247,8 @@ var beatmapMirrorOptions = new MirrorOptions();
 builder.Configuration.GetSection(MirrorOptions.SectionName).Bind(beatmapMirrorOptions);
 builder.Services.AddSingleton(beatmapMirrorOptions);
 builder.Services.AddKeyedSingleton(BeatmapMirror.PaceKey, new OsuApiBudget(TimeProvider.System, beatmapMirrorOptions.RequestsPerMinute));
+// The mirrors staff set in the website's admin panel (Mirror:* and Direct:* until they do).
+builder.Services.AddSingleton<BeatmapMirrorPool>();
 builder.Services.AddHttpClient<BeatmapMirror>(http =>
 {
     http.BaseAddress = new Uri(beatmapMirrorOptions.Url.TrimEnd('/') + "/");
