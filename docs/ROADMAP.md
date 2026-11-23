@@ -1,6 +1,6 @@
 # TomYum Roadmap
 
-_Last updated: 2026-11-01 (version 0.7.1)._ .NET 10; used in production for stable, lazer and the website.
+_Last updated: 2026-11-23 (version 0.9.0, the last series before 1.0.0)._ .NET 10; used in production for stable, lazer and the website.
 
 `0.5.0` is the first **stable** release. `0.6.0` to `1.0.0` are small fixes and growing up:
 scaling, object storage, Kubernetes, and a core generic enough for anyone's server. How each feature
@@ -43,6 +43,10 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decisio
 - `0.7.1` (2026-11-01): password checks no longer hold a thread (one Redis batch), a Redis timeout no
   longer fails a login or score, bcrypt held to half the cores; StackExchange.Redis 3, ppy rulesets
   2026.1026.0, security updates to the packages and infrastructure.
+- `0.9.0` (2026-11-23): the last series before `1.0.0` ([CHANGELOG.md](../CHANGELOG.md)). Pla-ra (pp for custom
+  rulesets); beatmaps stored whole with a sync of newly ranked maps, mirrors set in the admin panel with failover;
+  the rankings' inactivity rule from the admin panel; performance fixes from load tests; Redis and Elasticsearch
+  passwords and a database account with rights on the app's databases only.
 
 ## 0.6.0 – 1.0.0: small fixes, scaling, a generic core
 - [ ] Small fixes from production.
@@ -61,7 +65,8 @@ Legend: `[ ]` todo · `[~]` in progress · `[x]` done · ⏸ deferred by decisio
 - [ ] Server-specific behaviour behind plugins or settings (welcome texts, store, maintenance texts,
       ticket categories, the Relax/Autopilot pp source, custom medals); no server names or addresses in
       code, docs or defaults.
-- [ ] Docs for operators and contributors, a changelog per version, a licence review of what's bundled.
+- [ ] Docs for operators and contributors. Done: a changelog per version (CHANGELOG.md, from 0.9.0), a licence
+      review of what's bundled ([third-party-packages.md](third-party-packages.md)).
 - [ ] Then `1.0.0`; afterwards SemVer: breaking changes bump the major version.
 
 ## Working rules
