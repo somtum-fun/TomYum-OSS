@@ -149,6 +149,7 @@ fi
 env_fill DB_ROOT_PASSWORD "$(openssl rand -hex 24)"
 env_fill DB_PASSWORD "$(openssl rand -hex 24)"
 env_fill SHARED_INTEROP_SECRET "$(openssl rand -hex 32)"
+env_fill REDIS_PASSWORD "$(openssl rand -hex 32)"
 echo "  domain $DOMAIN; database passwords and the shared secret are in .env"
 
 # ---------------------------------------------------------------- 4. the way in

@@ -24,7 +24,9 @@ x-osu-web: &osu-web
     DB_USERNAME: osuweb
     DB_PASSWORD: ${DB_PASSWORD}
     REDIS_HOST: redis
+    REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     NOTIFICATION_REDIS_HOST: redis
+    NOTIFICATION_REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     ES_HOST: http://elasticsearch:9200
     ES_SOLO_SCORES_HOST: http://elasticsearch:9200
     BEATMAPS_DIFFICULTY_CACHE_SERVER_URL: http://beatmap-difficulty-lookup-cache:8080
@@ -59,7 +61,8 @@ x-ppy-env: &ppy-env
   DB_USER: osuweb
   DB_PASS: ${DB_PASSWORD}
   DB_NAME: osu
-  REDIS_HOST: redis
+  # A StackExchange.Redis configuration: the password after a comma when .env sets one.
+  REDIS_HOST: redis${REDIS_PASSWORD:+,password=${REDIS_PASSWORD}}
   SHARED_INTEROP_DOMAIN: http://osu-web:8080
   SHARED_INTEROP_SECRET: ${SHARED_INTEROP_SECRET}
 
@@ -122,7 +125,7 @@ services:
       TOMYUM_DATABASE__OSUWEBNAME: osu
       TOMYUM_DATABASE__USER: osuweb
       TOMYUM_DATABASE__PASSWORD: ${DB_PASSWORD}
-      TOMYUM_REDIS__CONFIGURATION: redis:6379
+      TOMYUM_REDIS__CONFIGURATION: redis:6379${REDIS_PASSWORD:+,password=${REDIS_PASSWORD}}
       TOMYUM_OSUWEB__INTEROPURL: http://osu-web:8080
       TOMYUM_OSUWEB__INTEROPSECRET: ${SHARED_INTEROP_SECRET}
       TOMYUM_OSUWEB__SCOREPROCESSOR: "true"
@@ -227,7 +230,7 @@ services:
     environment:
       DB_CONNECTION_STRING: Server=db;Database=osu;Uid=osuweb;Pwd=${DB_PASSWORD};
       ES_HOST: http://elasticsearch:9200
-      REDIS_HOST: redis
+      REDIS_HOST: redis${REDIS_PASSWORD:+,password=${REDIS_PASSWORD}}
       SCHEMA: "1"
     depends_on:
       db:
@@ -301,6 +304,10 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # REDIS_PASSWORD (.env): every client sends it; empty: no password, as before.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:-}"]
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:-}   # the health check's redis-cli
     volumes:
       - redis-data:/data
     healthcheck:
