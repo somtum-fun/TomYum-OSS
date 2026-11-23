@@ -205,6 +205,8 @@ if (databaseOptions.UseOsuWebAccounts)
     builder.Services.AddHostedService<LazerRelaxImport>();
     builder.Services.AddHostedService<TagSync>();
     builder.Services.AddHostedService<WebsiteLastVisit>();
+    // The rankings' inactivity rule as set in the website's admin panel (days, and grey out or remove).
+    builder.Services.AddHostedService<TomYum.Server.OsuWeb.RankingInactivitySettings>();
     builder.Services.AddHostedService<TomYum.Server.Admin.ModeRankHistoryJob>();
     builder.Services.AddHostedService<TomYum.Server.Admin.PpHistoryJob>();
     builder.Services.AddScoped<ScoreModeration>();

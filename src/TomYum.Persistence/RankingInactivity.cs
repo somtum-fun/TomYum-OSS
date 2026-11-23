@@ -4,7 +4,8 @@ namespace TomYum.Persistence;
 /// The inactivity rule for the rankings (setting <c>Ranking:InactiveDays</c>,
 /// <c>TOMYUM_RANKING__INACTIVEDAYS</c>): a player who hasn't set a score in a mode for this many
 /// days drops out of that mode's rankings (global and country, on the website and in-game) and
-/// comes back with their next score. 0 (the default) turns it off. Set once at startup. The scores
+/// comes back with their next score. 0 (the default) turns it off. Set at startup, then by the admin panel
+/// (RankingInactivitySettings, which also works the website's stored ranks out again). The scores
 /// and stats stay as they are; only ranks are withheld, like osu!'s own inactivity rule.
 /// </summary>
 public static class RankingInactivity
