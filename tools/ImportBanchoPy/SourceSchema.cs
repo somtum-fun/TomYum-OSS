@@ -12,7 +12,7 @@ internal enum Flavor
     /// <summary>kawatapw/kawata.py (its own privilege bits, badges, wiped scores).</summary>
     Kawata,
 
-    /// <summary>osu!somtum's private fork (nominations, ranking history, connections, NAT and helper bits).</summary>
+    /// <summary>somtum.fun's private fork (nominations, ranking history, connections, NAT and helper bits).</summary>
     Somtum,
 }
 
